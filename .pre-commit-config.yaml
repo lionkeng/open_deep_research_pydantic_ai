@@ -1,0 +1,38 @@
+repos:
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+
+  # Ruff for linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # UV lock file sync
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.5.7
+    hooks:
+      - id: uv-lock
+
+  # Pyright for type checking
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run --no-sync pyright
+        language: system
+        types: [python]
+        pass_filenames: false

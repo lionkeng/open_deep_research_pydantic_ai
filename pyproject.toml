@@ -1,0 +1,118 @@
+[project]
+name = "open-deep-research-with-pydantic-ai"
+version = "0.1.0"
+description = "A Python project for deep research using Pydantic AI"
+readme = "README.md"
+authors = [{ name = "Keng Lim", email = "keng@anewgo.com" }]
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.5.0", "pydantic-ai>=0.0.10"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.1.0",
+  "pytest-asyncio>=0.23.0",
+  "ruff>=0.6.0",
+  "ipython>=8.18.0",
+]
+docs = [
+  "mkdocs>=1.5.0",
+  "mkdocs-material>=9.5.0",
+  "mkdocstrings[python]>=0.24.0",
+]
+
+[project.scripts]
+# open-deep-research = "open_deep_research_with_pydantic_ai.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "W",  # pycodestyle warnings
+  "F",  # pyflakes
+  "I",  # isort
+  "B",  # flake8-bugbear
+  "C4", # flake8-comprehensions
+  "UP", # pyupgrade
+]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedClass = true
+reportUnusedFunction = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportTypedDictNotRequiredAccess = true
+reportPrivateImportUsage = true
+reportConstantRedefinition = true
+reportIncompatibleMethodOverride = true
+reportIncompatibleVariableOverride = true
+reportInconsistentConstructor = true
+reportOverlappingOverload = true
+reportUninitializedInstanceVariable = true
+reportCallInDefaultInitializer = true
+reportUnnecessaryIsInstance = true
+reportUnnecessaryCast = true
+reportUnnecessaryComparison = true
+reportUnnecessaryContains = true
+reportAssertAlwaysTrue = true
+reportSelfClsParameterName = true
+reportImplicitStringConcatenation = false
+reportUndefinedVariable = true
+reportUnboundVariable = true
+reportInvalidStringEscapeSequence = true
+reportMissingParameterType = true
+reportMissingTypeArgument = true
+reportUnnecessaryTypeIgnoreComment = true
+reportMatchNotExhaustive = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+  "--cov=open_deep_research_with_pydantic_ai",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "-v",
+]
+
+[tool.coverage.run]
+source = ["src/open_deep_research_with_pydantic_ai"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "if self.debug:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+  "pass",
+  "except ImportError:",
+]
+
+[dependency-groups]
+dev = ["pre-commit>=4.3.0", "pyright>=1.1.403"]
