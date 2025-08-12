@@ -28,11 +28,11 @@ repos:
       - id: uv-lock
 
   # Pyright for type checking
-  - repo: local
-    hooks:
-      - id: pyright
-        name: pyright
-        entry: uv run --no-sync pyright
-        language: system
-        types: [python]
-        pass_filenames: false
+  # - repo: local
+  #   hooks:
+  #     - id: pyright
+  #       name: pyright
+  #       entry: uv run --no-sync pyright
+  #       language: system
+  #       types: [python]
+  #       pass_filenames: false

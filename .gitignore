@@ -158,3 +158,4 @@ logs/
 temp/
 tmp/
 scratch/
+.claude
