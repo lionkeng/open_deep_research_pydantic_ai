@@ -148,7 +148,6 @@ cython_debug/
 
 # uv
 .venv/
-uv.lock
 
 # Project specific
 *.db
