@@ -16,12 +16,14 @@ from open_deep_research_with_pydantic_ai.core.workflow import workflow
 from open_deep_research_with_pydantic_ai.models.api_models import APIKeys
 from open_deep_research_with_pydantic_ai.models.research import ResearchStage, ResearchState
 
+from ..core.logging import configure_logging
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     """Manage application lifespan - startup and shutdown."""
     # Startup logic
-    logfire.configure()
+    configure_logging()
     logfire.info("Deep Research API started")
 
     yield  # Application runs here

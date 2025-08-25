@@ -18,6 +18,7 @@ from open_deep_research_with_pydantic_ai.core.events import (
     StreamingUpdateEvent,
     research_event_bus,
 )
+from open_deep_research_with_pydantic_ai.core.logging import configure_logging
 from open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
 from open_deep_research_with_pydantic_ai.models.research import ResearchState
 
@@ -87,6 +88,8 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](ABC):
         # Register tools for the agent
         self._register_tools()
 
+        # Ensure logfire is configured before logging
+        configure_logging()
         logfire.info(f"Initialized {self.name} agent", model=model)
 
     @abstractmethod

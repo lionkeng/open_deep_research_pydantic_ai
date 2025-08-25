@@ -3,21 +3,22 @@
 ## Overview
 
 The Deep Research CLI now supports two execution modes:
+
 1. **Direct Mode** (default): Executes research workflow in-process
 2. **HTTP Mode**: Connects to FastAPI server via Server-Sent Events (SSE)
 
 ## Installation
 
 ### Basic Installation (Direct Mode Only)
+
 ```bash
 uv sync
 ```
 
 ### Full Installation (With HTTP Mode Support)
+
 ```bash
-uv add --optional cli
-# or
-pip install -e ".[cli]"
+uv add httpx-sse --optional cli
 ```
 
 This installs the `httpx-sse` dependency required for HTTP mode.
@@ -25,6 +26,7 @@ This installs the `httpx-sse` dependency required for HTTP mode.
 ## Usage
 
 ### Direct Mode (Default)
+
 ```bash
 # Execute research directly without a server
 deep-research research "What is quantum computing?"
@@ -37,6 +39,7 @@ deep-research research "What is quantum computing?" -k openai:sk-xxx -k tavily:t
 ```
 
 ### HTTP Mode
+
 ```bash
 # Start the server first (in another terminal)
 uvicorn open_deep_research_with_pydantic_ai.api.main:app
@@ -54,11 +57,13 @@ deep-research interactive --mode http
 ## Architecture
 
 ### Direct Mode Flow
+
 ```
 CLI → Import Workflow → Execute In-Process → Event Bus → Progress Display
 ```
 
 ### HTTP Mode Flow
+
 ```
 CLI → HTTP POST → FastAPI Server → Background Task → SSE Stream → Progress Display
 ```
@@ -66,11 +71,13 @@ CLI → HTTP POST → FastAPI Server → Background Task → SSE Stream → Prog
 ## Key Components
 
 ### 1. HTTPResearchClient (`cli.py`)
+
 - Manages HTTP connections to the FastAPI server
 - Converts SSE events to CLI event handlers
 - Implements retry logic for connection failures
 
 ### 2. Dual-Mode run_research Function
+
 ```python
 async def run_research(
     query: str,
@@ -81,6 +88,7 @@ async def run_research(
 ```
 
 ### 3. SSE Event Processing
+
 - Converts JSON SSE events to Python event objects
 - Maintains same progress display for both modes
 - Handles connection/disconnection gracefully
@@ -88,24 +96,28 @@ async def run_research(
 ## Command-Line Options
 
 ### research Command
+
 - `--mode, -m`: Choose execution mode (`direct` or `http`)
 - `--server-url, -s`: Server URL for HTTP mode
 - `--api-key, -k`: API keys in format `service:key`
 - `--verbose, -v`: Enable verbose logging
 
 ### interactive Command
+
 - `--mode, -m`: Execution mode for the session
 - `--server-url, -s`: Server URL if using HTTP mode
 
 ## Benefits
 
 ### Direct Mode
+
 - No server required
 - Lower latency
 - Simpler deployment
 - Good for development/testing
 
 ### HTTP Mode
+
 - Client-server architecture
 - Multiple clients can connect
 - Server can be deployed separately
@@ -115,22 +127,26 @@ async def run_research(
 ## Error Handling
 
 ### Connection Failures
+
 - Automatic retry with exponential backoff
 - Maximum 3 retry attempts
 - Clear error messages if server unavailable
 
 ### Graceful Degradation
+
 - If httpx-sse not installed, HTTP mode shows helpful error
 - Direct mode always available as fallback
 
 ## Testing
 
 Run the test script to verify installation:
+
 ```bash
 python test_cli_modes.py
 ```
 
 This tests:
+
 - HTTP mode dependency availability
 - HTTPResearchClient initialization
 - CLI command-line options
@@ -138,16 +154,19 @@ This tests:
 ## Implementation Details
 
 ### Dependencies
+
 - Core: `httpx`, `click`, `rich`
 - HTTP Mode: `httpx-sse>=0.4.0` (optional)
 
 ### Event Types Supported
+
 - `StreamingUpdateEvent`: Progress updates
 - `StageCompletedEvent`: Stage completion notifications
 - `ErrorEvent`: Error notifications
 - `ResearchCompletedEvent`: Final results
 
 ### SSE Features
+
 - Automatic reconnection (5-second retry)
 - Heartbeat/ping support
 - Clean disconnection handling
@@ -165,19 +184,24 @@ This tests:
 ## Troubleshooting
 
 ### HTTP Mode Not Available
+
 ```
 Error: HTTP mode requires additional dependencies.
 Install with: uv add --optional cli
 ```
 
 ### Server Connection Failed
+
 ```
 Connection failed, retrying 1/3...
 ```
+
 Ensure server is running: `uvicorn open_deep_research_with_pydantic_ai.api.main:app`
 
 ### Port Already in Use
+
 ```
 ERROR: [Errno 48] Address already in use
 ```
+
 Kill existing process: `lsof -i :8000 | grep LISTEN | awk '{print $2}' | xargs kill -9`

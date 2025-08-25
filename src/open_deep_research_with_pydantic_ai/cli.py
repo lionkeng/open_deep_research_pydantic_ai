@@ -24,6 +24,7 @@ from open_deep_research_with_pydantic_ai.core.events import (
     StreamingUpdateEvent,
     research_event_bus,
 )
+from open_deep_research_with_pydantic_ai.core.logging import configure_logging
 from open_deep_research_with_pydantic_ai.core.sse_models import (
     CompletedMessage,
     ConnectionMessage,
@@ -760,8 +761,7 @@ def research(query: str, api_key: tuple[str, ...], verbose: bool, mode: str, ser
         deep-research "What is quantum computing?" --mode http --server-url http://api.example.com:8000
     """
     # Configure logging
-    if verbose:
-        logfire.configure()
+    configure_logging()
 
     # Parse API keys from command line
     parsed_keys: dict[str, str] = {}
