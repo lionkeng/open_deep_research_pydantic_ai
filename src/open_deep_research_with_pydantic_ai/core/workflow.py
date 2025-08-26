@@ -1,4 +1,4 @@
-"""Main workflow orchestrator for the research pipeline."""
+"""Main workflow orchestrator with integrated three-phase clarification system."""
 
 from datetime import datetime
 from typing import Any
@@ -14,6 +14,9 @@ from open_deep_research_with_pydantic_ai.agents.base import (
 from open_deep_research_with_pydantic_ai.agents.brief_generator import brief_generator_agent
 from open_deep_research_with_pydantic_ai.agents.clarification import clarification_agent
 from open_deep_research_with_pydantic_ai.agents.compression import compression_agent
+from open_deep_research_with_pydantic_ai.agents.query_transformation import (
+    query_transformation_agent,
+)
 from open_deep_research_with_pydantic_ai.agents.report_generator import report_generator_agent
 from open_deep_research_with_pydantic_ai.agents.research_executor import (
     research_executor_agent,
@@ -26,11 +29,15 @@ from open_deep_research_with_pydantic_ai.core.events import (
     emit_research_started,
 )
 from open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
-from open_deep_research_with_pydantic_ai.models.research import ResearchStage, ResearchState
+from open_deep_research_with_pydantic_ai.models.research import (
+    ResearchBrief,
+    ResearchStage,
+    ResearchState,
+)
 
 
 class ResearchWorkflow:
-    """Orchestrator for the complete research workflow."""
+    """Orchestrator for the complete research workflow with three-phase clarification system."""
 
     def __init__(self):
         """Initialize the research workflow."""
@@ -43,7 +50,7 @@ class ResearchWorkflow:
             # Agents are auto-registered when imported
             self._initialized = True
             logfire.info(
-                "Research workflow initialized",
+                "Research workflow initialized with three-phase clarification system",
                 agents=list(self.coordinator.agents.keys()),
             )
 
@@ -56,7 +63,7 @@ class ResearchWorkflow:
         user_id: str | None = None,
         session_id: str | None = None,
     ) -> ResearchState:
-        """Execute the complete research workflow.
+        """Execute the complete research workflow with integrated three-phase clarification.
 
         Args:
             user_query: User's research query
@@ -107,128 +114,20 @@ class ResearchWorkflow:
                 # Emit research started event
                 await emit_research_started(request_id, user_query)
 
-                # Stage 1: Interactive Clarification and Brief Generation
-                logfire.info("Stage 1: Clarification and brief generation", request_id=request_id)
-
-                # Step 1: Try to generate research brief from conversation
-                brief_result = await brief_generator_agent.generate_from_conversation(deps)
-
-                # Step 2: Check if confidence is sufficient to proceed
-                from open_deep_research_with_pydantic_ai.core.config import config
-
-                if (
-                    brief_result.confidence_score < config.research_brief_confidence_threshold
-                    and config.research_interactive
-                ):
-                    # Check if we should ask another question
-                    if await clarification_agent.should_ask_another_question(
-                        deps, config.max_clarification_questions
-                    ):
-                        # Get clarification from user
-                        clarification = await clarification_agent.assess_query(user_query, deps)
-
-                        if clarification.need_clarification:
-                            logfire.info("Clarification needed", question=clarification.question)
-
-                            # Store clarification in metadata
-                            if not research_state.metadata:
-                                research_state.metadata = {}
-                            research_state.metadata.update(
-                                {
-                                    "awaiting_clarification": True,
-                                    "clarification_question": clarification.question,
-                                    "conversation_messages": research_state.metadata.get(
-                                        "conversation_messages", []
-                                    )
-                                    + [user_query],
-                                }
-                            )
-
-                            # Check environment for interaction mode
-                            import sys
-
-                            if sys.stdin.isatty():  # Interactive terminal (CLI mode)
-                                try:
-                                    # Use the CLI interface for clarification
-                                    from open_deep_research_with_pydantic_ai.interfaces.cli_clarification import (  # noqa: E501
-                                        ask_single_clarification_question,
-                                    )
-
-                                    user_response = ask_single_clarification_question(
-                                        clarification.question
-                                    )
-
-                                    if user_response:
-                                        # Add response to conversation
-                                        conversation = research_state.metadata.get(
-                                            "conversation_messages", []
-                                        )
-                                        conversation.extend([clarification.question, user_response])
-                                        research_state.metadata["conversation_messages"] = (
-                                            conversation
-                                        )
-
-                                        # Generate new brief with updated conversation
-                                        brief_result = (
-                                            await brief_generator_agent.generate_from_conversation(
-                                                deps
-                                            )
-                                        )
-                                        logfire.info(
-                                            "Updated brief after clarification",
-                                            confidence=brief_result.confidence_score,
-                                        )
-                                    else:
-                                        # User cancelled, proceed with original brief
-                                        logfire.info("Clarification cancelled by user")
-
-                                except (KeyboardInterrupt, EOFError):
-                                    # User cancelled, proceed with original
-                                    logfire.info("Clarification cancelled by user")
-                            else:
-                                # Non-interactive environment (HTTP mode or CI) - store question and
-                                # pause workflow
-                                logfire.info(
-                                    "Non-interactive environment detected, storing clarification "
-                                    "for HTTP response"
-                                )
-                                research_state.metadata.update(
-                                    {
-                                        "awaiting_clarification": True,
-                                        "clarification_question": clarification.question,
-                                    }
-                                )
-                                # Return early - workflow paused for HTTP client to handle
-                                return research_state
-                        else:
-                            logfire.info(
-                                "No clarification needed", verification=clarification.verification
-                            )
-
-                # The brief is already stored in metadata by the agent
-                # Get the brief text from metadata for downstream stages
-                brief_text = research_state.metadata.get("research_brief_text", brief_result.brief)
-
-                logfire.info(
-                    "Research brief generated",
-                    confidence=brief_result.confidence_score,
-                    brief_length=len(brief_result.brief),
-                    missing_aspects=brief_result.missing_aspects,
-                )
+                # Execute the integrated three-phase clarification system
+                await self._execute_three_phase_clarification(research_state, deps, user_query)
 
                 research_state.advance_stage()
 
-                # Stage 2: Research Execution
-                logfire.info("Stage 2: Executing research", request_id=request_id)
-                # Create a minimal ResearchBrief from our text
+                # Stage 4: Research Execution
+                logfire.info("Stage 4: Executing research", request_id=request_id)
+
+                # Get the enhanced brief text from metadata
                 brief_text = research_state.metadata.get(
                     "research_brief_text", "No research brief available"
                 )
 
-                # Create a minimal ResearchBrief object for compatibility
-                from open_deep_research_with_pydantic_ai.models.research import ResearchBrief
-
-                # Extract questions from the brief text
+                # Create a minimal ResearchBrief from our enhanced text
                 questions = [q.strip() + "?" for q in brief_text.split("?") if q.strip()][:5]
                 if not questions:
                     questions = ["What are the key aspects of this topic?"]
@@ -249,34 +148,22 @@ class ResearchWorkflow:
                 research_state.findings = findings
                 research_state.advance_stage()
 
-                # Stage 3: Compression
-                logfire.info("Stage 3: Compressing findings", request_id=request_id)
-                # Extract key questions from the brief text (simplified approach)
-                brief_text = research_state.metadata.get(
-                    "research_brief_text", "No research brief available"
-                )
+                # Stage 5: Compression
+                logfire.info("Stage 5: Compressing findings", request_id=request_id)
                 key_questions = [q.strip() for q in brief_text.split("?") if q.strip()][:5]
                 compressed_findings = await compression_agent.compress_findings(
                     findings,
                     key_questions,
                     deps,
                 )
-                # Store the summary in compressed_findings field
                 research_state.compressed_findings = compressed_findings.summary
-                # Store the full object in metadata for later use
                 research_state.metadata["compressed_findings_full"] = compressed_findings
                 research_state.advance_stage()
 
-                # Stage 4: Report Generation
-                logfire.info("Stage 4: Generating final report", request_id=request_id)
-                # Recreate the minimal ResearchBrief for report generation
-                brief_text = research_state.metadata.get(
-                    "research_brief_text", "No research brief available"
-                )
-                questions = [q.strip() + "?" for q in brief_text.split("?") if q.strip()][:5]
-                if not questions:
-                    questions = ["What are the key aspects of this topic?"]
+                # Stage 6: Report Generation
+                logfire.info("Stage 6: Generating final report", request_id=request_id)
 
+                # Recreate minimal ResearchBrief for report generation
                 minimal_brief = ResearchBrief(
                     topic=user_query,
                     objectives=["Research and understand the topic comprehensively"],
@@ -299,9 +186,10 @@ class ResearchWorkflow:
 
                 # Workflow complete
                 logfire.info(
-                    "Research workflow completed successfully",
+                    "Research workflow completed successfully with three-phase clarification",
                     request_id=request_id,
                     total_usage=deps.usage,
+                    clarification_enhanced=True,
                 )
 
                 return research_state
@@ -325,6 +213,125 @@ class ResearchWorkflow:
                 # Update state with error
                 research_state.set_error(str(e))
                 return research_state
+
+    async def _execute_three_phase_clarification(
+        self, research_state: ResearchState, deps: ResearchDependencies, user_query: str
+    ) -> None:
+        """Execute the integrated three-phase clarification system.
+
+        Phase 1: Enhanced Clarification Assessment
+        Phase 2: Query Transformation
+        Phase 3: Enhanced Brief Generation
+        """
+
+        # Phase 1: Enhanced Clarification Assessment
+        logfire.info("Phase 1: Enhanced clarification assessment")
+
+        # Create a simple prompt for clarification assessment
+        clarification_prompt = f"Assess if this query needs clarification: {user_query}"
+        clarification_result = await clarification_agent.run(clarification_prompt, deps)
+
+        # Store clarification assessment
+        if not research_state.metadata:
+            research_state.metadata = {}
+        research_state.metadata["clarification_assessment"] = {
+            "needs_clarification": clarification_result.need_clarification,
+            "question": clarification_result.question,
+            "verification": clarification_result.verification,
+        }
+
+        # Handle clarification if needed (simplified for non-interactive)
+        clarification_responses = {}
+        if clarification_result.need_clarification and clarification_result.question:
+            import sys
+
+            if sys.stdin.isatty():  # Interactive mode (CLI)
+                try:
+                    from open_deep_research_with_pydantic_ai.interfaces.cli_clarification import (
+                        ask_single_clarification_question,
+                    )
+
+                    # Get user response for the clarification question
+                    user_response = ask_single_clarification_question(clarification_result.question)
+                    if user_response:
+                        clarification_responses[clarification_result.question] = user_response
+
+                        # Add to conversation messages
+                        if "conversation_messages" not in research_state.metadata:
+                            research_state.metadata["conversation_messages"] = []
+                        research_state.metadata["conversation_messages"].extend(
+                            [
+                                {"role": "assistant", "content": clarification_result.question},
+                                {"role": "user", "content": user_response},
+                            ]
+                        )
+
+                except (KeyboardInterrupt, EOFError):
+                    logfire.info("User cancelled clarification")
+            else:
+                # Non-interactive mode - store for HTTP handling
+                research_state.metadata.update(
+                    {
+                        "awaiting_clarification": True,
+                        "clarification_question": clarification_result.question,
+                    }
+                )
+                return  # Exit early for HTTP handling
+
+        # Store clarification responses in metadata
+        research_state.metadata["clarification_responses"] = clarification_responses
+
+        # Phase 2: Query Transformation
+        logfire.info("Phase 2: Query transformation")
+
+        try:
+            transformed_query = await query_transformation_agent.transform_query(
+                original_query=user_query,
+                clarification_responses=clarification_responses,
+                conversation_context=research_state.metadata.get("conversation_messages", []),
+                deps=deps,
+            )
+
+            # Store comprehensive transformation data
+            research_state.metadata["transformed_query"] = {
+                "original_query": transformed_query.original_query,
+                "transformed_query": transformed_query.transformed_query,
+                "supporting_questions": transformed_query.supporting_questions,
+                "transformation_rationale": transformed_query.transformation_rationale,
+                "specificity_score": transformed_query.specificity_score,
+                "missing_dimensions": transformed_query.missing_dimensions,
+                "clarification_responses": transformed_query.clarification_responses,
+                "transformation_metadata": transformed_query.transformation_metadata,
+            }
+
+            logfire.info(
+                "Query transformation completed",
+                specificity_score=transformed_query.specificity_score,
+                supporting_questions_count=len(transformed_query.supporting_questions),
+            )
+
+        except Exception as e:
+            logfire.warning(f"Query transformation failed, proceeding without: {e}")
+            # Continue without transformation data - brief generator has fallback
+
+        # Phase 3: Enhanced Brief Generation
+        logfire.info("Phase 3: Enhanced brief generation")
+
+        # The brief generator will automatically use transformation data if available
+        # and fall back to conversation-based generation if not
+        brief_result = await brief_generator_agent.generate_from_conversation(deps)
+
+        # Ensure brief is stored in metadata for downstream stages
+        research_state.metadata["research_brief_text"] = brief_result.brief
+        research_state.metadata["research_brief_confidence"] = brief_result.confidence_score
+
+        logfire.info(
+            "Three-phase clarification system completed",
+            confidence=brief_result.confidence_score,
+            brief_length=len(brief_result.brief),
+            has_transformation="transformed_query" in research_state.metadata,
+            clarification_count=len(clarification_responses),
+        )
 
     async def resume_research(
         self,
@@ -361,8 +368,6 @@ class ResearchWorkflow:
                 current_stage = research_state.current_stage
 
                 if current_stage == ResearchStage.CLARIFICATION:
-                    # Handle clarification resume - simplified approach
-
                     # Check if we're waiting for clarification response
                     if research_state.metadata and research_state.metadata.get(
                         "awaiting_clarification"
@@ -371,12 +376,10 @@ class ResearchWorkflow:
                         logfire.info("Still awaiting clarification response")
                         return research_state
 
-                    # Generate brief from current conversation state
-                    await brief_generator_agent.generate_from_conversation(deps)
-
-                    # Brief is already stored in metadata by the agent
-                    # Just advance to the next stage
-
+                    # Re-execute three-phase clarification system
+                    await self._execute_three_phase_clarification(
+                        research_state, deps, research_state.user_query
+                    )
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
@@ -501,6 +504,85 @@ class ResearchWorkflow:
                 logfire.error(
                     "Research resume failed",
                     request_id=research_state.request_id,
+                    error=str(e),
+                    exc_info=True,
+                )
+                research_state.set_error(str(e))
+                return research_state
+
+    async def execute_planning_only(
+        self,
+        user_query: str,
+        api_keys: APIKeys | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> ResearchState:
+        """Execute only the three-phase clarification and brief generation.
+
+        This is perfect for API endpoints that just need the research brief.
+
+        Args:
+            user_query: User's research query
+            api_keys: API keys for various services
+            user_id: Optional user ID for isolation
+            session_id: Optional session ID for user
+
+        Returns:
+            Research state with completed brief generation
+        """
+        self._ensure_initialized()
+
+        # Get user context
+        context = get_current_context()
+        if user_id is None:
+            user_id = context.user_id
+        if session_id is None:
+            session_id = context.session_id
+
+        # Create research state
+        request_id = ResearchState.generate_request_id(user_id, session_id)
+        research_state = ResearchState(
+            request_id=request_id,
+            user_id=user_id,
+            session_id=session_id,
+            user_query=user_query,
+        )
+
+        # Create HTTP client
+        async with httpx.AsyncClient() as http_client:
+            # Create dependencies
+            deps = ResearchDependencies(
+                http_client=http_client,
+                api_keys=api_keys or APIKeys(),
+                research_state=research_state,
+                metadata=ResearchMetadata(),
+                usage=Usage(),
+            )
+
+            try:
+                # Start research and execute three-phase clarification
+                research_state.start_research()
+                await emit_research_started(request_id, user_query)
+
+                # Execute integrated three-phase system
+                await self._execute_three_phase_clarification(research_state, deps, user_query)
+
+                # Mark planning as complete
+                research_state.current_stage = ResearchStage.BRIEF_GENERATION
+                research_state.advance_stage()
+
+                logfire.info(
+                    "Planning phase completed with three-phase clarification",
+                    request_id=request_id,
+                    brief_confidence=research_state.metadata.get("research_brief_confidence", 0.0),
+                )
+
+                return research_state
+
+            except Exception as e:
+                logfire.error(
+                    "Planning phase failed",
+                    request_id=request_id,
                     error=str(e),
                     exc_info=True,
                 )

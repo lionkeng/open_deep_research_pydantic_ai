@@ -5,17 +5,17 @@ import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 
-from open_deep_research_with_pydantic_ai.agents.base import ResearchDependencies
-from open_deep_research_with_pydantic_ai.agents.brief_generator import (
+from src.open_deep_research_with_pydantic_ai.agents.base import ResearchDependencies
+from src.open_deep_research_with_pydantic_ai.agents.brief_generator import (
     BriefGeneratorAgent,
     ResearchBrief as BriefGeneratorResearchBrief,
 )
-from open_deep_research_with_pydantic_ai.agents.clarification import (
+from src.open_deep_research_with_pydantic_ai.agents.clarification import (
     ClarificationAgent,
     ClarifyWithUser,
 )
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
-from open_deep_research_with_pydantic_ai.models.research import (
+from src.open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
+from src.open_deep_research_with_pydantic_ai.models.research import (
     ResearchStage,
     ResearchState,
 )
