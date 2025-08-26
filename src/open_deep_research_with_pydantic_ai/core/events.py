@@ -6,12 +6,15 @@ eliminating deadlock possibilities while maintaining proper coordination.
 """
 
 import asyncio
+import time
+import weakref
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, TypeVar
+from weakref import WeakMethod, WeakSet
 
 import logfire
 
@@ -238,16 +241,16 @@ EventHandler = Callable[[T], Any]
 
 
 class ResearchEventBus:
-    """Central event dispatcher for research workflow events.
+    """Memory-safe central event dispatcher for research workflow events.
 
     Provides a clean, lock-free way to coordinate multi-agent research
-    operations through immutable events. Handlers are called asynchronously,
-    preventing deadlocks and improving performance.
+    operations through immutable events. Uses weak references to prevent
+    memory leaks and automatic cleanup of dead handlers.
     """
 
     def __init__(self):
-        # Handlers are global (not user-scoped) for system-wide monitoring
-        self._handlers: dict[type[ResearchEvent], list[Callable[[Any], Any]]] = {}
+        # Use WeakSet for automatic cleanup of handlers
+        self._handlers: dict[type[ResearchEvent], WeakSet[Callable[[Any], Any]]] = {}
         # Event counts and history are scoped by user for isolation
         self._event_count_by_user: dict[str, int] = defaultdict(int)
         self._background_tasks: set[asyncio.Task] = set()
@@ -256,66 +259,115 @@ class ResearchEventBus:
         # Track active users for cleanup
         self._active_users: set[str] = set()
 
+        # Memory management
+        self._last_cleanup: float = time.time()
+        self._cleanup_interval: float = 300.0  # 5 minutes
+        self._max_history_per_request: int = 1000
+        self._max_total_events: int = 10000
+
         # Locks for thread-safe access to shared state
         self._handlers_lock = asyncio.Lock()  # Protects handler registration
         self._history_lock = asyncio.Lock()  # Protects event history and counts
         self._tasks_lock = asyncio.Lock()  # Protects background tasks set
 
     async def subscribe(self, event_type: type[T], handler: EventHandler[T]) -> None:
-        """Subscribe to events of a specific type.
+        """Subscribe to events of a specific type with automatic cleanup.
 
         Args:
             event_type: The type of event to subscribe to
-            handler: Callable that takes the event as parameter
+            handler: Callable that takes the event as parameter (can be bound method)
         """
         async with self._handlers_lock:
             if event_type not in self._handlers:
-                self._handlers[event_type] = []
+                self._handlers[event_type] = WeakSet()
 
-            self._handlers[event_type].append(handler)
+            # Handle bound methods with WeakMethod for automatic cleanup
+            if hasattr(handler, "__self__"):
+                weak_handler = WeakMethod(handler, self._cleanup_dead_handler)
+                # Store the weak method in a way that WeakSet can track it
+                self._handlers[event_type].add(weak_handler)
+                handler_ref = weak_handler
+            else:
+                # For functions, use regular weak reference
+                weak_handler = weakref.ref(handler, self._cleanup_dead_handler)
+                # WeakSet doesn't work with weakref.ref directly, so we add the handler directly
+                # and rely on WeakSet's internal weak referencing
+                self._handlers[event_type].add(handler)
+                handler_ref = weak_handler
 
             logfire.debug(
                 f"Handler subscribed to {event_type.__name__}",
                 handler_name=handler.__name__ if hasattr(handler, "__name__") else str(handler),
                 total_handlers=len(self._handlers[event_type]),
+                handler_type="bound_method" if hasattr(handler, "__self__") else "function",
             )
 
+    def _cleanup_dead_handler(self, weak_ref: weakref.ReferenceType) -> None:
+        """Callback for cleaning up dead weak references."""
+        # This is called automatically when handlers are garbage collected
+        logfire.debug("Cleaned up dead event handler reference")
+        # WeakSet automatically removes dead references, so no manual cleanup needed
+
     async def emit(self, event: ResearchEvent) -> None:
-        """Emit an event to all registered handlers.
+        """Emit an event to all registered handlers with automatic cleanup.
 
         Events are processed asynchronously without blocking the caller.
         Failed handlers are logged but don't affect other handlers.
+        Memory-safe with automatic cleanup of dead handlers.
 
         Args:
             event: The event to emit
         """
+        # Periodic cleanup check
+        self._maybe_cleanup()
+
         # Get user scope from context
         context = get_current_context()
         user_scope = context.get_scope_key()
         event_type = type(event)
 
-        # Get handlers snapshot to avoid holding lock during handler execution
+        # Get live handlers from WeakSet (dead ones are automatically removed)
         async with self._handlers_lock:
-            handlers = list(self._handlers.get(event_type, []))
+            weak_handlers = self._handlers.get(event_type, WeakSet())
+            # Extract live handlers
+            live_handlers = []
+            for handler in list(
+                weak_handlers
+            ):  # Convert to list to avoid modification during iteration
+                if isinstance(handler, WeakMethod):
+                    live_handler = handler()
+                    if live_handler is not None:
+                        live_handlers.append(live_handler)
+                else:
+                    # Regular function/callable
+                    live_handlers.append(handler)
 
-        # Update history and counts with lock
+        # Update history and counts with lock and memory bounds
         async with self._history_lock:
             # Update user-scoped event count
             self._event_count_by_user[user_scope] += 1
             event_count = self._event_count_by_user[user_scope]
 
-            # Store in user-scoped history
+            # Store in user-scoped history with bounds checking
             history_key = f"{user_scope}:{event.request_id}"
             if history_key not in self._event_history:
                 self._event_history[history_key] = []
+
+            # Enforce per-request history limit
+            if len(self._event_history[history_key]) >= self._max_history_per_request:
+                # Remove oldest events to stay under limit
+                self._event_history[history_key] = self._event_history[history_key][
+                    -self._max_history_per_request // 2 :
+                ]
+
             self._event_history[history_key].append(event)
 
             # Track user activity
             self._active_users.add(user_scope)
 
-        if not handlers:
+        if not live_handlers:
             logfire.debug(
-                f"No handlers for {event_type.__name__}",
+                f"No live handlers for {event_type.__name__}",
                 request_id=event.request_id,
                 event_count=event_count,
                 user_scope=user_scope,
@@ -325,22 +377,130 @@ class ResearchEventBus:
         logfire.debug(
             f"Emitting {event_type.__name__}",
             request_id=event.request_id,
-            handler_count=len(handlers),
+            handler_count=len(live_handlers),
             event_count=event_count,
         )
 
-        # Process handlers concurrently without blocking
-        for handler in handlers:
-            task = asyncio.create_task(self._safe_call_handler(handler, event))
-            async with self._tasks_lock:
+        # Process handlers concurrently with semaphore to limit concurrency
+        semaphore = asyncio.Semaphore(10)  # Limit concurrent handler calls
+
+        async def call_handler_with_limit(handler):
+            async with semaphore:
+                await self._safe_call_handler(handler, event)
+
+        # Create tasks for all handlers
+        tasks = [asyncio.create_task(call_handler_with_limit(handler)) for handler in live_handlers]
+
+        # Track tasks for cleanup
+        async with self._tasks_lock:
+            for task in tasks:
                 self._background_tasks.add(task)
-            # Clean up task when it's done to prevent memory leaks
-            task.add_done_callback(lambda t: asyncio.create_task(self._remove_task(t)))
+                # Clean up task when it's done to prevent memory leaks
+                task.add_done_callback(lambda t: asyncio.create_task(self._remove_task(t)))
 
     async def _remove_task(self, task: asyncio.Task) -> None:
         """Remove a task from the background tasks set safely."""
         async with self._tasks_lock:
             self._background_tasks.discard(task)
+
+    def _maybe_cleanup(self) -> None:
+        """Perform periodic cleanup of memory bounds and stale data.
+
+        This method is called on each emit to keep memory usage under control
+        without requiring explicit cleanup calls.
+        """
+        current_time = time.time()
+
+        # Check if it's time for cleanup
+        if current_time - self._last_cleanup < self._cleanup_interval:
+            return
+
+        self._last_cleanup = current_time
+
+        # Perform cleanup asynchronously to avoid blocking emit
+        asyncio.create_task(self._perform_cleanup())
+
+    async def _perform_cleanup(self) -> None:
+        """Perform the actual cleanup operations."""
+        try:
+            # Clean up event history if total events exceed bounds
+            async with self._history_lock:
+                total_events = sum(len(events) for events in self._event_history.values())
+
+                if total_events > self._max_total_events:
+                    logfire.debug(f"Performing event history cleanup: {total_events} total events")
+
+                    # Remove oldest events from each request until under limit
+                    target_events = self._max_total_events // 2  # Clean to half capacity
+                    events_to_remove = total_events - target_events
+
+                    # Sort by oldest events first
+                    all_events = []
+                    for history_key, events in self._event_history.items():
+                        for i, event in enumerate(events):
+                            all_events.append((event.timestamp, history_key, i))
+
+                    all_events.sort(key=lambda x: x[0])  # Sort by timestamp
+
+                    # Remove oldest events
+                    events_removed = 0
+                    removal_tracker = {}  # Track how many to remove from each key
+
+                    for _, history_key, event_index in all_events[:events_to_remove]:
+                        if history_key not in removal_tracker:
+                            removal_tracker[history_key] = []
+                        removal_tracker[history_key].append(event_index)
+                        events_removed += 1
+
+                        if events_removed >= events_to_remove:
+                            break
+
+                    # Apply removals (remove from end to preserve indices)
+                    for history_key, indices_to_remove in removal_tracker.items():
+                        indices_to_remove.sort(reverse=True)  # Remove from end first
+                        events_list = self._event_history[history_key]
+                        for index in indices_to_remove:
+                            if index < len(events_list):
+                                events_list.pop(index)
+
+                    # Clean up empty histories
+                    empty_keys = [k for k, v in self._event_history.items() if not v]
+                    for key in empty_keys:
+                        del self._event_history[key]
+
+                    logfire.info(f"Event cleanup completed: removed {events_removed} old events")
+
+                # Clean up inactive users (no events in last hour)
+                cutoff_time = current_time - 3600  # 1 hour ago
+                inactive_users = set()
+
+                for user_scope in list(self._active_users):
+                    # Check if user has recent events
+                    user_keys = [
+                        k for k in self._event_history.keys() if k.startswith(f"{user_scope}:")
+                    ]
+                    has_recent_activity = False
+
+                    for key in user_keys:
+                        events = self._event_history[key]
+                        if events and events[-1].timestamp.timestamp() > cutoff_time:
+                            has_recent_activity = True
+                            break
+
+                    if not has_recent_activity:
+                        inactive_users.add(user_scope)
+
+                # Clean up inactive users
+                for user_scope in inactive_users:
+                    self._active_users.discard(user_scope)
+                    if user_scope in self._event_count_by_user:
+                        del self._event_count_by_user[user_scope]
+
+                if inactive_users:
+                    logfire.info(f"Cleaned up {len(inactive_users)} inactive users")
+
+        except Exception as e:
+            logfire.error(f"Error during event bus cleanup: {e}", exc_info=True)
 
     async def _safe_call_handler(self, handler: Callable[[Any], Any], event: ResearchEvent) -> None:
         """Safely call a handler, catching and logging any exceptions."""

@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 if TYPE_CHECKING:
     pass  # For future type checking imports
@@ -28,6 +28,175 @@ class ResearchPriority(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+# Pydantic-AI Agent Output Models
+# These models define the structured outputs for each phase following Pydantic-AI best practices
+
+
+class ClarificationResult(BaseModel):
+    """Structured output for the Clarification Agent following Pydantic-AI patterns."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+
+    needs_clarification: bool = Field(description="Whether the query requires clarification")
+    question: str = Field("", description="Clarifying question if needed")
+    verification: str = Field("", description="Verification when no clarification needed")
+    confidence_score: Annotated[
+        float, Field(ge=0.0, le=1.0, description="Confidence in assessment")
+    ]
+    missing_dimensions: list[str] = Field(
+        default_factory=list, description="Specific dimensions missing from query"
+    )
+    breadth_score: Annotated[
+        float,
+        Field(ge=0.0, le=1.0, description="Score indicating query breadth (higher = more broad)"),
+    ]
+    assessment_reasoning: str = Field(
+        default="", description="Explanation of why clarification is or isn't needed"
+    )
+    suggested_clarifications: list[str] = Field(
+        default_factory=list, description="Specific areas that would benefit from clarification"
+    )
+
+    @field_validator("question", "verification")
+    @classmethod
+    def validate_conditional_fields(cls, v: str, info) -> str:
+        """Validate conditional field population based on needs_clarification."""
+        if info.data and "needs_clarification" in info.data:
+            needs_clarification = info.data["needs_clarification"]
+            field_name = info.field_name
+
+            if needs_clarification:
+                if field_name == "question" and not v.strip():
+                    raise ValueError("Question required when clarification needed")
+                if field_name == "verification" and v.strip():
+                    raise ValueError("Verification must be empty when clarification needed")
+            else:
+                if field_name == "verification" and not v.strip():
+                    raise ValueError("Verification required when no clarification needed")
+                if field_name == "question" and v.strip():
+                    raise ValueError("Question must be empty when no clarification needed")
+        return v
+
+    @model_validator(mode="after")
+    def validate_consistency(self) -> "ClarificationResult":
+        """Ensure internal consistency of clarification result."""
+        if self.needs_clarification and self.confidence_score > 0.8:
+            raise ValueError("High confidence inconsistent with need for clarification")
+        if not self.needs_clarification and self.confidence_score < 0.3:
+            raise ValueError("Low confidence inconsistent with no clarification needed")
+        return self
+
+
+class TransformedQueryResult(BaseModel):
+    """Enhanced structured output for Query Transformation Agent."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+
+    original_query: str = Field(description="Original user query")
+    transformed_query: Annotated[
+        str, Field(min_length=10, description="Transformed research question")
+    ]
+    transformation_rationale: Annotated[
+        str, Field(min_length=20, description="Detailed explanation of transformation")
+    ]
+    specificity_score: Annotated[
+        float, Field(ge=0.0, le=1.0, description="Score indicating query specificity improvement")
+    ]
+    supporting_questions: list[str] = Field(
+        default_factory=list, description="Additional supporting research questions"
+    )
+    clarification_responses: dict[str, str] = Field(
+        default_factory=dict, description="Responses that informed the transformation"
+    )
+    domain_indicators: list[str] = Field(
+        default_factory=list, description="Domain or subject area indicators identified"
+    )
+    complexity_assessment: Literal["low", "medium", "high"] = Field(
+        default="medium", description="Assessed complexity of research required"
+    )
+    estimated_scope: Literal["narrow", "moderate", "broad"] = Field(
+        default="moderate", description="Estimated scope of research needed"
+    )
+
+    @model_validator(mode="after")
+    def validate_transformation_quality(self) -> "TransformedQueryResult":
+        """Ensure transformation adds value and maintains quality."""
+        if self.original_query.strip().lower() == self.transformed_query.strip().lower():
+            raise ValueError("Transformed query must meaningfully differ from original")
+
+        if self.specificity_score < 0.1:
+            raise ValueError("Transformation must provide some improvement in specificity")
+
+        # Check for minimum length improvement for very short queries
+        if len(self.original_query.split()) < 5 and len(self.transformed_query.split()) < 8:
+            raise ValueError("Short queries should be expanded significantly during transformation")
+
+        return self
+
+
+class BriefGenerationResult(BaseModel):
+    """Structured output for Brief Generation Agent."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
+
+    brief_text: Annotated[str, Field(min_length=100, description="Generated research brief")]
+    confidence_score: Annotated[
+        float, Field(ge=0.0, le=1.0, description="Confidence in brief quality")
+    ]
+    key_research_areas: Annotated[
+        list[str], Field(min_length=1, description="Primary research areas identified")
+    ]
+    research_objectives: list[str] = Field(
+        default_factory=list, description="Specific research objectives"
+    )
+    methodology_suggestions: list[str] = Field(
+        default_factory=list, description="Suggested research methodologies"
+    )
+    estimated_complexity: Literal["low", "medium", "high"] = Field(
+        default="medium", description="Estimated research complexity"
+    )
+    estimated_duration: str = Field(default="", description="Estimated time to complete research")
+    suggested_sources: list[str] = Field(
+        default_factory=list, description="Suggested source types or specific sources"
+    )
+    potential_challenges: list[str] = Field(
+        default_factory=list, description="Anticipated research challenges"
+    )
+    success_criteria: list[str] = Field(
+        default_factory=list, description="Criteria for successful research completion"
+    )
+
+    @field_validator("brief_text")
+    @classmethod
+    def validate_brief_completeness(cls, v: str) -> str:
+        """Ensure brief contains essential elements."""
+        v = v.strip()
+
+        # Check for minimum content indicators
+        required_indicators = ["research", "objective", "scope"]
+        content_lower = v.lower()
+
+        missing_indicators = [
+            indicator for indicator in required_indicators if indicator not in content_lower
+        ]
+
+        if missing_indicators:
+            raise ValueError(f"Brief missing key elements: {', '.join(missing_indicators)}")
+
+        return v
+
+    @model_validator(mode="after")
+    def validate_brief_consistency(self) -> "BriefGenerationResult":
+        """Ensure consistency across brief elements."""
+        if not self.key_research_areas:
+            raise ValueError("At least one key research area must be identified")
+
+        if self.confidence_score > 0.9 and self.estimated_complexity == "high":
+            raise ValueError("High confidence inconsistent with high complexity assessment")
+
+        return self
 
 
 class ResearchBrief(BaseModel):
