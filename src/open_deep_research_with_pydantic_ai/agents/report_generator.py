@@ -27,11 +27,10 @@ from open_deep_research_with_pydantic_ai.models.research import (
 class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchReport]):
     """Agent responsible for generating final research reports."""
 
-    def __init__(self, model: str = "openai:gpt-4o"):
+    def __init__(self):
         """Initialize the report generator agent."""
         super().__init__(
             name="report_generator_agent",
-            model=model,
             output_type=ResearchReport,
         )
 

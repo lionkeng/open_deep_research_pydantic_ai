@@ -1,6 +1,8 @@
-"""Research Brief Generator Agent for creating structured research plans."""
+"""Research Brief Generator Agent - transforms conversation into research brief."""
 
-from pydantic_ai import RunContext
+from datetime import datetime
+
+from pydantic import BaseModel, Field
 
 from open_deep_research_with_pydantic_ai.agents.base import (
     BaseResearchAgent,
@@ -10,233 +12,169 @@ from open_deep_research_with_pydantic_ai.agents.base import (
 from open_deep_research_with_pydantic_ai.core.events import (
     emit_stage_completed,
 )
-from open_deep_research_with_pydantic_ai.models.research import ResearchBrief, ResearchStage
+from open_deep_research_with_pydantic_ai.models.research import ResearchStage
+
+
+class ResearchBrief(BaseModel):
+    """Research brief with confidence scoring - matches our implementation plan."""
+
+    brief: str = Field(description="Detailed research brief from conversation")
+    confidence_score: float = Field(
+        description="Confidence in brief completeness (0.0-1.0)", ge=0.0, le=1.0
+    )
+    missing_aspects: list[str] = Field(
+        default_factory=list, description="What aspects are still unclear or missing"
+    )
 
 
 class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]):
-    """Agent responsible for generating structured research briefs."""
+    """Agent responsible for transforming conversation into research brief.
 
-    def __init__(self, model: str = "openai:gpt-4o"):
+    This agent follows Langgraph's approach:
+    - Takes full conversation history
+    - Transforms messages into detailed research question
+    - Provides confidence scoring for completeness
+    - Identifies missing aspects that may need clarification
+    """
+
+    def __init__(self):
         """Initialize the brief generator agent."""
         super().__init__(
             name="brief_generator_agent",
-            model=model,
             output_type=ResearchBrief,
         )
 
     def _get_default_system_prompt(self) -> str:
-        """Get the default system prompt for brief generation."""
-        return """You are a research planning specialist. Your role is to create comprehensive,
-structured research briefs that guide the research process effectively.
+        """Get system prompt from Langgraph's transform_messages_into_research_topic_prompt."""
+        return """You will be given a set of messages that have been exchanged between a user
+and an assistant.
+Your job is to translate these messages into a more detailed and concrete research question
+that will be used to guide the research.
 
-When creating a research brief:
+Today's date is {date}.
 
-1. **Topic Definition**: Clearly state the main research topic in specific terms
-2. **Objectives**: List 3-5 specific, measurable research objectives
-3. **Key Questions**: Formulate 5-8 key questions that the research should answer
-4. **Scope**: Define clear boundaries - what will and won't be covered
-5. **Priority Areas**: Identify the most important aspects to focus on
-6. **Constraints**: Note any limitations (time, resources, access to information)
-7. **Deliverables**: Specify expected outputs and their format
+You will return a research brief with a confidence score indicating how complete the information is.
 
 Guidelines:
-- Be specific and actionable in all sections
-- Ensure objectives are achievable within a reasonable timeframe
-- Questions should be answerable through available research methods
-- Prioritize depth over breadth when scope is broad
-- Consider multiple perspectives and potential biases
-- Include both qualitative and quantitative aspects where relevant
+1. **Maximize Specificity and Detail**
+   - Include all known user preferences and explicitly list key attributes or dimensions
+     to consider.
+   - All details from the user must be included in the research brief.
 
-Structure the brief to be:
-- Comprehensive yet focused
-- Logical and well-organized
-- Clear and unambiguous
-- Actionable for research execution"""
+2. **Fill in Unstated But Necessary Dimensions as Open-Ended**
+   - If certain attributes are essential for meaningful output but the user hasn't provided them,
+     explicitly state that they are open-ended or default to no specific constraint.
+
+3. **Avoid Unwarranted Assumptions**
+   - If the user hasn't provided a particular detail, don't invent one.
+   - Instead, state the lack of specification and guide the researcher to treat it as flexible.
+
+4. **Use the First Person**
+   - Phrase the request from the perspective of the user.
+
+5. **Sources**
+   - If specific sources should be prioritized, specify them in the research question.
+   - For product/travel research, prefer official sites over aggregators.
+   - For academic queries, prefer original papers over summaries.
+   - If query is in a specific language, prioritize sources in that language.
+
+6. **Confidence Scoring**
+   - Score 0.8-1.0: Very clear, specific request with all necessary context
+   - Score 0.6-0.7: Generally clear but missing some important details
+   - Score 0.3-0.5: Ambiguous or missing significant context
+   - Score 0.0-0.2: Very unclear, needs substantial clarification
+
+7. **Missing Aspects**
+   - Identify specific information gaps that would improve the research
+   - Consider: timeframe, location, scope, specific criteria, target audience, etc."""
 
     def _register_tools(self) -> None:
-        """Register brief generation-specific tools."""
+        """Register brief generation-specific tools.
 
-        @self.agent.tool
-        async def decompose_topic(  # pyright: ignore[reportUnusedFunction]
-            _ctx: RunContext[ResearchDependencies], topic: str
-        ) -> dict[str, list[str]]:
-            """Decompose a topic into subtopics and aspects.
+        For this agent, we don't need complex tools - the LLM will analyze
+        the full conversation history to generate a research brief.
+        """
+        # No tools needed for conversation-to-brief transformation
+        pass
 
-            Args:
-                ctx: Run context with dependencies
-                topic: Main topic to decompose
-
-            Returns:
-                Dictionary with subtopics and aspects
-            """
-            # Generate subtopics based on common research dimensions
-            subtopics: list[str] = []
-            aspects: list[str] = []
-
-            # Common research dimensions
-            dimensions = [
-                "historical context",
-                "current state",
-                "future trends",
-                "key stakeholders",
-                "challenges and opportunities",
-                "best practices",
-                "case studies",
-                "comparative analysis",
-                "impact assessment",
-                "technical details",
-            ]
-
-            # Generate relevant subtopics
-            for dimension in dimensions[:5]:  # Limit to top 5 most relevant
-                subtopics.append(f"{topic} - {dimension}")
-
-            # Generate research aspects
-            aspect_categories = [
-                "Economic implications",
-                "Social impact",
-                "Technical considerations",
-                "Policy and regulation",
-                "Environmental factors",
-            ]
-
-            for category in aspect_categories[:3]:  # Top 3 aspects
-                aspects.append(f"{category} of {topic}")
-
-            return {
-                "subtopics": subtopics,
-                "aspects": aspects,
-            }
-
-        @self.agent.tool
-        async def generate_research_questions(  # pyright: ignore[reportUnusedFunction]
-            _ctx: RunContext[ResearchDependencies], topic: str, objectives: list[str]
-        ) -> list[str]:
-            """Generate research questions based on topic and objectives.
-
-            Args:
-                ctx: Run context with dependencies
-                topic: Research topic
-                objectives: Research objectives
-
-            Returns:
-                List of research questions
-            """
-            questions: list[str] = []
-
-            # Question templates for different types of research
-            templates = [
-                "What are the main factors influencing {topic}?",
-                "How has {topic} evolved over time?",
-                "What are the current best practices in {topic}?",
-                "What challenges and opportunities exist in {topic}?",
-                "How does {topic} compare across different contexts?",
-                "What is the impact of {topic} on stakeholders?",
-                "What future developments are expected in {topic}?",
-                "What are the key success factors for {topic}?",
-            ]
-
-            # Generate questions from templates
-            for template in templates[:5]:
-                questions.append(template.format(topic=topic))
-
-            # Add objective-specific questions
-            for obj in objectives[:3]:
-                questions.append(f"How can we achieve: {obj}?")
-
-            return questions
-
-        @self.agent.tool
-        async def identify_priority_areas(  # pyright: ignore[reportUnusedFunction]
-            _ctx: RunContext[ResearchDependencies], topic: str, complexity: str
-        ) -> list[str]:
-            """Identify priority areas for research focus.
-
-            Args:
-                ctx: Run context with dependencies
-                topic: Research topic
-                complexity: Complexity level (simple, medium, complex)
-
-            Returns:
-                List of priority areas
-            """
-            priority_areas: list[str] = []
-
-            if complexity == "complex":
-                # For complex topics, focus on foundational understanding first
-                priority_areas.extend(
-                    [
-                        f"Fundamental concepts and definitions in {topic}",
-                        f"Key theoretical frameworks for understanding {topic}",
-                        f"Major debates and controversies in {topic}",
-                        f"Interdisciplinary connections of {topic}",
-                        f"Methodological approaches to studying {topic}",
-                    ]
-                )
-            elif complexity == "medium":
-                # For medium complexity, balance theory and practice
-                priority_areas.extend(
-                    [
-                        f"Core principles of {topic}",
-                        f"Practical applications of {topic}",
-                        f"Recent developments in {topic}",
-                        f"Common challenges in {topic}",
-                    ]
-                )
-            else:
-                # For simple topics, focus on practical information
-                priority_areas.extend(
-                    [
-                        f"Basic overview of {topic}",
-                        f"Key facts and figures about {topic}",
-                        f"Common use cases for {topic}",
-                    ]
-                )
-
-            return priority_areas[:4]  # Return top 4 priorities
-
-    async def generate_brief(
+    async def generate_from_conversation(
         self,
-        clarified_query: str,
-        complexity: str,
         deps: ResearchDependencies,
     ) -> ResearchBrief:
-        """Generate a structured research brief.
+        """Generate research brief from conversation history.
 
         Args:
-            clarified_query: Clarified research query
-            complexity: Complexity assessment
-            deps: Research dependencies
+            deps: Research dependencies with conversation history in state
 
         Returns:
-            Structured research brief
+            Research brief with confidence score
         """
-        prompt = f"""Create a comprehensive research brief for the following query:
+        # Get conversation history from research state metadata
+        metadata = deps.research_state.metadata or {}
+        conversation_history = metadata.get("conversation_messages", [])
 
-Query: {clarified_query}
-Complexity Level: {complexity}
+        # Include the original query if no conversation history
+        if not conversation_history and deps.research_state.user_query:
+            conversation_history = [deps.research_state.user_query]
 
-Generate a structured research brief that includes:
-1. Clear topic definition
-2. Specific, measurable objectives (3-5)
-3. Key research questions (5-8)
-4. Well-defined scope and boundaries
-5. Priority areas for focus
-6. Any constraints or limitations
-7. Expected deliverables
+        # Build messages context
+        if conversation_history:
+            messages_context = "\n".join(
+                [
+                    f"{'User' if i % 2 == 0 else 'Assistant'}: {msg}"
+                    for i, msg in enumerate(conversation_history)
+                ]
+            )
+        else:
+            messages_context = f"User: {deps.research_state.user_query or 'No query provided'}"
 
-Ensure the brief is actionable and provides clear guidance for research execution."""
+        # Format the prompt with conversation and date
+        prompt = f"""The messages that have been exchanged between yourself and the user are:
+<Messages>
+{messages_context}
+</Messages>
 
-        result = await self.run(prompt, deps, stream=True)
+Transform these messages into a detailed research brief that will guide the research process.
 
-        # Update research state
-        deps.research_state.research_brief = result
+Your response should include:
+- A comprehensive research brief written from the user's perspective
+- A confidence score (0.0-1.0) indicating how complete the information is
+- A list of missing aspects that would improve the research if clarified
+
+Remember to:
+- Include all user-provided details in the brief
+- Be specific about requirements and constraints
+- Identify information gaps that might need clarification
+- Write the brief from the user's perspective ("I want to research...")"""
+
+        # Format the prompt with current date
+        formatted_prompt = prompt.replace("{date}", datetime.now().strftime("%Y-%m-%d"))
+
+        # Run the agent
+        result = await self.run(formatted_prompt, deps, stream=False)
+
+        # Update research state metadata with brief and confidence
+        # Note: We store the brief as a string in a separate field since
+        # ResearchState.research_brief
+        # expects a different ResearchBrief model structure
+        if deps.research_state.metadata:
+            deps.research_state.metadata.update(
+                {
+                    "research_brief_confidence": result.confidence_score,
+                    "research_brief_text": result.brief,
+                }
+            )
+        else:
+            deps.research_state.metadata = {
+                "research_brief_confidence": result.confidence_score,
+                "research_brief_text": result.brief,
+            }
 
         # Emit stage completed event
         await emit_stage_completed(
             request_id=deps.research_state.request_id,
             stage=ResearchStage.BRIEF_GENERATION,
-            success=True,
+            success=result.confidence_score >= 0.3,  # Success if confidence > 0.3
             result=result,
         )
 

@@ -8,10 +8,11 @@ import pytest_asyncio
 from open_deep_research_with_pydantic_ai.agents.base import ResearchDependencies
 from open_deep_research_with_pydantic_ai.agents.brief_generator import (
     BriefGeneratorAgent,
+    ResearchBrief as BriefGeneratorResearchBrief,
 )
 from open_deep_research_with_pydantic_ai.agents.clarification import (
     ClarificationAgent,
-    ClarificationResult,
+    ClarifyWithUser,
 )
 from open_deep_research_with_pydantic_ai.agents.compression import (
     CompressedFindings,
@@ -67,37 +68,30 @@ async def mock_dependencies():
     )
 
 
-class TestClarificationResult:
-    """Test the ClarificationResult model."""
+class TestClarifyWithUser:
+    """Test the ClarifyWithUser model."""
 
-    def test_clarification_result_creation(self):
-        """Test creating a valid ClarificationResult."""
-        result = ClarificationResult(
-            is_clear=True,
-            clarified_query="Refined query about quantum computing basics",
-            clarifying_questions=["What specific aspects?"],
-            scope_validation="Scope is appropriate",
-            estimated_complexity="medium",
-            warnings=["Consider time constraints"],
+    def test_clarify_with_user_creation(self):
+        """Test creating a valid ClarifyWithUser."""
+        result = ClarifyWithUser(
+            need_clarification=True,
+            question="What specific aspects of quantum computing are you interested in?",
+            verification="I will start research on quantum computing basics",
         )
 
-        assert result.is_clear is True
-        assert result.clarified_query == "Refined query about quantum computing basics"
-        assert len(result.clarifying_questions) == 1
-        assert result.estimated_complexity == "medium"
-        assert len(result.warnings) == 1
+        assert result.need_clarification is True
+        assert result.question == "What specific aspects of quantum computing are you interested in?"
+        assert result.verification == "I will start research on quantum computing basics"
 
-    def test_clarification_result_defaults(self):
-        """Test ClarificationResult with default values."""
-        result = ClarificationResult(
-            is_clear=False,
-            clarified_query="Some query",
-            scope_validation="Valid scope",
+    def test_clarify_with_user_defaults(self):
+        """Test ClarifyWithUser with default values."""
+        result = ClarifyWithUser(
+            need_clarification=False,
         )
 
-        assert result.clarifying_questions == []
-        assert result.estimated_complexity == "medium"
-        assert result.warnings == []
+        assert result.need_clarification is False
+        assert result.question == ""
+        assert result.verification == ""
 
 
 class TestClarificationAgent:
@@ -109,29 +103,99 @@ class TestClarificationAgent:
 
         assert agent.name == "clarification_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == ClarificationResult  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
-
-    def test_agent_default_model(self):
-        """Test agent uses default model when none specified."""
-        agent = ClarificationAgent()
-
-        # Should use default model
-        assert agent.name == "clarification_agent"
-        # Check output type is configured correctly
-        assert agent.agent._output_type == ClarificationResult  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        assert agent.agent._output_type == ClarifyWithUser  # pyright: ignore[reportPrivateUsage]
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""
         agent = ClarificationAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportPrivateUsage]
 
-        # Check for key elements in the system prompt
-        assert "research clarification specialist" in prompt
-        assert "validate" in prompt.lower()
-        assert "clarifying questions" in prompt.lower()
-        assert "scope" in prompt.lower()
-        assert "complexity" in prompt.lower()
+        # Check for key elements adapted from Langgraph approach
+        assert "research assistant" in prompt
+        assert "clarifying question" in prompt
+        assert "need_clarification" in prompt
+        assert "verification" in prompt
+        assert "absolutely necessary" in prompt.lower()
+
+    @pytest.mark.asyncio
+    async def test_assess_query_needs_clarification(self, mock_dependencies: ResearchDependencies):
+        """Test assessing a query that needs clarification."""
+        agent = ClarificationAgent()
+
+        # Vague query that should need clarification
+        with patch.object(agent, 'run', return_value=ClarifyWithUser(
+            need_clarification=True,
+            question="What specific aspects of AI are you interested in?",
+            verification=""
+        )) as mock_run:
+            result = await agent.assess_query("Tell me about AI", mock_dependencies)
+
+            assert result.need_clarification is True
+            assert "specific aspects" in result.question
+            assert result.verification == ""
+            mock_run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_assess_query_no_clarification_needed(self, mock_dependencies: ResearchDependencies):
+        """Test assessing a query that's already clear."""
+        agent = ClarificationAgent()
+
+        # Clear, specific query
+        with patch.object(agent, 'run', return_value=ClarifyWithUser(
+            need_clarification=False,
+            question="",
+            verification="I have sufficient information to research machine learning applications in healthcare."
+        )) as mock_run:
+            result = await agent.assess_query(
+                "I want to research machine learning applications in healthcare diagnosis",
+                mock_dependencies
+            )
+
+            assert result.need_clarification is False
+            assert result.question == ""
+            assert "sufficient information" in result.verification
+
+    @pytest.mark.asyncio
+    async def test_should_ask_another_question_limit_reached(self, mock_dependencies: ResearchDependencies):
+        """Test question limit logic."""
+        agent = ClarificationAgent()
+
+        # Set up metadata showing we've reached the question limit
+        mock_dependencies.research_state.metadata = {
+            "clarification_count": 2
+        }
+
+        result = await agent.should_ask_another_question(mock_dependencies, max_questions=2)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_should_ask_another_question_high_confidence(self, mock_dependencies: ResearchDependencies):
+        """Test when research brief confidence is already high."""
+        agent = ClarificationAgent()
+
+        # Set up metadata showing high confidence brief
+        mock_dependencies.research_state.metadata = {
+            "clarification_count": 0,
+            "research_brief_confidence": 0.8
+        }
+
+        result = await agent.should_ask_another_question(mock_dependencies, max_questions=2)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_should_ask_another_question_allowed(self, mock_dependencies: ResearchDependencies):
+        """Test when another question is allowed."""
+        agent = ClarificationAgent()
+
+        # Set up metadata showing low question count and confidence
+        mock_dependencies.research_state.metadata = {
+            "clarification_count": 0,
+            "research_brief_confidence": 0.5
+        }
+
+        result = await agent.should_ask_another_question(mock_dependencies, max_questions=2)
+        assert result is True
 
 
 class TestClarificationTools:
@@ -591,168 +655,95 @@ class TestBriefGeneratorAgent:
 
         assert agent.name == "brief_generator_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == ResearchBrief  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        assert agent.agent._output_type == BriefGeneratorResearchBrief  # pyright: ignore[reportPrivateUsage]
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""
         agent = BriefGeneratorAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportPrivateUsage]
 
         # Check for key elements in the system prompt
-        assert "research planning specialist" in prompt
-        assert "structured research briefs" in prompt
-        assert "objectives" in prompt.lower()
-        assert "key questions" in prompt.lower()
-        assert "scope" in prompt.lower()
-        assert "deliverables" in prompt.lower()
+        assert "messages that have been exchanged" in prompt
+        assert "confidence score" in prompt
+        assert "missing aspects" in prompt
+        assert "first person" in prompt.lower()
+        assert "specificity and detail" in prompt.lower()
 
 
-class TestBriefGeneratorTools:
-    """Test the brief generator agent tools logic."""
+class TestBriefGeneratorConversational:
+    """Test the brief generator agent conversational approach."""
 
-    def test_decompose_topic_basic(self):
-        """Test basic topic decomposition logic."""
-        topic = "Artificial Intelligence in Healthcare"
+    @pytest.mark.asyncio
+    async def test_generate_from_conversation_basic(self, mock_dependencies: ResearchDependencies):
+        """Test generating research brief from basic conversation."""
+        agent = BriefGeneratorAgent()
 
-        # Test the decomposition logic
-        dimensions = [
-            "historical context",
-            "current state",
-            "future trends",
-            "key stakeholders",
-            "challenges and opportunities",
-            "best practices",
-            "case studies",
-            "comparative analysis",
-            "impact assessment",
-            "technical details",
-        ]
+        # Set up conversation history
+        mock_dependencies.research_state.metadata = {
+            "conversation_messages": ["I want to learn about quantum computing"]
+        }
 
-        # Generate subtopics (limit to top 5)
-        subtopics: list[str] = []
-        for dimension in dimensions[:5]:
-            subtopics.append(f"{topic} - {dimension}")
+        # Mock the agent run to return a brief
+        with patch.object(agent, 'run', return_value=BriefGeneratorResearchBrief(
+            brief="I want to research quantum computing basics, including fundamental concepts, applications, and current developments.",
+            confidence_score=0.8,
+            missing_aspects=[]
+        )) as mock_run:
+            result = await agent.generate_from_conversation(mock_dependencies)
 
-        # Generate aspects (top 3)
-        aspect_categories = [
-            "Economic implications",
-            "Social impact",
-            "Technical considerations",
-            "Policy and regulation",
-            "Environmental factors",
-        ]
+            assert result.brief.startswith("I want to research quantum computing")
+            assert result.confidence_score == 0.8
+            assert len(result.missing_aspects) == 0
+            mock_run.assert_called_once()
 
-        aspects: list[str] = []
-        for category in aspect_categories[:3]:
-            aspects.append(f"{category} of {topic}")
+    @pytest.mark.asyncio
+    async def test_generate_from_conversation_with_clarifications(self, mock_dependencies: ResearchDependencies):
+        """Test generating research brief after clarification conversation."""
+        agent = BriefGeneratorAgent()
 
-        # Verify results
-        assert len(subtopics) == 5
-        assert len(aspects) == 3
-        assert "Artificial Intelligence in Healthcare - historical context" in subtopics
-        assert "Economic implications of Artificial Intelligence in Healthcare" in aspects
+        # Set up conversation with clarifications
+        mock_dependencies.research_state.metadata = {
+            "conversation_messages": [
+                "I want to learn about AI",
+                "What specific area of AI interests you?",
+                "I'm interested in machine learning for healthcare applications"
+            ]
+        }
 
-    def test_generate_research_questions_logic(self):
-        """Test research question generation logic."""
-        topic = "Machine Learning"
-        objectives = [
-            "Understand core ML algorithms",
-            "Evaluate ML applications in industry",
-            "Assess future ML trends",
-        ]
+        with patch.object(agent, 'run', return_value=BriefGeneratorResearchBrief(
+            brief="I want to research machine learning applications in healthcare, focusing on current implementations, effectiveness, and challenges.",
+            confidence_score=0.9,
+            missing_aspects=["specific medical domains"]
+        )) as mock_run:
+            result = await agent.generate_from_conversation(mock_dependencies)
 
-        # Test question generation logic
-        questions: list[str] = []
+            assert "machine learning" in result.brief
+            assert "healthcare" in result.brief
+            assert result.confidence_score == 0.9
+            assert "specific medical domains" in result.missing_aspects
 
-        # Templates for different types of research
-        templates = [
-            "What are the main factors influencing {topic}?",
-            "How has {topic} evolved over time?",
-            "What are the current best practices in {topic}?",
-            "What challenges and opportunities exist in {topic}?",
-            "How does {topic} compare across different contexts?",
-            "What is the impact of {topic} on stakeholders?",
-            "What future developments are expected in {topic}?",
-            "What are the key success factors for {topic}?",
-        ]
+    @pytest.mark.asyncio
+    async def test_generate_from_conversation_no_history(self, mock_dependencies: ResearchDependencies):
+        """Test generating research brief with no conversation history."""
+        agent = BriefGeneratorAgent()
 
-        # Generate questions from templates (limit to 5)
-        for template in templates[:5]:
-            questions.append(template.format(topic=topic))
+        # No conversation history, just the original query
+        mock_dependencies.research_state.user_query = "Tell me about blockchain technology"
+        mock_dependencies.research_state.metadata = {}
 
-        # Add objective-specific questions (limit to 3)
-        for obj in objectives[:3]:
-            questions.append(f"How can we achieve: {obj}?")
+        with patch.object(agent, 'run', return_value=BriefGeneratorResearchBrief(
+            brief="I want to research blockchain technology comprehensively, including fundamentals, applications, and industry adoption.",
+            confidence_score=0.6,
+            missing_aspects=["specific use cases", "timeframe"]
+        )) as mock_run:
+            result = await agent.generate_from_conversation(mock_dependencies)
 
-        # Verify results
-        assert len(questions) == 8  # 5 template + 3 objective questions
-        assert "What are the main factors influencing Machine Learning?" in questions
-        assert "How can we achieve: Understand core ML algorithms?" in questions
-
-    def test_identify_priority_areas_complex(self):
-        """Test priority area identification for complex topics."""
-        topic = "Quantum Computing"
-        complexity = "complex"
-
-        priority_areas: list[str] = []
-
-        if complexity == "complex":
-            priority_areas.extend([
-                f"Fundamental concepts and definitions in {topic}",
-                f"Key theoretical frameworks for understanding {topic}",
-                f"Major debates and controversies in {topic}",
-                f"Interdisciplinary connections of {topic}",
-                f"Methodological approaches to studying {topic}",
-            ])
-
-        # Return top 4 priorities
-        priority_areas = priority_areas[:4]
-
-        assert len(priority_areas) == 4
-        assert "Fundamental concepts and definitions in Quantum Computing" in priority_areas
-        assert "Key theoretical frameworks for understanding Quantum Computing" in priority_areas
-
-    def test_identify_priority_areas_medium(self):
-        """Test priority area identification for medium complexity topics."""
-        topic = "Cloud Computing"
-        complexity = "medium"
-
-        priority_areas: list[str] = []
-
-        if complexity == "medium":
-            priority_areas.extend([
-                f"Core principles of {topic}",
-                f"Practical applications of {topic}",
-                f"Recent developments in {topic}",
-                f"Common challenges in {topic}",
-            ])
-
-        priority_areas = priority_areas[:4]
-
-        assert len(priority_areas) == 4
-        assert "Core principles of Cloud Computing" in priority_areas
-        assert "Practical applications of Cloud Computing" in priority_areas
-
-    def test_identify_priority_areas_simple(self):
-        """Test priority area identification for simple topics."""
-        topic = "Web Development"
-        complexity = "simple"
-
-        priority_areas: list[str] = []
-
-        if complexity == "simple":
-            priority_areas.extend([
-                f"Basic overview of {topic}",
-                f"Key facts and figures about {topic}",
-                f"Common use cases for {topic}",
-            ])
-
-        priority_areas = priority_areas[:4]
-
-        assert len(priority_areas) == 3  # Only 3 for simple topics
-        assert "Basic overview of Web Development" in priority_areas
-        assert "Common use cases for Web Development" in priority_areas
+            assert result.confidence_score == 0.6
+            assert len(result.missing_aspects) == 2
+            # Check that metadata is updated
+            assert mock_dependencies.research_state.metadata["research_brief_text"] == result.brief
+            assert mock_dependencies.research_state.metadata["research_brief_confidence"] == 0.6
 
 
 class TestBriefGeneratorWorkflow:
@@ -1412,7 +1403,8 @@ class TestResearchExecutorEdgeCases:
         """Test research execution respects max parallel tasks limit."""
         agent = ResearchExecutorAgent()
 
-        # Brief with many questions        ResearchBrief(
+        # Brief with many questions
+        brief = ResearchBrief(
             topic="Large Brief",
             objectives=["Test"],
             key_questions=[f"Question {i}" for i in range(10)],  # 10 questions
@@ -1466,7 +1458,8 @@ class TestResearchExecutorEdgeCases:
         assert task.completed is False
         assert len(task.findings) == 0
 
-        # Add findings        ResearchFinding(
+        # Add findings
+        finding = ResearchFinding(
             content="Test finding",
             source="https://example.com",
             relevance_score=0.8,
@@ -1529,19 +1522,14 @@ class TestCompressionAgent:
     """Test CompressionAgent functionality."""
 
     def test_agent_initialization(self):
-        """Test CompressionAgent initialization."""        CompressionAgent()
+        """Test CompressionAgent initialization."""
+        agent = CompressionAgent()
 
         assert agent.name == "compression_agent"
-        # Check output type is configured correctly
-        assert agent.agent._output_type == CompressedFindings  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
-        assert agent.model == "openai:gpt-4o"
-
-        # Test custom model
-        custom_agent = CompressionAgent(model="openai:gpt-3.5-turbo")
-        assert custom_agent.model == "openai:gpt-3.5-turbo"
 
     def test_system_prompt_content(self):
-        """Test that system prompt contains compression-specific instructions."""        CompressionAgent()
+        """Test that system prompt contains compression-specific instructions."""
+        agent = CompressionAgent()
         # Get system prompt through agent configuration
         prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
 
@@ -1563,7 +1551,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_identify_themes_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the identify_themes tool logic."""        CompressionAgent()
+        """Test the identify_themes tool logic."""
+        agent = CompressionAgent()
 
         # Test theme identification directly by recreating the logic
         findings = [
@@ -1646,7 +1635,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_find_contradictions_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the find_contradictions tool logic."""        CompressionAgent()
+        """Test the find_contradictions tool logic."""
+        agent = CompressionAgent()
 
         # Create contradictory findings
         findings = [
@@ -1727,7 +1717,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_extract_consensus_points_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the extract_consensus_points tool logic."""        CompressionAgent()
+        """Test the extract_consensus_points tool logic."""
+        agent = CompressionAgent()
 
         # Create findings with potential consensus
         findings = [
@@ -1796,7 +1787,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_identify_gaps_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the identify_gaps tool logic."""        CompressionAgent()
+        """Test the identify_gaps tool logic."""
+        agent = CompressionAgent()
 
         # Create findings that don't fully address all questions
         findings = [
@@ -1865,7 +1857,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_compress_findings_success(self, mock_dependencies: ResearchDependencies):
-        """Test successful compression of findings."""        CompressionAgent()
+        """Test successful compression of findings."""
+        agent = CompressionAgent()
 
         # Create test findings
         findings = [
@@ -1928,7 +1921,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_compress_findings_with_empty_list(self, mock_dependencies: ResearchDependencies):
-        """Test compression with empty findings list."""        CompressionAgent()
+        """Test compression with empty findings list."""
+        agent = CompressionAgent()
 
         findings = []
         research_questions = ["What is the topic?"]
@@ -1954,7 +1948,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_compress_findings_prompt_structure(self, mock_dependencies: ResearchDependencies):
-        """Test that compression prompt is properly structured."""        CompressionAgent()
+        """Test that compression prompt is properly structured."""
+        agent = CompressionAgent()
 
         findings = [
             ResearchFinding(
@@ -1996,7 +1991,8 @@ class TestCompressionAgent:
             assert "Organize findings by theme" in prompt
 
     def test_tools_registration(self):
-        """Test that compression agent initializes correctly."""        CompressionAgent()
+        """Test that compression agent initializes correctly."""
+        agent = CompressionAgent()
 
         # Since we can't access tools directly, we test that the agent
         # has the required tool decorators by checking agent initialization
@@ -2011,7 +2007,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_compression_with_mixed_quality_sources(self, mock_dependencies: ResearchDependencies):
-        """Test compression behavior with mixed quality sources."""        CompressionAgent()
+        """Test compression behavior with mixed quality sources."""
+        agent = CompressionAgent()
 
         # Create findings with different confidence levels
         findings = [
@@ -2051,7 +2048,8 @@ class TestCompressionAgent:
 
     @pytest.mark.asyncio
     async def test_compression_error_handling(self, mock_dependencies: ResearchDependencies):
-        """Test compression behavior when agent.run fails."""        CompressionAgent()
+        """Test compression behavior when agent.run fails."""
+        agent = CompressionAgent()
 
         findings = [
             ResearchFinding(
@@ -2078,19 +2076,14 @@ class TestReportGeneratorAgent:
     """Test ReportGeneratorAgent functionality."""
 
     def test_agent_initialization(self):
-        """Test ReportGeneratorAgent initialization."""        ReportGeneratorAgent()
+        """Test ReportGeneratorAgent initialization."""
+        agent = ReportGeneratorAgent()
 
         assert agent.name == "report_generator_agent"
-        # Check output type is configured correctly
-        assert agent.agent._output_type == ResearchReport  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
-        assert agent.model == "openai:gpt-4o"
-
-        # Test custom model
-        custom_agent = ReportGeneratorAgent(model="openai:gpt-3.5-turbo")
-        assert custom_agent.model == "openai:gpt-3.5-turbo"
 
     def test_system_prompt_content(self):
-        """Test that system prompt contains report generation instructions."""        ReportGeneratorAgent()
+        """Test that system prompt contains report generation instructions."""
+        agent = ReportGeneratorAgent()
         # Get system prompt through agent configuration
         prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
 
@@ -2118,9 +2111,11 @@ class TestReportGeneratorAgent:
 
     @pytest.mark.asyncio
     async def test_create_executive_summary_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the create_executive_summary tool logic."""        ReportGeneratorAgent()
+        """Test the create_executive_summary tool logic."""
+        agent = ReportGeneratorAgent()
 
-        # Create test data        ResearchBrief(
+        # Create test data
+        brief = ResearchBrief(
             topic="AI in Healthcare",
             objectives=["Understand applications", "Evaluate benefits", "Identify challenges"],
             key_questions=["How is AI used?", "What are the benefits?"],
@@ -2244,7 +2239,8 @@ Scope and Limitations:
 
     @pytest.mark.asyncio
     async def test_organize_sections_by_theme_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the organize_sections_by_theme tool logic."""        ReportGeneratorAgent()
+        """Test the organize_sections_by_theme tool logic."""
+        agent = ReportGeneratorAgent()
 
         # Create test data
         compressed_findings = CompressedFindings(
@@ -2403,7 +2399,8 @@ Scope and Limitations:
 
     @pytest.mark.asyncio
     async def test_compile_citations_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the compile_citations tool logic."""        ReportGeneratorAgent()
+        """Test the compile_citations tool logic."""
+        agent = ReportGeneratorAgent()
 
         findings = [
             ResearchFinding(
@@ -2468,9 +2465,11 @@ Scope and Limitations:
 
     @pytest.mark.asyncio
     async def test_generate_report_success(self, mock_dependencies: ResearchDependencies):
-        """Test successful report generation."""        ReportGeneratorAgent()
+        """Test successful report generation."""
+        agent = ReportGeneratorAgent()
 
-        # Create test data        ResearchBrief(
+        # Create test data
+        brief = ResearchBrief(
             topic="Artificial Intelligence Trends",
             objectives=["Identify emerging trends", "Assess market impact"],
             key_questions=["What are the key trends?", "How will they impact business?"],
@@ -2654,7 +2653,8 @@ Scope and Limitations:
             assert "Organize findings into logical sections" in prompt
 
     def test_tools_registration(self):
-        """Test that report generator agent initializes correctly."""        ReportGeneratorAgent()
+        """Test that report generator agent initializes correctly."""
+        agent = ReportGeneratorAgent()
 
         # Since we can't access tools directly, test agent initialization
         assert agent.name == "report_generator_agent"

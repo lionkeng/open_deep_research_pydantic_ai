@@ -10,7 +10,7 @@ import logfire
 from pydantic import BaseModel
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage
-from pydantic_ai.usage import Usage
+from pydantic_ai.usage import RunUsage
 
 from open_deep_research_with_pydantic_ai.core.config import config
 from open_deep_research_with_pydantic_ai.core.events import (
@@ -31,7 +31,7 @@ class ResearchDependencies:
     api_keys: APIKeys  # Changed from dict to typed model
     research_state: ResearchState
     metadata: ResearchMetadata | None = None  # Added typed metadata
-    usage: Usage | None = None
+    usage: RunUsage | None = None
     stream_callback: Any | None = None
 
     def __post_init__(self):
@@ -65,7 +65,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](ABC):
         self.name = name
 
         # Get model configuration
-        model_config = config.get_model_config(model)
+        model_config = config.get_model_config()
         self.model = model_config["model"]
         self._output_type = output_type
 
@@ -278,6 +278,8 @@ class MultiAgentCoordinator:
 
         research_state = ResearchState(
             request_id=str(uuid.uuid4()),
+            user_id="api-user",
+            session_id=None,
             user_query=user_query,
         )
 

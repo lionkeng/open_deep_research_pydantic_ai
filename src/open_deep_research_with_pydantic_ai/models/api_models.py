@@ -1,6 +1,6 @@
 """Pydantic models for API requests, responses, and configuration."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
@@ -29,15 +29,23 @@ class APIKeys(BaseModel):
         if isinstance(v, SecretStr):
             key_str = v.get_secret_value()
         else:
-            key_str = v
+            key_str = str(v).strip()
 
-        # Validate format based on field name
+        # Skip validation for empty strings
+        if not key_str:
+            return None
+
+        # Validate format based on field name (only for non-empty keys)
+        # Allow flexible formats for development and different providers
         field_name = info.field_name
-        if field_name == "openai" and not key_str.startswith(("sk-", "test-")):
+        if field_name == "openai" and not key_str.startswith(("sk-", "test-", "demo-")):
             raise ValueError("Invalid OpenAI API key format")
-        elif field_name == "anthropic" and not key_str.startswith(("anthropic-", "test-")):
+        elif field_name == "anthropic" and not key_str.startswith(
+            ("anthropic-", "sk-", "test-", "demo-")
+        ):
+            # Allow sk- prefix for compatibility with DeepSeek and other providers
             raise ValueError("Invalid Anthropic API key format")
-        elif field_name == "tavily" and not key_str.startswith(("tvly-", "test-")):
+        elif field_name == "tavily" and not key_str.startswith(("tvly-", "test-", "demo-")):
             raise ValueError("Invalid Tavily API key format")
 
         # Return as SecretStr
@@ -61,8 +69,12 @@ class APIKeys(BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, str]) -> "APIKeys":
         """Create from dictionary of plain strings."""
+        from pydantic import SecretStr
+
         return cls(
-            openai=data.get("openai"), anthropic=data.get("anthropic"), tavily=data.get("tavily")
+            openai=SecretStr(data["openai"]) if data.get("openai") else None,
+            anthropic=SecretStr(data["anthropic"]) if data.get("anthropic") else None,
+            tavily=SecretStr(data["tavily"]) if data.get("tavily") else None,
         )
 
 
@@ -90,7 +102,7 @@ class APIHealthResponse(BaseModel):
     status: Literal["healthy", "degraded", "unhealthy"] = Field(description="Service health status")
     version: str = Field(description="API version")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Health check timestamp"
+        default_factory=lambda: datetime.now(UTC), description="Health check timestamp"
     )
     checks: dict[str, bool] = Field(
         default_factory=dict, description="Individual component health checks"
@@ -147,4 +159,6 @@ class ErrorResponse(BaseModel):
     message: str = Field(description="Error message")
     details: dict[str, Any] | None = Field(default=None, description="Additional error details")
     request_id: str | None = Field(default=None, description="Request ID if available")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), description="Error timestamp"
+    )

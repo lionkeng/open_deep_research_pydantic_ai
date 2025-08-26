@@ -27,18 +27,16 @@ from open_deep_research_with_pydantic_ai.services.search import search_service
 class SpecializedResearchAgent(BaseResearchAgent[ResearchDependencies, list[ResearchFinding]]):
     """Specialized research agent for focused domain research."""
 
-    def __init__(self, name: str, specialization: str, model: str = "openai:gpt-4o"):
+    def __init__(self, name: str, specialization: str):
         """Initialize specialized research agent.
 
         Args:
             name: Agent name
             specialization: Area of specialization
-            model: LLM model to use
         """
         self.specialization = specialization
         super().__init__(
             name=f"specialized_{name}",
-            model=model,
             output_type=list[ResearchFinding],
         )
 
@@ -84,11 +82,10 @@ class ResearchTask(BaseModel):
 class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, list[ResearchFinding]]):
     """Agent responsible for executing research tasks and gathering information."""
 
-    def __init__(self, model: str = "openai:gpt-4o"):
+    def __init__(self):
         """Initialize the research executor agent."""
         super().__init__(
             name="research_executor_agent",
-            model=model,
             output_type=list[ResearchFinding],
         )
         self.sub_agents: dict[str, BaseResearchAgent] = {}

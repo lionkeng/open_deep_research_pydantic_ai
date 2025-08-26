@@ -41,11 +41,10 @@ class CompressedFindings(BaseModel):
 class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedFindings]):
     """Agent responsible for compressing and synthesizing research findings."""
 
-    def __init__(self, model: str = "openai:gpt-4o"):
+    def __init__(self):
         """Initialize the compression agent."""
         super().__init__(
             name="compression_agent",
-            model=model,
             output_type=CompressedFindings,
         )
 

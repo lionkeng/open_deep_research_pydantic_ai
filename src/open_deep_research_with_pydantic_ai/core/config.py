@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_ai.models import KnownModelName
 
 from open_deep_research_with_pydantic_ai.models.api_models import APIKeys
@@ -20,6 +20,17 @@ except ImportError:
     pass  # dotenv not installed
 
 
+def _env_secret(name: str) -> SecretStr | None:
+    """Get environment variable as SecretStr, returning None if empty or unset."""
+    v = os.getenv(name)
+    if v is None:
+        return None
+    v = v.strip()
+    if not v:
+        return None
+    return SecretStr(v)
+
+
 class APIConfig(BaseModel):
     """API configuration with validation."""
 
@@ -28,18 +39,45 @@ class APIConfig(BaseModel):
     # Use APIKeys model for secure key handling
     api_keys: APIKeys = Field(
         default_factory=lambda: APIKeys(
-            openai=os.getenv("OPENAI_API_KEY"),
-            anthropic=os.getenv("ANTHROPIC_API_KEY"),
-            tavily=os.getenv("TAVILY_API_KEY"),
+            openai=_env_secret("OPENAI_API_KEY"),
+            anthropic=_env_secret("ANTHROPIC_API_KEY"),
+            tavily=_env_secret("TAVILY_API_KEY"),
         ),
         description="API keys for various services",
     )
 
     default_model: KnownModelName = Field(
-        default="openai:gpt-4o", description="Default LLM model to use"
+        default="openai:gpt-5", description="Default LLM model to use"
     )
 
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum retries for LLM calls")
+
+    # Clarification settings (from implementation plan)
+    research_interactive: bool = Field(
+        default_factory=lambda: os.getenv("RESEARCH_INTERACTIVE", "true").lower() == "true",
+        description="Whether to enable interactive clarification in CLI and HTTP modes",
+    )
+
+    max_clarification_questions: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_CLARIFICATION_QUESTIONS", "2")),
+        ge=0,
+        le=5,
+        description="Maximum number of clarifying questions to ask (0-2 recommended)",
+    )
+
+    research_brief_confidence_threshold: float = Field(
+        default_factory=lambda: float(os.getenv("RESEARCH_BRIEF_CONFIDENCE_THRESHOLD", "0.7")),
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence score to proceed without clarification",
+    )
+
+    clarification_timeout_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("CLARIFICATION_TIMEOUT_SECONDS", "300")),
+        ge=30,
+        le=1800,
+        description="Timeout for interactive clarification in seconds",
+    )
 
     # Backward compatibility properties
     @property

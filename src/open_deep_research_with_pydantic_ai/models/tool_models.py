@@ -1,6 +1,6 @@
 """Pydantic models for agent tool return types."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, TypeVar
 
@@ -28,7 +28,9 @@ class ToolResult[T](BaseModel):
     error: str | None = Field(default=None, description="Error message if failed")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     execution_time: float = Field(default=0.0, description="Execution time in seconds")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Execution timestamp")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(UTC), description="Execution timestamp"
+    )
 
 
 class ValidationResult(BaseModel):

@@ -286,6 +286,101 @@ async def cancel_research(request_id: str):
     }
 
 
+class ClarificationResponse(BaseModel):
+    """Response model for clarification endpoint."""
+
+    request_id: str = Field(description="Research request identifier")
+    response: str = Field(description="User's clarification response")
+
+
+@app.get("/research/{request_id}/clarification")
+async def get_clarification_question(request_id: str):
+    """Get pending clarification question for a research request.
+
+    Args:
+        request_id: Research request ID
+
+    Returns:
+        Clarification question if pending, otherwise 404
+    """
+    async with _sessions_lock:
+        if request_id not in active_sessions:
+            raise HTTPException(status_code=404, detail="Research request not found")
+        state = active_sessions[request_id]
+
+    # Check if there's a pending clarification
+    if (
+        state.metadata
+        and state.metadata.get("awaiting_clarification")
+        and state.metadata.get("clarification_question")
+    ):
+        return {
+            "request_id": request_id,
+            "question": state.metadata["clarification_question"],
+            "original_query": state.user_query,
+            "awaiting_response": True,
+        }
+    else:
+        raise HTTPException(status_code=404, detail="No pending clarification question")
+
+
+@app.post("/research/{request_id}/clarification")
+async def respond_to_clarification(request_id: str, clarification_response: ClarificationResponse):
+    """Respond to a clarification question and resume research.
+
+    Args:
+        request_id: Research request ID
+        clarification_response: User's response to clarification
+
+    Returns:
+        Updated research state
+    """
+    async with _sessions_lock:
+        if request_id not in active_sessions:
+            raise HTTPException(status_code=404, detail="Research request not found")
+        state = active_sessions[request_id]
+
+    # Check if there's a pending clarification
+    if not (state.metadata and state.metadata.get("awaiting_clarification")):
+        raise HTTPException(status_code=400, detail="No pending clarification for this request")
+
+    # Update conversation with the clarification response
+    conversation = state.metadata.get("conversation_messages", [])
+    conversation.extend([state.metadata["clarification_question"], clarification_response.response])
+
+    # Update metadata to clear the pending clarification
+    state.metadata.update(
+        {
+            "awaiting_clarification": False,
+            "conversation_messages": conversation,
+            "clarification_question": None,
+        }
+    )
+
+    # Resume research workflow
+    try:
+        # Set up user context for this research
+        async with ResearchContextManager(
+            user_id=state.user_id, session_id=state.session_id, request_id=request_id
+        ):
+            # Resume the workflow
+            updated_state = await workflow.resume_research(state)
+
+            # Update session storage
+            active_sessions[request_id] = updated_state
+
+            return {
+                "request_id": request_id,
+                "status": "resumed",
+                "message": "Clarification received, research resumed",
+                "current_stage": updated_state.current_stage.value,
+            }
+    except Exception as e:
+        logfire.error("Failed to resume research after clarification", error=str(e))
+        state.set_error(f"Failed to resume research: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to resume research") from e
+
+
 if __name__ == "__main__":
     import uvicorn
 

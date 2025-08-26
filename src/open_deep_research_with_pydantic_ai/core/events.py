@@ -139,6 +139,100 @@ class ErrorEvent(ResearchEvent):
         return self._request_id
 
 
+# Clarification Events
+@dataclass(frozen=True)
+class ClarificationRequestedEvent(ResearchEvent):
+    """Emitted when interactive clarification is requested for a query."""
+
+    _request_id: str
+    original_query: str
+    ambiguity_reasons: list[str]
+    interaction_mode: str  # 'cli' or 'http'
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
+@dataclass(frozen=True)
+class ClarificationSessionCreatedEvent(ResearchEvent):
+    """Emitted when a clarification session is created."""
+
+    _request_id: str
+    session_id: str
+    num_questions: int
+    questions_preview: list[str]  # First few words of each question
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
+@dataclass(frozen=True)
+class ClarificationQuestionAnsweredEvent(ResearchEvent):
+    """Emitted when a user answers a clarification question."""
+
+    _request_id: str
+    session_id: str
+    question_id: str
+    question_text: str
+    selected_choice: str
+    free_text_response: str | None = None
+    completion_progress: float = 0.0  # 0.0 to 1.0
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
+@dataclass(frozen=True)
+class ClarificationCompletedEvent(ResearchEvent):
+    """Emitted when clarification session is completed successfully."""
+
+    _request_id: str
+    session_id: str
+    original_query: str
+    refined_query: str
+    confidence_score: float
+    num_responses: int
+    completion_ratio: float
+    enhancements_applied: list[str]
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
+@dataclass(frozen=True)
+class ClarificationCancelledEvent(ResearchEvent):
+    """Emitted when clarification session is cancelled by user."""
+
+    _request_id: str
+    session_id: str
+    reason: str  # 'user_cancelled', 'timeout', 'error'
+    partial_responses: int = 0  # Number of questions answered before cancellation
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
+@dataclass(frozen=True)
+class QueryRefinedEvent(ResearchEvent):
+    """Emitted when a query is successfully refined based on clarification."""
+
+    _request_id: str
+    original_query: str
+    refined_query: str
+    refinement_context: dict[str, str]  # Context extracted from responses
+    confidence_score: float
+    enhancement_summary: str
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
 T = TypeVar("T", bound=ResearchEvent)
 EventHandler = Callable[[T], Any]
 
@@ -460,5 +554,171 @@ async def emit_error(
             error_type=error_type,
             error_message=error_message,
             recoverable=recoverable,
+        )
+    )
+
+
+# Clarification convenience functions
+async def emit_clarification_requested(
+    request_id: str,
+    original_query: str,
+    ambiguity_reasons: list[str],
+    interaction_mode: str = "cli",
+) -> None:
+    """Emit a clarification requested event.
+
+    Args:
+        request_id: Unique request identifier
+        original_query: The original user query
+        ambiguity_reasons: List of reasons why clarification is needed
+        interaction_mode: Mode of interaction ('cli' or 'http')
+    """
+    await research_event_bus.emit(
+        ClarificationRequestedEvent(
+            _request_id=request_id,
+            original_query=original_query,
+            ambiguity_reasons=ambiguity_reasons,
+            interaction_mode=interaction_mode,
+        )
+    )
+
+
+async def emit_clarification_session_created(
+    request_id: str, session_id: str, num_questions: int, questions_preview: list[str]
+) -> None:
+    """Emit a clarification session created event.
+
+    Args:
+        request_id: Unique request identifier
+        session_id: Clarification session identifier
+        num_questions: Number of questions in the session
+        questions_preview: Preview of question texts (first few words)
+    """
+    await research_event_bus.emit(
+        ClarificationSessionCreatedEvent(
+            _request_id=request_id,
+            session_id=session_id,
+            num_questions=num_questions,
+            questions_preview=questions_preview,
+        )
+    )
+
+
+async def emit_clarification_question_answered(
+    request_id: str,
+    session_id: str,
+    question_id: str,
+    question_text: str,
+    selected_choice: str,
+    free_text_response: str | None = None,
+    completion_progress: float = 0.0,
+) -> None:
+    """Emit a clarification question answered event.
+
+    Args:
+        request_id: Unique request identifier
+        session_id: Clarification session identifier
+        question_id: Question identifier
+        question_text: Full question text
+        selected_choice: User's selected choice key
+        free_text_response: Optional free text response for 'other'
+        completion_progress: Progress ratio (0.0 to 1.0)
+    """
+    await research_event_bus.emit(
+        ClarificationQuestionAnsweredEvent(
+            _request_id=request_id,
+            session_id=session_id,
+            question_id=question_id,
+            question_text=question_text,
+            selected_choice=selected_choice,
+            free_text_response=free_text_response,
+            completion_progress=completion_progress,
+        )
+    )
+
+
+async def emit_clarification_completed(
+    request_id: str,
+    session_id: str,
+    original_query: str,
+    refined_query: str,
+    confidence_score: float,
+    num_responses: int,
+    completion_ratio: float,
+    enhancements_applied: list[str],
+) -> None:
+    """Emit a clarification completed event.
+
+    Args:
+        request_id: Unique request identifier
+        session_id: Clarification session identifier
+        original_query: Original user query
+        refined_query: Refined query after clarification
+        confidence_score: Confidence score of the refinement
+        num_responses: Number of responses received
+        completion_ratio: Completion ratio of required questions
+        enhancements_applied: List of enhancements applied to query
+    """
+    await research_event_bus.emit(
+        ClarificationCompletedEvent(
+            _request_id=request_id,
+            session_id=session_id,
+            original_query=original_query,
+            refined_query=refined_query,
+            confidence_score=confidence_score,
+            num_responses=num_responses,
+            completion_ratio=completion_ratio,
+            enhancements_applied=enhancements_applied,
+        )
+    )
+
+
+async def emit_clarification_cancelled(
+    request_id: str, session_id: str, reason: str = "user_cancelled", partial_responses: int = 0
+) -> None:
+    """Emit a clarification cancelled event.
+
+    Args:
+        request_id: Unique request identifier
+        session_id: Clarification session identifier
+        reason: Reason for cancellation
+        partial_responses: Number of questions answered before cancellation
+    """
+    await research_event_bus.emit(
+        ClarificationCancelledEvent(
+            _request_id=request_id,
+            session_id=session_id,
+            reason=reason,
+            partial_responses=partial_responses,
+        )
+    )
+
+
+async def emit_query_refined(
+    request_id: str,
+    original_query: str,
+    refined_query: str,
+    refinement_context: dict[str, str],
+    confidence_score: float,
+    enhancement_summary: str,
+) -> None:
+    """Emit a query refined event.
+
+    Args:
+        request_id: Unique request identifier
+        original_query: Original user query
+        refined_query: Refined query
+        refinement_context: Context extracted from clarification responses
+        confidence_score: Confidence score of the refinement
+        enhancement_summary: Summary of enhancements applied
+    """
+    await research_event_bus.emit(
+        QueryRefinedEvent(
+            _request_id=request_id,
+            original_query=original_query,
+            refined_query=refined_query,
+            refinement_context=refinement_context,
+            confidence_score=confidence_score,
+            enhancement_summary=enhancement_summary,
         )
     )
