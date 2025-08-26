@@ -18,34 +18,19 @@ The Deep Research System is a sophisticated AI-powered research automation platf
 ## Core Design Principles
 
 ### 1. Three-Phase Intelligence
-Advanced clarification system that transforms broad queries into precise research objectives through:
-- **Assessment**: Algorithmic query breadth analysis with missing dimension detection
-- **Transformation**: Context-aware query enhancement with specificity scoring
-- **Enhanced Brief Generation**: Comprehensive research planning with methodology suggestions
+Advanced clarification system that transforms broad queries into precise research objectives through systematic assessment, transformation, and enhanced brief generation. *For detailed implementation patterns and code examples, see [Implementation Design](./implementation_design.md#three-phase-clarification-implementation)*
 
 ### 2. Circuit Breaker Resilience
-Built-in failure recovery with automatic circuit opening/closing and error tracking:
-- **Error Threshold Management**: Configurable failure limits per agent type
-- **Automatic Recovery**: Timeout-based circuit reset with test request validation
-- **Graceful Degradation**: Fallback behavior when circuits are open
+Automatic failure recovery with configurable thresholds, timeout-based reset, and graceful degradation. *For implementation details and configuration examples, see [Implementation Design](./implementation_design.md#circuit-breaker-implementation)*
 
 ### 3. Memory-Safe Coordination
-WeakRef-based event system preventing memory leaks in distributed environments:
-- **WeakSet Collections**: Automatic handler cleanup when objects go out of scope
-- **Bounded History**: Limited event storage with automatic cleanup triggers
-- **User Isolation**: Scoped event handling preventing cross-user data leakage
+WeakRef-based event system with automatic cleanup, bounded history, and user isolation patterns. *See [Implementation Design](./implementation_design.md#memory-safe-event-system) for WeakRef patterns and code examples.*
 
 ### 4. Type-Safe Agent Registry
-Centralized coordination eliminating circular imports with compile-time safety:
-- **Pydantic-AI Integration**: Native structured outputs with automatic validation
-- **Tool Registration**: `@agent.tool` decorators for seamless capability addition
-- **Output Validation**: `@agent.output_validator` ensures quality and consistency
+Centralized coordination with Pydantic-AI integration, tool registration, and output validation patterns. *For agent development patterns and tool registration examples, see [Implementation Design](./implementation_design.md#pydantic-ai-agent-patterns)*
 
 ### 5. Concurrent Processing
-Semaphore-controlled parallel execution with timeout management and task isolation:
-- **Concurrency Limits**: Configurable semaphore-based task throttling
-- **Timeout Protection**: Per-task timeout with automatic cancellation
-- **Performance Monitoring**: Real-time metrics for optimization
+Semaphore-controlled parallel execution with timeout management and performance monitoring for optimal resource utilization and system stability.
 
 ## System Component Overview
 
@@ -115,9 +100,7 @@ flowchart TD
 ### Stage Details
 
 **Stage 1-3: Three-Phase Clarification System**
-- **Assessment**: Analyzes query breadth, missing dimensions, generates clarification questions
-- **Transformation**: Converts broad queries into specific, actionable research questions
-- **Enhanced Brief**: Creates comprehensive research plans with methodology suggestions
+Integrated assessment, transformation, and brief generation phases that convert broad queries into actionable research plans. *See [Implementation Design](./implementation_design.md#three-phase-clarification-implementation) for detailed phase implementations.*
 
 **Stage 4: Research Execution**
 - Parallel web searches with circuit breaker protection
@@ -153,25 +136,15 @@ flowchart TD
 
 ## Technology Stack
 
-### Core Framework
-- **Pydantic-AI**: Type-safe AI agent framework with structured outputs
-- **FastAPI**: High-performance async web framework
-- **Python 3.12+**: Modern Python with advanced type hints
-
-### AI & Search
+### Core Technology Stack
+- **Pydantic-AI Framework**: Type-safe AI agents with structured outputs
+- **FastAPI + Rich CLI**: High-performance async interfaces
+- **Python 3.12+**: Modern language features and type safety
 - **Anthropic Claude**: Primary language model (claude-3-5-sonnet-20241022)
-- **Exa Search**: Advanced web search with semantic understanding
-- **Structured Validation**: Pydantic models for all AI outputs
+- **Observability**: Logfire structured logging with real-time monitoring
+- **Production**: Docker/Kubernetes deployment with comprehensive testing
 
-### Observability & Monitoring
-- **Logfire**: Structured logging and observability
-- **Rich**: Beautiful terminal interfaces and progress tracking
-- **Circuit Breaker Metrics**: Real-time system health monitoring
-
-### Development & Deployment
-- **uv**: Modern Python package management
-- **Pytest**: Comprehensive testing framework
-- **Docker & Kubernetes**: Container-based production deployment
+*For detailed technology choices, configuration patterns, and deployment guides, see [Implementation Design](./implementation_design.md#production-deployment)*
 
 ## Data Flow Architecture
 
@@ -190,63 +163,35 @@ flowchart TD
 2. **Report Structuring**: Executive summaries and detailed analysis
 3. **Citation Management**: Comprehensive source attribution
 
-## Security & Production Considerations
+## Production Considerations
 
-### Memory Safety
-- **WeakRef Patterns**: Automatic cleanup of event handlers and observers
-- **Bounded Collections**: Limited history storage with automatic pruning
-- **User Isolation**: Scoped data handling preventing information leakage
+### System Reliability
+- **Memory Safety**: WeakRef patterns with automatic cleanup and user isolation
+- **Error Resilience**: Circuit breaker protection with graceful degradation
+- **Security**: Rate limiting, input validation, and authentication patterns
+- **Scalability**: Kubernetes integration with comprehensive monitoring
 
-### Error Resilience
-- **Circuit Breaker Pattern**: Automatic failure detection and recovery
-- **Graceful Degradation**: Fallback behavior during service failures
-- **Timeout Management**: Per-operation timeout with cancellation
+*For detailed production deployment guides, security configurations, and monitoring setups, see [Implementation Design](./implementation_design.md#production-deployment)*
 
-### API Security
-- **Rate Limiting**: Configurable request throttling per client
-- **Input Validation**: Comprehensive sanitization and constraint checking
-- **Authentication**: JWT-based user sessions and API key validation
+## Architectural Design Decisions
 
-### Production Deployment
-- **Kubernetes Integration**: Scalable container orchestration
-- **Health Monitoring**: Comprehensive system health checks
-- **Performance Metrics**: Prometheus-compatible monitoring endpoints
+### Sequential Pipeline vs. Graph-Based Approaches
+Our linear pipeline with event bus architecture optimizes for:
+- **Simplicity**: Predictable execution flow and easier debugging
+- **Client Resilience**: Stateful reconnection and progress recovery
+- **Production Stability**: Server fault tolerance with persistent state
+- **Multiple Consumers**: Event-driven updates to unlimited clients
 
-## Comparison with Alternative Approaches
+This approach trades dynamic routing flexibility for operational simplicity and production robustness, making it ideal for research workflows where linear progression with clarification pauses is the primary pattern.
 
-### vs. LangGraph
-**Our Sequential + Event Bus Approach:**
-- ✅ **Simplicity**: Linear flow easier to understand and debug
-- ✅ **Client Resilience**: Disconnect/reconnect capability
-- ✅ **Multiple Consumers**: Unlimited concurrent observers
-- ✅ **Production Robustness**: Server crashes don't lose progress
+## System Extensibility
 
-**LangGraph's Graph-Based Approach:**
-- ✅ **Dynamic Routing**: Conditional workflow branching
-- ✅ **Human-in-the-Loop**: Built-in interruption patterns
-- ✅ **State Checkpointing**: Rollback capabilities
-- ⚠️ **Complexity**: More complex execution model
+The architecture supports extension through:
+- **Agent Development**: Plugin system with Pydantic-AI tool registration
+- **Data Model Extension**: Type-safe Pydantic models with custom validation
+- **Integration Patterns**: Event subscriptions and API extensions
 
-**When to Use Each:**
-- **Use Our Approach**: Linear research pipelines, maximum client resilience, simple testing
-- **Use LangGraph**: Complex branching workflows, human intervention, dynamic modification
-
-## System Extension Points
-
-### Agent Development
-- **Plugin System**: Dynamic agent registration with dependency checking
-- **Custom Tools**: `@agent.tool` decorator for capability extension
-- **Output Validation**: Quality assurance through `@agent.output_validator`
-
-### Data Model Extension
-- **Pydantic Models**: Type-safe data structures with validation
-- **Custom Fields**: Domain-specific field types and constraints
-- **Cross-Field Validation**: Complex business rule enforcement
-
-### Integration Patterns
-- **Event Subscription**: Custom handlers for system events
-- **API Extensions**: Additional HTTP endpoints for specialized features
-- **Search Provider Integration**: Pluggable search backend systems
+*For detailed extension patterns, code examples, and development guides, see [Implementation Design](./implementation_design.md#development-patterns)*
 
 ---
 
