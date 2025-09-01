@@ -12,15 +12,15 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import RunUsage
 
-from open_deep_research_with_pydantic_ai.core.config import config
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.config import config
+from core.events import (
     AgentDelegationEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.core.logging import configure_logging
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
-from open_deep_research_with_pydantic_ai.models.research import ResearchState
+from core.logging import configure_logging
+from models.api_models import APIKeys, ResearchMetadata
+from models.research import ResearchState
 
 
 @dataclass

@@ -42,7 +42,7 @@ deep-research research "What is quantum computing?" -k openai:sk-xxx -k tavily:t
 
 ```bash
 # Start the server first (in another terminal)
-uvicorn open_deep_research_with_pydantic_ai.api.main:app
+uvicorn open_deep_research_pydantic_ai.api.main:app
 
 # Execute research via HTTP/SSE
 deep-research research "What is quantum computing?" --mode http
@@ -196,7 +196,7 @@ Install with: uv add --optional cli
 Connection failed, retrying 1/3...
 ```
 
-Ensure server is running: `uvicorn open_deep_research_with_pydantic_ai.api.main:app`
+Ensure server is running: `uvicorn open_deep_research_pydantic_ai.api.main:app`
 
 ### Port Already in Use
 

@@ -1,21 +1,14 @@
 """Direct test of factory without going through main package imports."""
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+import sys
 
-import asyncio
-from typing import Optional, Dict, Any
-from pydantic import BaseModel
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
 
 # Direct imports to avoid circular dependencies
-from open_deep_research_with_pydantic_ai.agents.factory import (
-    AgentType,
-    AgentFactory,
-    AgentPoolConfig
-)
-
-from open_deep_research_with_pydantic_ai.models.dependencies import ResearchDependencies
+from agents.factory import AgentFactory, AgentPoolConfig, AgentType
+from models.dependencies import ResearchDependencies
 
 print("✓ All imports successful")
 

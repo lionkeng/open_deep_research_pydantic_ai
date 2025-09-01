@@ -6,14 +6,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from open_deep_research_with_pydantic_ai.agents.base import (
+from agents.base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
 )
-from open_deep_research_with_pydantic_ai.core.events import emit_stage_completed
-from open_deep_research_with_pydantic_ai.models.research import ResearchFinding, ResearchStage
+from core.events import emit_stage_completed
+from models.research import ResearchFinding, ResearchStage
 
 
 class CompressedFindings(BaseModel):
@@ -216,6 +216,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
 
             # Group findings by source
             from typing import Any
+
             source_groups: defaultdict[str, list[Any]] = defaultdict(list)
             for finding in findings:
                 source_groups[finding.source].append(finding)

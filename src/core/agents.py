@@ -220,8 +220,7 @@ async def validate_transformation_result(
     """Validate transformation quality and completeness."""
 
     # Ensure meaningful transformation occurred
-    if (output.original_query.strip().lower() ==
-        output.transformed_query.strip().lower()):
+    if output.original_query.strip().lower() == output.transformed_query.strip().lower():
         raise ModelRetry(
             "You must meaningfully transform the query - "
             "it should be more specific than the original"

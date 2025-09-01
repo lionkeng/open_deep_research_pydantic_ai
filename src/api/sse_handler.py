@@ -8,7 +8,7 @@ from fastapi import Request
 from sse_starlette import EventSourceResponse
 from sse_starlette.event import ServerSentEvent
 
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
     ResearchEvent,
@@ -16,7 +16,7 @@ from open_deep_research_with_pydantic_ai.core.events import (
     StreamingUpdateEvent,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.core.sse_models import (
+from core.sse_models import (
     CompletedMessage,
     ConnectionMessage,
     ErrorMessage,
@@ -27,7 +27,7 @@ from open_deep_research_with_pydantic_ai.core.sse_models import (
     StreamErrorMessage,
     UpdateMessage,
 )
-from open_deep_research_with_pydantic_ai.models.research import ResearchState
+from models.research import ResearchState
 
 
 class SSEHandler:

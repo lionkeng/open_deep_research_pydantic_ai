@@ -6,12 +6,12 @@ import time
 from typing import List, Tuple
 from unittest.mock import patch
 
-from src.open_deep_research_with_pydantic_ai.agents.clarification import ClarificationAgent
-from src.open_deep_research_with_pydantic_ai.agents.brief_generator import BriefGeneratorAgent
-from src.open_deep_research_with_pydantic_ai.core.workflow import workflow
-from src.open_deep_research_with_pydantic_ai.models.api_models import APIKeys
-from src.open_deep_research_with_pydantic_ai.agents.base import ResearchDependencies
-from src.open_deep_research_with_pydantic_ai.models.research import ResearchState
+from src.open_deep_research_pydantic_ai.agents.clarification import ClarificationAgent
+from src.open_deep_research_pydantic_ai.agents.brief_generator import BriefGeneratorAgent
+from src.open_deep_research_pydantic_ai.core.workflow import workflow
+from src.open_deep_research_pydantic_ai.models.api_models import APIKeys
+from src.open_deep_research_pydantic_ai.agents.base import ResearchDependencies
+from src.open_deep_research_pydantic_ai.models.research import ResearchState
 
 
 class TestPerformanceValidation:

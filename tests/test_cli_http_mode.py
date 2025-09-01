@@ -4,19 +4,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from open_deep_research_with_pydantic_ai.cli import (
+from cli import (
     CLIStreamHandler,
     HTTPResearchClient,
     validate_server_url,
 )
-from open_deep_research_with_pydantic_ai.core.sse_models import (
+from core.sse_models import (
     CompletedMessage,
     SSEDataType,
     SSEEventType,
     UpdateMessage,
 )
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys
-from open_deep_research_with_pydantic_ai.models.research import ResearchStage
+from models.api_models import APIKeys
+from models.research import ResearchStage
 
 
 class TestURLValidation:
@@ -124,8 +124,8 @@ class TestHTTPResearchClient:
 
     async def test_context_manager(self):
         """Test context manager functionality."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient") as mock_client:
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient") as mock_client:
                 mock_instance = AsyncMock()
                 mock_client.return_value = mock_instance
 
@@ -138,8 +138,8 @@ class TestHTTPResearchClient:
 
     async def test_invalid_url_raises_error(self):
         """Test that invalid URL raises ValueError."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient"):
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient"):
                 # Since we auto-prepend http://, ftp:// becomes http://ftp://...
                 # We need to test a different invalid case
                 with pytest.raises(ValueError, match="missing host"):
@@ -147,14 +147,14 @@ class TestHTTPResearchClient:
 
     async def test_missing_httpx_sse_raises_error(self):
         """Test that missing httpx-sse raises ImportError."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", False):
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", False):
             with pytest.raises(ImportError, match="HTTP mode requires httpx-sse"):
                 HTTPResearchClient("http://localhost:8000")
 
     async def test_start_research(self):
         """Test start_research method."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient") as mock_client:
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient") as mock_client:
                 # Setup mock
                 mock_instance = AsyncMock()
                 mock_response = AsyncMock()
@@ -180,8 +180,8 @@ class TestHTTPResearchClient:
 
     async def test_process_sse_event_update(self):
         """Test processing UPDATE SSE event."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient"):
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient"):
                 client = HTTPResearchClient("http://localhost:8000")
                 handler = AsyncMock(spec=CLIStreamHandler)
 
@@ -205,8 +205,8 @@ class TestHTTPResearchClient:
 
     async def test_process_sse_event_complete(self):
         """Test processing COMPLETE SSE event."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient"):
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient"):
                 client = HTTPResearchClient("http://localhost:8000")
                 handler = AsyncMock(spec=CLIStreamHandler)
 
@@ -239,9 +239,9 @@ class TestHTTPResearchClient:
 
     async def test_process_sse_event_invalid_json(self):
         """Test handling of invalid JSON in SSE event."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient"):
-                with patch("open_deep_research_with_pydantic_ai.cli.logfire") as mock_logfire:
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient"):
+                with patch("open_deep_research_pydantic_ai.cli.logfire") as mock_logfire:
                     client = HTTPResearchClient("http://localhost:8000")
                     handler = AsyncMock(spec=CLIStreamHandler)
 
@@ -259,8 +259,8 @@ class TestHTTPResearchClient:
 
     async def test_get_report(self):
         """Test get_report method."""
-        with patch("open_deep_research_with_pydantic_ai.cli._http_mode_available", True):
-            with patch("open_deep_research_with_pydantic_ai.cli.httpx.AsyncClient") as mock_client:
+        with patch("open_deep_research_pydantic_ai.cli._http_mode_available", True):
+            with patch("open_deep_research_pydantic_ai.cli.httpx.AsyncClient") as mock_client:
                 # Setup mock
                 mock_instance = AsyncMock()
                 mock_response = AsyncMock()

@@ -18,8 +18,8 @@ from weakref import WeakMethod, WeakSet
 
 import logfire
 
-from open_deep_research_with_pydantic_ai.core.context import get_current_context
-from open_deep_research_with_pydantic_ai.models.research import (
+from core.context import get_current_context
+from models.research import (
     ResearchFinding,
     ResearchReport,
     ResearchStage,
@@ -470,6 +470,7 @@ class ResearchEventBus:
 
                 # Clean up inactive users (no events in last hour)
                 import time
+
                 current_time = time.time()
                 cutoff_time = current_time - 3600  # 1 hour ago
                 inactive_users = set()

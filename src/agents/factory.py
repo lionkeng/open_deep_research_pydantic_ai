@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .base import (
     AgentConfiguration,
-    AgentError, 
+    AgentError,
     BaseResearchAgent,
     ResearchDependencies,
 )
@@ -62,21 +62,25 @@ class AgentPoolConfig(BaseModel):
 
 class FactoryError(AgentError):
     """Base exception for factory-related errors."""
+
     pass
 
 
 class AgentRegistrationError(FactoryError):
     """Exception raised during agent registration."""
+
     pass
 
 
 class AgentCreationError(FactoryError):
     """Exception raised during agent creation."""
+
     pass
 
 
 class AgentPoolError(FactoryError):
     """Exception raised during pool operations."""
+
     pass
 
 
@@ -114,17 +118,17 @@ class AgentRegistry:
         agent_class: type[BaseResearchAgent],
         default_config: AgentConfiguration | None = None,
         pool_config: AgentPoolConfig | None = None,
-        factory_function: Callable | None = None
+        factory_function: Callable | None = None,
     ) -> None:
         """Register an agent type with the registry.
-        
+
         Args:
             agent_type: Type of agent to register
             agent_class: Agent class (must inherit from BaseResearchAgent)
             default_config: Default configuration for this agent type
             pool_config: Pool configuration for this agent type
             factory_function: Custom factory function (optional)
-            
+
         Raises:
             AgentRegistrationError: If registration fails
         """
@@ -134,7 +138,7 @@ class AgentRegistry:
                 raise AgentRegistrationError(
                     "Agent class must inherit from BaseResearchAgent",
                     "registry",
-                    {"agent_type": agent_type.value, "agent_class": agent_class.__name__}
+                    {"agent_type": agent_type.value, "agent_class": agent_class.__name__},
                 )
 
             # Store registration data
@@ -155,14 +159,14 @@ class AgentRegistry:
                 agent_class=agent_class.__name__,
                 has_default_config=default_config is not None,
                 has_pool_config=pool_config is not None,
-                has_factory_function=factory_function is not None
+                has_factory_function=factory_function is not None,
             )
 
         except Exception as e:
             raise AgentRegistrationError(
                 f"Failed to register agent type '{agent_type.value}': {str(e)}",
                 "registry",
-                {"agent_type": agent_type.value, "error": str(e)}
+                {"agent_type": agent_type.value, "error": str(e)},
             ) from e
 
     def get_agent_class(self, agent_type: AgentType) -> type[BaseResearchAgent] | None:
@@ -196,7 +200,7 @@ class AgentRegistry:
             "with_default_config": len(self._default_configs),
             "with_pool_config": len(self._pool_configs),
             "with_factory_function": len(self._factory_functions),
-            "registered_types": [t.value for t in self._agent_classes.keys()]
+            "registered_types": [t.value for t in self._agent_classes.keys()],
         }
 
 
@@ -208,12 +212,7 @@ class AgentPool:
         self.config = config
         self._pool: list[PooledAgent] = []
         self._lock = asyncio.Lock()
-        self._stats = {
-            "created": 0,
-            "reused": 0,
-            "expired": 0,
-            "errors": 0
-        }
+        self._stats = {"created": 0, "reused": 0, "expired": 0, "errors": 0}
         self._cleanup_task: asyncio.Task | None = None
 
         # Start cleanup task if monitoring enabled
@@ -224,18 +223,18 @@ class AgentPool:
         self,
         agent_class: type[BaseResearchAgent],
         config: AgentConfiguration,
-        dependencies: ResearchDependencies
+        dependencies: ResearchDependencies,
     ) -> BaseResearchAgent:
         """Get an agent from the pool or create a new one.
-        
+
         Args:
             agent_class: Agent class to instantiate
             config: Agent configuration
             dependencies: Agent dependencies
-            
+
         Returns:
             Agent instance (pooled or new)
-            
+
         Raises:
             AgentPoolError: If agent creation fails
         """
@@ -252,7 +251,7 @@ class AgentPool:
                             "Agent retrieved from pool",
                             agent_type=self.agent_type.value,
                             pool_size=len(self._pool),
-                            usage_count=pooled_agent.usage_count
+                            usage_count=pooled_agent.usage_count,
                         )
 
                         return pooled_agent.agent
@@ -264,7 +263,7 @@ class AgentPool:
                 logfire.debug(
                     "New agent created for pool",
                     agent_type=self.agent_type.value,
-                    pool_size=len(self._pool)
+                    pool_size=len(self._pool),
                 )
 
                 return agent
@@ -274,12 +273,12 @@ class AgentPool:
                 raise AgentPoolError(
                     f"Failed to get agent from pool: {str(e)}",
                     "pool_manager",
-                    {"agent_type": self.agent_type.value, "error": str(e)}
+                    {"agent_type": self.agent_type.value, "error": str(e)},
                 ) from e
 
     async def return_agent(self, agent: BaseResearchAgent) -> None:
         """Return an agent to the pool.
-        
+
         Args:
             agent: Agent to return to pool
         """
@@ -292,20 +291,18 @@ class AgentPool:
                     logfire.debug(
                         "Agent returned to pool",
                         agent_type=self.agent_type.value,
-                        pool_size=len(self._pool)
+                        pool_size=len(self._pool),
                     )
                 else:
                     logfire.debug(
                         "Agent discarded (pool full)",
                         agent_type=self.agent_type.value,
                         pool_size=len(self._pool),
-                        max_size=self.config.max_size
+                        max_size=self.config.max_size,
                     )
             except Exception as e:
                 logfire.error(
-                    "Failed to return agent to pool",
-                    agent_type=self.agent_type.value,
-                    error=str(e)
+                    "Failed to return agent to pool", agent_type=self.agent_type.value, error=str(e)
                 )
 
     async def _cleanup_loop(self) -> None:
@@ -324,7 +321,8 @@ class AgentPool:
         async with self._lock:
             expired_count = 0
             self._pool = [
-                pooled_agent for pooled_agent in self._pool
+                pooled_agent
+                for pooled_agent in self._pool
                 if not pooled_agent.is_expired(self.config.max_idle_time)
             ]
 
@@ -334,7 +332,7 @@ class AgentPool:
                     "Cleaned up expired agents",
                     agent_type=self.agent_type.value,
                     expired_count=expired_count,
-                    remaining_count=len(self._pool)
+                    remaining_count=len(self._pool),
                 )
 
     def get_stats(self) -> dict[str, Any]:
@@ -345,7 +343,7 @@ class AgentPool:
             "max_size": self.config.max_size,
             "min_size": self.config.min_size,
             "stats": self._stats.copy(),
-            "config": self.config.model_dump()
+            "config": self.config.model_dump(),
         }
 
     async def shutdown(self) -> None:
@@ -369,11 +367,7 @@ class AgentFactory:
     def __init__(self):
         self.registry = AgentRegistry()
         self._pools: dict[AgentType, AgentPool] = {}
-        self._global_stats = {
-            "agents_created": 0,
-            "agents_from_pool": 0,
-            "factory_errors": 0
-        }
+        self._global_stats = {"agents_created": 0, "agents_from_pool": 0, "factory_errors": 0}
 
     def register_agent_type(
         self,
@@ -381,10 +375,10 @@ class AgentFactory:
         agent_class: type[BaseResearchAgent],
         default_config: AgentConfiguration | None = None,
         pool_config: AgentPoolConfig | None = None,
-        factory_function: Callable | None = None
+        factory_function: Callable | None = None,
     ) -> None:
         """Register an agent type with the factory.
-        
+
         Args:
             agent_type: Type of agent to register
             agent_class: Agent class implementation
@@ -406,19 +400,19 @@ class AgentFactory:
         agent_type: AgentType,
         dependencies: ResearchDependencies,
         config: AgentConfiguration | None = None,
-        use_pool: bool = True
+        use_pool: bool = True,
     ) -> BaseResearchAgent:
         """Create an agent instance.
-        
+
         Args:
             agent_type: Type of agent to create
             dependencies: Agent dependencies
             config: Optional configuration override
             use_pool: Whether to use agent pooling
-            
+
         Returns:
             Agent instance
-            
+
         Raises:
             AgentCreationError: If agent creation fails
         """
@@ -429,7 +423,7 @@ class AgentFactory:
                 raise AgentCreationError(
                     f"Agent type '{agent_type.value}' not registered. Available: {available}",
                     "factory",
-                    {"agent_type": agent_type.value, "available_types": available}
+                    {"agent_type": agent_type.value, "available_types": available},
                 )
 
             # Get agent class and configuration
@@ -438,7 +432,7 @@ class AgentFactory:
                 raise AgentCreationError(
                     f"No agent class found for type '{agent_type.value}'",
                     "factory",
-                    {"agent_type": agent_type.value}
+                    {"agent_type": agent_type.value},
                 )
 
             # Use provided config or default
@@ -446,8 +440,7 @@ class AgentFactory:
             if not effective_config:
                 # Create basic config
                 effective_config = AgentConfiguration(
-                    agent_name=f"{agent_type.value}_agent",
-                    agent_type=agent_type.value
+                    agent_name=f"{agent_type.value}_agent", agent_type=agent_type.value
                 )
 
             # Try pool first if enabled
@@ -472,7 +465,7 @@ class AgentFactory:
                 "Agent created successfully",
                 agent_type=agent_type.value,
                 agent_name=effective_config.agent_name,
-                from_pool=False
+                from_pool=False,
             )
 
             return agent
@@ -486,22 +479,19 @@ class AgentFactory:
             raise AgentCreationError(
                 f"Failed to create agent of type '{agent_type.value}': {str(e)}",
                 "factory",
-                {"agent_type": agent_type.value, "error": str(e)}
+                {"agent_type": agent_type.value, "error": str(e)},
             ) from e
 
     async def create_agents_batch(
-        self,
-        specs: list[dict[str, Any]],
-        dependencies: ResearchDependencies,
-        parallel: bool = True
+        self, specs: list[dict[str, Any]], dependencies: ResearchDependencies, parallel: bool = True
     ) -> list[BaseResearchAgent]:
         """Create multiple agents in batch.
-        
+
         Args:
             specs: List of agent specifications with 'type' and optional 'config'
             dependencies: Shared dependencies for all agents
             parallel: Whether to create agents in parallel
-            
+
         Returns:
             List of created agents
         """
@@ -511,9 +501,7 @@ class AgentFactory:
             return await self._create_agents_sequential(specs, dependencies)
 
     async def _create_agents_sequential(
-        self,
-        specs: list[dict[str, Any]],
-        dependencies: ResearchDependencies
+        self, specs: list[dict[str, Any]], dependencies: ResearchDependencies
     ) -> list[BaseResearchAgent]:
         """Create agents sequentially."""
         agents = []
@@ -522,15 +510,13 @@ class AgentFactory:
                 AgentType(spec["type"]),
                 dependencies,
                 spec.get("config"),
-                spec.get("use_pool", True)
+                spec.get("use_pool", True),
             )
             agents.append(agent)
         return agents
 
     async def _create_agents_parallel(
-        self,
-        specs: list[dict[str, Any]],
-        dependencies: ResearchDependencies
+        self, specs: list[dict[str, Any]], dependencies: ResearchDependencies
     ) -> list[BaseResearchAgent]:
         """Create agents in parallel."""
         tasks = []
@@ -540,20 +526,16 @@ class AgentFactory:
                     AgentType(spec["type"]),
                     dependencies,
                     spec.get("config"),
-                    spec.get("use_pool", True)
+                    spec.get("use_pool", True),
                 )
             )
             tasks.append(task)
 
         return await asyncio.gather(*tasks)
 
-    async def return_agent_to_pool(
-        self,
-        agent: BaseResearchAgent,
-        agent_type: AgentType
-    ) -> None:
+    async def return_agent_to_pool(self, agent: BaseResearchAgent, agent_type: AgentType) -> None:
         """Return an agent to its pool.
-        
+
         Args:
             agent: Agent to return
             agent_type: Type of agent
@@ -571,7 +553,7 @@ class AgentFactory:
             "global_stats": self._global_stats.copy(),
             "registry_stats": self.registry.get_registration_stats(),
             "pool_stats": pool_stats,
-            "registered_types": [t.value for t in self.registry.list_registered_types()]
+            "registered_types": [t.value for t in self.registry.list_registered_types()],
         }
 
     async def shutdown(self) -> None:
@@ -590,7 +572,7 @@ _global_factory: AgentFactory | None = None
 
 def get_agent_factory() -> AgentFactory:
     """Get the global agent factory instance.
-    
+
     Returns:
         Global factory instance (created if needed)
     """
@@ -605,16 +587,16 @@ async def create_agent(
     agent_type: AgentType,
     dependencies: ResearchDependencies,
     config: AgentConfiguration | None = None,
-    use_pool: bool = True
+    use_pool: bool = True,
 ) -> BaseResearchAgent:
     """Convenience function to create an agent using the global factory.
-    
+
     Args:
         agent_type: Type of agent to create
-        dependencies: Agent dependencies  
+        dependencies: Agent dependencies
         config: Optional configuration override
         use_pool: Whether to use agent pooling
-        
+
     Returns:
         Created agent instance
     """
@@ -627,10 +609,10 @@ def register_agent_type(
     agent_class: type[BaseResearchAgent],
     default_config: AgentConfiguration | None = None,
     pool_config: AgentPoolConfig | None = None,
-    factory_function: Callable | None = None
+    factory_function: Callable | None = None,
 ) -> None:
     """Convenience function to register an agent type with the global factory.
-    
+
     Args:
         agent_type: Type of agent to register
         agent_class: Agent class implementation
@@ -647,13 +629,13 @@ def register_agent_type(
 @lru_cache(maxsize=32)
 def get_agent_type_from_string(type_str: str) -> AgentType:
     """Get AgentType enum from string with caching.
-    
+
     Args:
         type_str: Agent type as string
-        
+
     Returns:
         AgentType enum value
-        
+
     Raises:
         ValueError: If type string is invalid
     """

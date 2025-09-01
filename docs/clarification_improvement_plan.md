@@ -25,27 +25,29 @@ The current clarification agent is failing to identify broad, ambiguous queries 
 ### Technical Implementation Comparison
 
 **Important Finding**: Both LangGraph and our implementation use Pydantic BaseModel for structured output:
+
 - **LangGraph**: Uses `ClarifyWithUser(BaseModel)` at `/src/open_deep_research/state.py:30-41`
 - **LangGraph**: Applies via `.with_structured_output(ClarifyWithUser)` at `/src/open_deep_research/deep_researcher.py:91`
-- **Our Implementation**: Uses `ClarifyWithUser(BaseModel)` at `/src/open_deep_research_with_pydantic_ai/agents/clarification.py:18-32`
+- **Our Implementation**: Uses `ClarifyWithUser(BaseModel)` at `/src/agents/clarification.py:18-32`
 
 Both approaches have the same structural validation advantages. The key differences lie in prompt engineering and workflow design.
 
 ### Technical Comparison Table
 
-| Aspect | LangGraph | Our Current Implementation | Assessment |
-|--------|-----------|---------------------------|------------|
-| **Structure** | Pydantic BaseModel | Pydantic BaseModel | ✅ Same (both excellent) |
-| **Type Safety** | Full type checking | Full type checking | ✅ Same |
-| **Validation** | Automatic via Pydantic | Automatic via Pydantic | ✅ Same |
-| **Prompt Clarity** | Explicit conditionals | Generic instructions | ❌ Ours needs improvement |
-| **Output Guidance** | Clear if/then rules | Vague requirements | ❌ Ours needs improvement |
-| **Question Transform** | Separate component | Missing | ❌ We need to add this |
-| **Scope Assessment** | Implicit in prompt | Weak criteria | ❌ Ours needs strengthening |
+| Aspect                 | LangGraph              | Our Current Implementation | Assessment                  |
+| ---------------------- | ---------------------- | -------------------------- | --------------------------- |
+| **Structure**          | Pydantic BaseModel     | Pydantic BaseModel         | ✅ Same (both excellent)    |
+| **Type Safety**        | Full type checking     | Full type checking         | ✅ Same                     |
+| **Validation**         | Automatic via Pydantic | Automatic via Pydantic     | ✅ Same                     |
+| **Prompt Clarity**     | Explicit conditionals  | Generic instructions       | ❌ Ours needs improvement   |
+| **Output Guidance**    | Clear if/then rules    | Vague requirements         | ❌ Ours needs improvement   |
+| **Question Transform** | Separate component     | Missing                    | ❌ We need to add this      |
+| **Scope Assessment**   | Implicit in prompt     | Weak criteria              | ❌ Ours needs strengthening |
 
 ### Key Differentiators in LangGraph's Approach
 
 1. **Explicit Conditional Output Instructions**:
+
    ```
    From /src/open_deep_research/prompts.py:21-34:
 
@@ -59,9 +61,11 @@ Both approaches have the same structural validation advantages. The key differen
    "question": "",
    "verification": "<acknowledgement message>"
    ```
+
    This explicit conditional logic tells the LLM exactly what to output in each scenario.
 
 2. **Structured Information Gathering Guidelines**:
+
    ```
    - Be concise while gathering all necessary information
    - Make sure to gather all the information needed to carry out the research task
@@ -69,6 +73,7 @@ Both approaches have the same structural validation advantages. The key differen
    ```
 
 3. **Research Question Transformation Component**:
+
    ```python
    # From /src/open_deep_research/prompts.py:44-77
    # Separate step that maximizes specificity:
@@ -85,11 +90,12 @@ Both approaches have the same structural validation advantages. The key differen
 
 ### Phase 1: Enhanced Clarification System Prompt
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/clarification.py`
+**File**: `src/agents/clarification.py`
 
 #### 1.1 Enhance System Prompt While Keeping Pydantic Structure
 
 **Current prompt issues**:
+
 - Too generic: "assess whether you need to ask a clarifying question"
 - No specific guidance on scope assessment
 - Weak information gathering criteria
@@ -98,6 +104,7 @@ Both approaches have the same structural validation advantages. The key differen
 **Important**: We keep our Pydantic `ClarifyWithUser(BaseModel)` structure as it provides superior type safety and validation. We only need to improve the prompt engineering.
 
 **New prompt structure** (adapted from LangGraph's explicit conditional approach):
+
 ```python
 def _get_default_system_prompt(self) -> str:
     return """You are a research clarification assistant. Today's date is {date}.
@@ -166,6 +173,7 @@ IMPORTANT: Only populate the field relevant to your decision. Leave the other fi
 #### 1.2 Strengthen Assessment Logic
 
 **Add scope breadth detection**:
+
 ```python
 async def _assess_query_breadth(self, query: str, conversation: list[str]) -> dict:
     """Assess if query is too broad or missing essential context."""
@@ -193,7 +201,7 @@ async def _assess_query_breadth(self, query: str, conversation: list[str]) -> di
 
 ### Phase 2: Research Question Transformation Component
 
-**New file**: `src/open_deep_research_with_pydantic_ai/agents/question_transformer.py`
+**New file**: `src/agents/question_transformer.py`
 
 #### 2.1 Create Research Question Transformer Agent
 
@@ -263,9 +271,10 @@ and explicitly states any dimensions left open-ended."""
 
 #### 2.2 Integration with Workflow
 
-**Update**: `src/open_deep_research_with_pydantic_ai/core/workflow.py`
+**Update**: `src/core/workflow.py`
 
 Add transformation step after clarification:
+
 ```python
 # After clarification is complete, transform conversation into research question
 transformer = ResearchQuestionTransformer()
@@ -279,7 +288,7 @@ research_state.metadata["detailed_research_question"] = detailed_question
 
 ### Phase 3: Improved Brief Generation Integration
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/brief_generator.py`
+**File**: `src/agents/brief_generator.py`
 
 #### 3.1 Enhance Brief Generation with Transformed Question
 
@@ -408,7 +417,7 @@ class TestWorkflowIntegration:
 
 ### Phase 5: Configuration and Tuning
 
-**File**: `src/open_deep_research_with_pydantic_ai/core/config.py`
+**File**: `src/core/config.py`
 
 #### 5.1 Add Clarification Configuration
 
@@ -437,24 +446,28 @@ class APIConfig(BaseModel):
 ## Implementation Timeline
 
 ### Week 1: Core Improvements
+
 - [ ] Implement enhanced clarification system prompt
 - [ ] Add scope breadth detection logic
 - [ ] Create comprehensive test cases
 - [ ] Test with problem queries like "What is quantum computing?"
 
 ### Week 2: Question Transformation
+
 - [ ] Implement ResearchQuestionTransformer agent
 - [ ] Integrate transformer into workflow
 - [ ] Add transformation step after clarification
 - [ ] Test transformation output quality
 
 ### Week 3: Integration and Testing
+
 - [ ] Update brief generation to use transformed questions
 - [ ] Implement comprehensive test suite
 - [ ] Add configuration options
 - [ ] Performance and integration testing
 
 ### Week 4: Validation and Optimization
+
 - [ ] A/B test against current system
 - [ ] Measure clarification accuracy improvements
 - [ ] Fine-tune thresholds and prompts
@@ -463,12 +476,14 @@ class APIConfig(BaseModel):
 ## Success Metrics
 
 ### Quantitative Metrics
+
 - **Clarification Accuracy**: % of broad queries correctly identified (target: >90%)
 - **False Positive Rate**: % of specific queries incorrectly flagged (target: <10%)
 - **Question Quality**: Average length and detail of clarifying questions (target: >150 words)
 - **User Satisfaction**: Rating of clarification relevance (target: >4.5/5)
 
 ### Qualitative Metrics
+
 - Broad queries like "What is quantum computing?" should consistently trigger clarification
 - Clarifying questions should address specific missing dimensions (audience, purpose, scope)
 - Research quality should improve due to better initial specification
@@ -476,20 +491,24 @@ class APIConfig(BaseModel):
 ## Risk Assessment
 
 ### High Risk
+
 - **Breaking existing functionality**: Mitigation through comprehensive testing
 - **Over-clarification**: Risk of asking too many questions. Mitigation through strict limits and quality thresholds
 
 ### Medium Risk
+
 - **Performance impact**: Additional LLM calls for transformation. Mitigation through caching and optimization
 - **Prompt engineering complexity**: Multiple interacting prompts. Mitigation through modular design and testing
 
 ### Low Risk
+
 - **Configuration complexity**: Additional settings. Mitigation through sensible defaults
 - **Integration complexity**: New components in workflow. Mitigation through clean interfaces
 
 ## Monitoring and Observability
 
 ### Key Metrics to Track
+
 ```python
 # Add to research_state.metadata for monitoring
 clarification_metrics = {
@@ -502,6 +521,7 @@ clarification_metrics = {
 ```
 
 ### Logging and Debugging
+
 - Log all clarification decisions with reasoning
 - Track false positives/negatives for continuous improvement
 - Monitor transformation quality and user feedback
@@ -521,6 +541,7 @@ After analyzing both implementations, we found that **both LangGraph and our sys
 ### The Real Issue: Prompt Engineering
 
 The problem was never about structure - it was about **insufficient behavioral guidance** in our prompts. LangGraph excels at:
+
 - Explicit conditional instructions (if X then output Y)
 - Clear field population rules
 - Detailed examples and edge cases

@@ -4,16 +4,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from open_deep_research_with_pydantic_ai.agents.base import (
+from agents.base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
 )
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.events import (
     emit_stage_completed,
 )
-from open_deep_research_with_pydantic_ai.models.research import ResearchStage
+from models.research import ResearchStage
 
 
 class ResearchBrief(BaseModel):

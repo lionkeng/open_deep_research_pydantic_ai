@@ -6,7 +6,7 @@ multiple configuration warnings.
 
 Usage:
     # At application entry points:
-    from open_deep_research_with_pydantic_ai.core.logging import configure_logging
+    from core.logging import configure_logging
     configure_logging()
 
     # Then use logfire normally:

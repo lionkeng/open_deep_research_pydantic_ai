@@ -2,20 +2,15 @@
 
 from typing import Any
 
-import logfire
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from open_deep_research_with_pydantic_ai.agents.base import (
+from agents.base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
 )
-from open_deep_research_with_pydantic_ai.core.events import (
-    emit_stage_completed,
-)
-from open_deep_research_with_pydantic_ai.models.research import ResearchStage, TransformedQuery
 
 # Global system prompt template for structured clarification assessment
 CLARIFICATION_SYSTEM_PROMPT_TEMPLATE = """
@@ -77,6 +72,7 @@ information across all four critical dimensions for comprehensive research. Cons
 the pattern examples and conversation history.
 """
 
+
 class ClarifyWithUser(BaseModel):
     """Model for user clarification requests with structured assessment framework."""
 
@@ -92,15 +88,14 @@ class ClarifyWithUser(BaseModel):
     # Structured qualitative assessment fields
     missing_dimensions: list[str] = Field(
         default_factory=list,
-        description="List of missing context dimensions from 4-category framework"
+        description="List of missing context dimensions from 4-category framework",
     )
     assessment_reasoning: str = Field(
-        default="",
-        description="Detailed reasoning behind the clarification decision"
+        default="", description="Detailed reasoning behind the clarification decision"
     )
     suggested_clarifications: list[str] = Field(
         default_factory=list,
-        description="Suggested clarification topics to address missing dimensions"
+        description="Suggested clarification topics to address missing dimensions",
     )
 
 
@@ -124,7 +119,7 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
 
         # Register dynamic instructions for assessment framework
         @self.agent.instructions
-        async def add_assessment_framework(ctx: RunContext[ResearchDependencies]) -> str: # pyright: ignore
+        async def add_assessment_framework(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
             """Inject structured clarification assessment framework as instructions."""
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata or {}
@@ -138,7 +133,6 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
                 conversation_context=conversation_context
             )
 
-
     def _format_conversation_context(self, conversation: list[Any], query: str) -> str:
         """Format conversation history for the prompt."""
         if not conversation:
@@ -148,8 +142,8 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
         formatted = []
         for msg in conversation:
             if isinstance(msg, dict):
-                role = msg.get('role', 'unknown')
-                content = msg.get('content', '')
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
                 formatted.append(f"{role.capitalize()}: {content}")
             else:
                 formatted.append(str(msg))
@@ -162,13 +156,11 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
         return ClarifyWithUser
 
     def _get_default_system_prompt(self) -> str:
-        """ Get the basic system prompt which defines Agent role (required by base class)."""
+        """Get the basic system prompt which defines Agent role (required by base class)."""
         return """You are a research clarification specialist who determines whether user
 queries require additional information before comprehensive research can begin. You analyze
 queries across multiple dimensions to assess if they provide sufficient context for
 high-quality research."""
-
-
 
     def _register_tools(self) -> None:
         """Register clarification-specific tools.
@@ -178,6 +170,7 @@ high-quality research."""
         """
         # No tools needed for simple clarification assessment
         pass
+
 
 # Register the agent with the coordinator
 clarification_agent = ClarificationAgent()

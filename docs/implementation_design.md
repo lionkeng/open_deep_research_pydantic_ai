@@ -1223,7 +1223,7 @@ class ResearchWorkflow:
     def _ensure_initialized(self):
         """Ensure coordinator is properly initialized."""
         if not hasattr(self, 'coordinator'):
-            from open_deep_research_with_pydantic_ai.agents.base import coordinator
+            from open_deep_research_pydantic_ai.agents.base import coordinator
             self.coordinator = coordinator
 
     async def _run_agent_with_circuit_breaker(
@@ -1538,7 +1538,7 @@ class ClarificationResult(BaseModel):
         return self
 ```
 
-*For complete model definitions, see `src/open_deep_research_with_pydantic_ai/models/research.py`*
+_For complete model definitions, see `src/models/research.py`_
 
 ---
 
@@ -1690,34 +1690,34 @@ spec:
         app: deep-research-api
     spec:
       containers:
-      - name: api
-        image: deep-research:latest
-        ports:
-        - containerPort: 8000
-        env:
-        - name: ANTHROPIC_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: api-secrets
-              key: anthropic-key
-        - name: EXA_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: api-secrets
-              key: exa-key
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "500m"
+        - name: api
+          image: deep-research:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: anthropic-key
+            - name: EXA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: exa-key
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: '512Mi'
+              cpu: '250m'
+            limits:
+              memory: '1Gi'
+              cpu: '500m'
 ```
 
 ### Docker Configuration
@@ -1748,7 +1748,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run application
-CMD ["uv", "run", "uvicorn", "src.open_deep_research_with_pydantic_ai.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "src.open_deep_research_pydantic_ai.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ### Environment Configuration
@@ -1893,4 +1893,4 @@ class QualityValidator(Generic[T]):
 
 ---
 
-*This implementation design document provides comprehensive code examples and patterns for building production-ready research systems with Pydantic-AI. For architectural overview and system design principles, see the companion [System Architecture](./system_architecture.md) document.*
+_This implementation design document provides comprehensive code examples and patterns for building production-ready research systems with Pydantic-AI. For architectural overview and system design principles, see the companion [System Architecture](./system_architecture.md) document._

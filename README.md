@@ -5,6 +5,7 @@ A comprehensive AI-powered deep research system built with Pydantic-AI, reimplem
 ## Features
 
 ### Multi-Agent Research System
+
 - **5-Stage Research Workflow**:
   1. User Clarification - Validates and refines research queries
   2. Research Brief Generation - Creates structured research plans
@@ -13,11 +14,13 @@ A comprehensive AI-powered deep research system built with Pydantic-AI, reimplem
   5. Report Generation - Creates comprehensive research reports
 
 ### Event-Driven Architecture
+
 - Lock-free Event Bus implementation for async coordination
 - Immutable events prevent deadlocks
 - Support for streaming updates and progress tracking
 
 ### Multiple Interfaces
+
 - **FastAPI Web API** with Server-Sent Events (SSE) support
 - **Command-Line Interface** with rich formatting and streaming
 - Real-time progress updates and interactive sessions
@@ -36,7 +39,7 @@ Then install the project:
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd open_deep_research_with_pydantic_ai
+cd open_deep_research_pydantic_ai
 
 # Install dependencies
 uv sync
@@ -80,9 +83,9 @@ uv run mkdocs serve
 ## Project Structure
 
 ```
-open_deep_research_with_pydantic_ai/
+open_deep_research_pydantic_ai/
 ├── src/
-│   └── open_deep_research_with_pydantic_ai/
+│   └── open_deep_research_pydantic_ai/
 │       ├── __init__.py
 │       ├── cli.py           # Command-line interface
 │       ├── core/            # Core functionality
@@ -127,10 +130,11 @@ uv run deep-research research "Your query" -v
 Start the FastAPI server:
 
 ```bash
-uv run uvicorn open_deep_research_with_pydantic_ai.api.main:app --reload
+uv run uvicorn open_deep_research_pydantic_ai.api.main:app --reload
 ```
 
 API Endpoints:
+
 - `POST /research` - Start a new research task
 - `GET /research/{request_id}` - Get research status
 - `GET /research/{request_id}/stream` - Stream updates via SSE
@@ -139,7 +143,7 @@ API Endpoints:
 ### Python API
 
 ```python
-from open_deep_research_with_pydantic_ai import workflow
+from open_deep_research_pydantic_ai import workflow
 
 # Execute research
 state = await workflow.execute_research(

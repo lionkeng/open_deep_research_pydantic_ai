@@ -10,13 +10,13 @@ from typing import Any
 
 import logfire
 
-from open_deep_research_with_pydantic_ai.agents.base import (
+from agents.base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
 )
-from open_deep_research_with_pydantic_ai.models.research import TransformedQuery
+from models.research import TransformedQuery
 
 
 class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, TransformedQuery]):

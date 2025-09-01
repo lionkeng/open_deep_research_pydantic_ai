@@ -4,7 +4,7 @@
 import asyncio
 import sys
 
-from open_deep_research_with_pydantic_ai.cli import HTTPResearchClient, _http_mode_available
+from cli import HTTPResearchClient, _http_mode_available
 
 
 def test_http_mode_availability():

@@ -3,6 +3,7 @@
 This guide traces the complete data flow through the Deep Research system, from user input to final output. It provides developers with specific code references to understand how data moves through the system's components.
 
 ## Table of Contents
+
 1. [System Architecture Overview](#system-architecture-overview)
 2. [Entry Points](#entry-points)
 3. [Data Models](#data-models)
@@ -56,14 +57,14 @@ The Deep Research system operates in two modes:
 
 ### Key Components
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| CLI Interface | `src/.../cli.py` | Command-line entry point |
-| FastAPI Server | `src/.../api/main.py` | HTTP API server |
-| Workflow Orchestrator | `src/.../core/workflow.py` | Manages research pipeline |
-| Agent System | `src/.../agents/` | Specialized AI agents |
-| Event Bus | `src/.../core/events.py` | Async event coordination |
-| SSE Handler | `src/.../api/sse_handler.py` | Real-time streaming |
+| Component             | Location                     | Purpose                   |
+| --------------------- | ---------------------------- | ------------------------- |
+| CLI Interface         | `src/.../cli.py`             | Command-line entry point  |
+| FastAPI Server        | `src/.../api/main.py`        | HTTP API server           |
+| Workflow Orchestrator | `src/.../core/workflow.py`   | Manages research pipeline |
+| Agent System          | `src/.../agents/`            | Specialized AI agents     |
+| Event Bus             | `src/.../core/events.py`     | Async event coordination  |
+| SSE Handler           | `src/.../api/sse_handler.py` | Real-time streaming       |
 
 ## Entry Points
 
@@ -72,6 +73,7 @@ The Deep Research system operates in two modes:
 The CLI provides three main commands:
 
 #### Research Command (`cli.py:570-641`)
+
 ```python
 @cli.command()
 @click.argument("query")
@@ -80,12 +82,14 @@ def research(query: str, api_key: tuple, verbose: bool, mode: str, server_url: s
 ```
 
 **Data Flow:**
+
 1. Parse command-line arguments
 2. Create `APIKeys` model (`cli.py:615-619`)
 3. Call `run_research()` (`cli.py:633`)
 4. Execute in either Direct or HTTP mode
 
 #### Interactive Command (`cli.py:644-701`)
+
 ```python
 @cli.command()
 def interactive(mode: str, server_url: str):
@@ -96,18 +100,21 @@ Provides a REPL-like interface for multiple research queries.
 ### 2. FastAPI Entry Points
 
 #### Start Research Endpoint (`api/main.py:69-115`)
+
 ```python
 @app.post("/research", response_model=ResearchResponse)
 async def start_research(request: ResearchRequest):
 ```
 
 **Request Processing:**
+
 1. Validate request with `ResearchRequest` model (`main.py:34-42`)
 2. Generate unique `request_id` (`main.py:80`)
 3. Initialize `ResearchState` (`main.py:83-88`)
 4. Launch background task (`main.py:91-98`)
 
 #### Stream Updates Endpoint (`api/main.py:179-192`)
+
 ```python
 @app.get("/research/{request_id}/stream")
 async def stream_research_updates(request_id: str, request: Request):
@@ -120,6 +127,7 @@ Returns Server-Sent Events (SSE) stream for real-time updates.
 ### Core State Management
 
 #### ResearchState (`models/research.py:112-161`)
+
 ```python
 class ResearchState(BaseModel):
     request_id: str  # Unique identifier
@@ -134,12 +142,14 @@ class ResearchState(BaseModel):
 ```
 
 **Key Methods:**
+
 - `advance_stage()` (`research.py:136-141`) - Progress through pipeline
 - `start_research()` (`research.py:143-146`) - Initialize research
 - `is_completed()` (`research.py:148-150`) - Check completion
 - `set_error()` (`research.py:156-160`) - Handle errors
 
 ### Research Pipeline Stages (`models/research.py:10-20`)
+
 ```python
 class ResearchStage(str, Enum):
     PENDING = "pending"
@@ -154,12 +164,15 @@ class ResearchStage(str, Enum):
 ### Data Structures
 
 #### ResearchBrief (`models/research.py:30-55`)
+
 Structured research plan with objectives, questions, and constraints.
 
 #### ResearchFinding (`models/research.py:57-72`)
+
 Individual research result with source attribution and confidence scoring.
 
 #### ResearchReport (`models/research.py:91-110`)
+
 Final output with sections, citations, and recommendations.
 
 ## Workflow Orchestration
@@ -169,6 +182,7 @@ Final output with sections, citations, and recommendations.
 The central orchestrator managing the 5-stage research pipeline.
 
 #### Execute Research Method (`workflow.py:48-187`)
+
 ```python
 async def execute_research(
     self,
@@ -182,33 +196,42 @@ async def execute_research(
 **Pipeline Execution:**
 
 1. **Initialization** (`workflow.py:66-86`)
+
    - Create `ResearchState` with request_id
    - Initialize HTTP client
    - Create `ResearchDependencies`
 
 2. **Stage 1: Clarification** (`workflow.py:95-109`)
+
    ```python
    clarification_result = await clarification_agent.clarify_query(user_query, deps)
    ```
+
    - Validates and refines user query
    - May return clarifying questions
 
 3. **Stage 2: Brief Generation** (`workflow.py:112-119`)
+
    ```python
    research_brief = await brief_generator_agent.generate_brief(...)
    ```
+
    - Creates structured research plan
 
 4. **Stage 3: Research Execution** (`workflow.py:122-129`)
+
    ```python
    findings = await research_executor_agent.execute_research(...)
    ```
+
    - Parallel information gathering
 
 5. **Stage 4: Compression** (`workflow.py:132-144`)
+
    ```python
    compressed_findings = await compression_agent.compress_findings(...)
    ```
+
    - Synthesizes findings
 
 6. **Stage 5: Report Generation** (`workflow.py:147-158`)
@@ -218,6 +241,7 @@ async def execute_research(
    - Creates final deliverable
 
 ### Error Handling (`workflow.py:169-187`)
+
 - Catches exceptions at any stage
 - Emits error events
 - Updates state with error information
@@ -227,6 +251,7 @@ async def execute_research(
 ### Base Architecture
 
 #### BaseResearchAgent (`agents/base.py:45-99`)
+
 ```python
 class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](ABC):
     def __init__(self, name: str, model: str, output_type: type[OutputT]):
@@ -239,7 +264,9 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](ABC):
 ```
 
 #### ResearchDependencies (`agents/base.py:24-39`)
+
 Dependency injection container shared across all agents:
+
 ```python
 @dataclass
 class ResearchDependencies:
@@ -253,15 +280,16 @@ class ResearchDependencies:
 
 ### Specialized Agents
 
-| Agent | File | Lines | Purpose |
-|-------|------|-------|---------|
-| ClarificationAgent | `agents/clarification.py` | 34-230 | Query validation & refinement |
-| BriefGeneratorAgent | `agents/brief_generator.py` | 26-156 | Research plan creation |
-| ResearchExecutorAgent | `agents/research_executor.py` | 95-201 | Information gathering |
-| CompressionAgent | `agents/compression.py` | 35-165 | Finding synthesis |
-| ReportGeneratorAgent | `agents/report_generator.py` | 24-180 | Final report creation |
+| Agent                 | File                          | Lines  | Purpose                       |
+| --------------------- | ----------------------------- | ------ | ----------------------------- |
+| ClarificationAgent    | `agents/clarification.py`     | 34-230 | Query validation & refinement |
+| BriefGeneratorAgent   | `agents/brief_generator.py`   | 26-156 | Research plan creation        |
+| ResearchExecutorAgent | `agents/research_executor.py` | 95-201 | Information gathering         |
+| CompressionAgent      | `agents/compression.py`       | 35-165 | Finding synthesis             |
+| ReportGeneratorAgent  | `agents/report_generator.py`  | 24-180 | Final report creation         |
 
 #### Agent Registration (`agents/base.py:200-250`)
+
 ```python
 coordinator = AgentCoordinator()
 coordinator.register_agent(clarification_agent)
@@ -277,6 +305,7 @@ Provides asynchronous, lock-free coordination between components.
 #### Key Components:
 
 1. **ResearchEventBus Class** (`events.py:144-270`)
+
    ```python
    class ResearchEventBus:
        def subscribe(self, event_type: type[T], handler: EventHandler[T])
@@ -284,6 +313,7 @@ Provides asynchronous, lock-free coordination between components.
    ```
 
 2. **Event Types** (`events.py:39-137`)
+
    - `ResearchStartedEvent` - Research initiated
    - `StageCompletedEvent` - Stage finished
    - `StreamingUpdateEvent` - Real-time updates
@@ -303,6 +333,7 @@ Provides asynchronous, lock-free coordination between components.
 Converts internal events to Server-Sent Events for HTTP streaming.
 
 #### Event Generator (`sse_handler.py:67-216`)
+
 ```python
 async def event_generator(self, active_sessions: dict[str, ResearchState]):
     while True:
@@ -315,12 +346,14 @@ async def event_generator(self, active_sessions: dict[str, ResearchState]):
 ### Direct Mode (`cli.py:432-466`)
 
 1. **Event Subscription** (`cli.py:434-437`)
+
    ```python
    research_event_bus.subscribe(StreamingUpdateEvent, handler.handle_streaming_update)
    research_event_bus.subscribe(StageCompletedEvent, handler.handle_stage_completed)
    ```
 
 2. **Progress Display** (`cli.py:87-143`)
+
    - `CLIStreamHandler` manages terminal output
    - Real-time progress updates with Rich library
 
@@ -333,6 +366,7 @@ async def event_generator(self, active_sessions: dict[str, ResearchState]):
 ### HTTP Mode (`cli.py:473-519`)
 
 1. **HTTP Client** (`cli.py:145-315`)
+
    ```python
    class HTTPResearchClient:
        async def start_research(query, api_keys) -> str
@@ -341,6 +375,7 @@ async def event_generator(self, active_sessions: dict[str, ResearchState]):
    ```
 
 2. **SSE Stream Processing** (`cli.py:199-269`)
+
    ```python
    async def stream_events(self, request_id: str, handler: CLIStreamHandler):
        async with aconnect_sse(...) as event_source:
@@ -413,7 +448,7 @@ if state.final_report:
 
 ```python
 # 1. Start FastAPI server
-uvicorn open_deep_research_with_pydantic_ai.api.main:app
+uvicorn open_deep_research_pydantic_ai.api.main:app
 
 # 2. User runs: deep-research "What is quantum computing?" --mode http
 
@@ -458,7 +493,7 @@ display_http_report(report_data)
 ### File Structure Map
 
 ```
-src/open_deep_research_with_pydantic_ai/
+src/
 ├── cli.py                    # CLI interface (720 lines)
 ├── api/
 │   ├── main.py              # FastAPI server (266 lines)
@@ -485,20 +520,21 @@ src/open_deep_research_with_pydantic_ai/
 
 ### Key Functions Index
 
-| Function | Location | Purpose |
-|----------|----------|---------|
-| `execute_research()` | `workflow.py:48` | Main orchestration |
-| `clarify_query()` | `clarification.py:190` | Query validation |
-| `generate_brief()` | `brief_generator.py:87` | Plan creation |
-| `execute_research()` | `research_executor.py:156` | Data gathering |
-| `compress_findings()` | `compression.py:105` | Synthesis |
-| `generate_report()` | `report_generator.py:135` | Report creation |
-| `emit()` | `events.py:176` | Event emission |
-| `stream_events()` | `cli.py:199` | SSE streaming |
+| Function              | Location                   | Purpose            |
+| --------------------- | -------------------------- | ------------------ |
+| `execute_research()`  | `workflow.py:48`           | Main orchestration |
+| `clarify_query()`     | `clarification.py:190`     | Query validation   |
+| `generate_brief()`    | `brief_generator.py:87`    | Plan creation      |
+| `execute_research()`  | `research_executor.py:156` | Data gathering     |
+| `compress_findings()` | `compression.py:105`       | Synthesis          |
+| `generate_report()`   | `report_generator.py:135`  | Report creation    |
+| `emit()`              | `events.py:176`            | Event emission     |
+| `stream_events()`     | `cli.py:199`               | SSE streaming      |
 
 ### Common Modification Scenarios
 
 #### Adding a New Agent
+
 1. Create agent class in `agents/new_agent.py`
 2. Extend `BaseResearchAgent` (`base.py:45`)
 3. Implement `_get_default_system_prompt()`
@@ -506,18 +542,21 @@ src/open_deep_research_with_pydantic_ai/
 5. Add to workflow pipeline (`workflow.py`)
 
 #### Adding a New Event Type
+
 1. Define event class in `events.py`
 2. Extend `ResearchEvent` base class
 3. Add emission helper function
 4. Update SSE handler for streaming (`sse_handler.py`)
 
 #### Modifying the Pipeline
+
 1. Edit `execute_research()` in `workflow.py:48`
 2. Update `ResearchStage` enum (`research.py:10`)
 3. Modify state transitions (`research.py:136`)
 4. Update event emissions
 
 #### Adding a New API Endpoint
+
 1. Add endpoint in `api/main.py`
 2. Define request/response models
 3. Update CORS settings if needed (`main.py:24`)
@@ -532,6 +571,7 @@ src/open_deep_research_with_pydantic_ai/
 ### Environment Variables
 
 Configure in `.env` file:
+
 - `OPENAI_API_KEY` - OpenAI API key
 - `ANTHROPIC_API_KEY` - Anthropic API key
 - `TAVILY_API_KEY` - Tavily search API key

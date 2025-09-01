@@ -17,15 +17,15 @@ from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
 
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
     StageCompletedEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.core.logging import configure_logging
-from open_deep_research_with_pydantic_ai.core.sse_models import (
+from core.logging import configure_logging
+from core.sse_models import (
     CompletedMessage,
     ConnectionMessage,
     ErrorMessage,
@@ -36,9 +36,9 @@ from open_deep_research_with_pydantic_ai.core.sse_models import (
     UpdateMessage,
     parse_sse_message,
 )
-from open_deep_research_with_pydantic_ai.core.workflow import workflow
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys
-from open_deep_research_with_pydantic_ai.models.research import ResearchReport, ResearchStage
+from core.workflow import workflow
+from models.api_models import APIKeys
+from models.research import ResearchReport, ResearchStage
 
 # Try to import httpx-sse for HTTP mode support
 try:
@@ -651,7 +651,7 @@ async def run_research(
                         console.print(
                             f"[red]Failed to connect to server at {server_url}[/red]\n"
                             f"Ensure the server is running: "
-                            f"uvicorn open_deep_research_with_pydantic_ai.api.main:app"
+                            f"uvicorn open_deep_research_pydantic_ai.api.main:app"
                         )
                     else:
                         console.print(f"[red]Failed to fetch report: {e}[/red]")

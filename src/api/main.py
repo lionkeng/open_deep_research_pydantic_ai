@@ -9,12 +9,12 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from open_deep_research_with_pydantic_ai.api.sse_handler import create_sse_response
-from open_deep_research_with_pydantic_ai.core.context import ResearchContextManager
-from open_deep_research_with_pydantic_ai.core.events import research_event_bus
-from open_deep_research_with_pydantic_ai.core.workflow import workflow
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys
-from open_deep_research_with_pydantic_ai.models.research import ResearchStage, ResearchState
+from api.sse_handler import create_sse_response
+from core.context import ResearchContextManager
+from core.events import research_event_bus
+from core.workflow import workflow
+from models.api_models import APIKeys
+from models.research import ResearchStage, ResearchState
 
 from ..core.logging import configure_logging
 
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "open_deep_research_with_pydantic_ai.api.main:app",
+        "open_deep_research_pydantic_ai.api.main:app",
         host="0.0.0.0",
         port=8000,
         reload=True,

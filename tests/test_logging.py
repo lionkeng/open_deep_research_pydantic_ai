@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import logfire
 
-from open_deep_research_with_pydantic_ai.core.logging import configure_logging, is_configured
+from core.logging import configure_logging, is_configured
 
 
 def test_configure_logging_idempotent():
@@ -35,7 +35,7 @@ def test_configure_logging_enables_logfire():
 def test_configure_logging_thread_safety():
     """Test that concurrent calls to configure_logging are thread-safe."""
     # Reset state for test (accessing private module attributes for testing)
-    import open_deep_research_with_pydantic_ai.core.logging as log_module
+    import core.logging as log_module
     original_configured = log_module._configured
 
     try:
@@ -79,11 +79,11 @@ def test_is_configured_reflects_state():
     assert is_configured()
 
 
-@patch('open_deep_research_with_pydantic_ai.core.logging.logfire.configure')
+@patch('open_deep_research_pydantic_ai.core.logging.logfire.configure')
 def test_configure_logging_error_handling(mock_configure):
     """Test error handling when logfire.configure() fails."""
     # Reset state
-    import open_deep_research_with_pydantic_ai.core.logging as log_module
+    import core.logging as log_module
     original_configured = log_module._configured
 
     try:

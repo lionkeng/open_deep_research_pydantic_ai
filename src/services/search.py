@@ -8,7 +8,7 @@ import httpx
 import logfire
 from pydantic import BaseModel, ConfigDict, Field
 
-from open_deep_research_with_pydantic_ai.core.config import config
+from core.config import config
 
 
 class SearchResult(BaseModel):

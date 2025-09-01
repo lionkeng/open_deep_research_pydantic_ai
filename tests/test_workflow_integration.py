@@ -5,17 +5,17 @@ import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 
-from open_deep_research_with_pydantic_ai.core.workflow import workflow
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys
-from open_deep_research_with_pydantic_ai.models.research import (
+from core.workflow import workflow
+from models.api_models import APIKeys
+from models.research import (
     ResearchStage,
     ResearchState,
     ResearchFinding,
     ResearchReport,
 )
-from open_deep_research_with_pydantic_ai.agents.brief_generator import ResearchBrief as BriefGeneratorResearchBrief
-from open_deep_research_with_pydantic_ai.agents.clarification import ClarifyWithUser
-from open_deep_research_with_pydantic_ai.agents.compression import CompressedFindings
+from agents.brief_generator import ResearchBrief as BriefGeneratorResearchBrief
+from agents.clarification import ClarifyWithUser
+from agents.compression import CompressedFindings
 
 
 @pytest_asyncio.fixture
@@ -32,7 +32,7 @@ class TestWorkflowStage1Integration:
         """Test workflow when initial brief has high confidence - no clarification needed."""
 
         # Mock brief generator to return high confidence
-        with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
+        with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
             mock_brief.return_value = BriefGeneratorResearchBrief(
                 brief="I want to research quantum computing applications in cryptography, focusing on current implementations and security implications.",
                 confidence_score=0.9,  # High confidence - should skip clarification
@@ -40,13 +40,13 @@ class TestWorkflowStage1Integration:
             )
 
             # Mock the downstream agents to avoid full workflow execution
-            with patch('open_deep_research_with_pydantic_ai.agents.research_executor.research_executor_agent.execute_research') as mock_research:
+            with patch('open_deep_research_pydantic_ai.agents.research_executor.research_executor_agent.execute_research') as mock_research:
                 mock_research.return_value = []
 
-                with patch('open_deep_research_with_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
+                with patch('open_deep_research_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
                     mock_compress.return_value = CompressedFindings(summary="Test summary", key_insights=[], themes={})
 
-                    with patch('open_deep_research_with_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
+                    with patch('open_deep_research_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
                         mock_report.return_value = ResearchReport(
                             title="Test Report",
                             executive_summary="Test summary",
@@ -73,7 +73,7 @@ class TestWorkflowStage1Integration:
         """Test workflow when brief needs clarification in interactive mode."""
 
         # Mock configuration to enable interactive mode
-        with patch('open_deep_research_with_pydantic_ai.core.config.config') as mock_config:
+        with patch('open_deep_research_pydantic_ai.core.config.config') as mock_config:
             mock_config.research_interactive = True
             mock_config.max_clarification_questions = 2
             mock_config.research_brief_confidence_threshold = 0.7
@@ -92,10 +92,10 @@ class TestWorkflowStage1Integration:
                 )
             ]
 
-            with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation', side_effect=brief_calls) as mock_brief:
+            with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation', side_effect=brief_calls) as mock_brief:
 
                 # Mock clarification agent run method
-                with patch('open_deep_research_with_pydantic_ai.agents.clarification.clarification_agent.run') as mock_clarify:
+                with patch('open_deep_research_pydantic_ai.agents.clarification.clarification_agent.run') as mock_clarify:
                     mock_clarify.return_value = ClarifyWithUser(
                         need_clarification=True,
                         question="What specific area of AI are you interested in?",
@@ -104,15 +104,15 @@ class TestWorkflowStage1Integration:
 
                     # Mock CLI interaction (simulating interactive terminal)
                     with patch('sys.stdin.isatty', return_value=True):
-                        with patch('open_deep_research_with_pydantic_ai.interfaces.cli_clarification.ask_single_clarification_question') as mock_cli:
+                        with patch('open_deep_research_pydantic_ai.interfaces.cli_clarification.ask_single_clarification_question') as mock_cli:
                             mock_cli.return_value = "I'm interested in AI for healthcare diagnostics"
 
                             # Mock downstream agents
-                            with patch('open_deep_research_with_pydantic_ai.agents.research_executor.research_executor_agent.execute_research', return_value=[]):
-                                with patch('open_deep_research_with_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
+                            with patch('open_deep_research_pydantic_ai.agents.research_executor.research_executor_agent.execute_research', return_value=[]):
+                                with patch('open_deep_research_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
                                     mock_compress.return_value = CompressedFindings(summary="Test summary", key_insights=[], themes={})
 
-                                    with patch('open_deep_research_with_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
+                                    with patch('open_deep_research_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
                                         mock_report.return_value = ResearchReport(
                                             title="AI Healthcare Report",
                                             executive_summary="Test summary",
@@ -140,13 +140,13 @@ class TestWorkflowStage1Integration:
         """Test workflow pauses for HTTP clarification when not in terminal mode."""
 
         # Mock configuration to enable interactive mode
-        with patch('open_deep_research_with_pydantic_ai.core.config.config') as mock_config:
+        with patch('open_deep_research_pydantic_ai.core.config.config') as mock_config:
             mock_config.research_interactive = True
             mock_config.max_clarification_questions = 2
             mock_config.research_brief_confidence_threshold = 0.7
 
             # Mock brief generator to return low confidence
-            with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
+            with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
                 mock_brief.return_value = BriefGeneratorResearchBrief(
                     brief="I want to research AI",
                     confidence_score=0.5,  # Low confidence - needs clarification
@@ -154,7 +154,7 @@ class TestWorkflowStage1Integration:
                 )
 
                 # Mock clarification agent run method
-                with patch('open_deep_research_with_pydantic_ai.agents.clarification.clarification_agent.run') as mock_clarify:
+                with patch('open_deep_research_pydantic_ai.agents.clarification.clarification_agent.run') as mock_clarify:
                     mock_clarify.return_value = ClarifyWithUser(
                         need_clarification=True,
                         question="What specific area of AI are you interested in?",
@@ -181,13 +181,13 @@ class TestWorkflowStage1Integration:
         """Test workflow continues when question limit is reached."""
 
         # Mock configuration
-        with patch('open_deep_research_with_pydantic_ai.core.config.config') as mock_config:
+        with patch('open_deep_research_pydantic_ai.core.config.config') as mock_config:
             mock_config.research_interactive = True
             mock_config.max_clarification_questions = 1  # Low limit
             mock_config.research_brief_confidence_threshold = 0.7
 
             # Mock brief generator to return low confidence
-            with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
+            with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
                 mock_brief.return_value = BriefGeneratorResearchBrief(
                     brief="I want to research AI",
                     confidence_score=0.5,  # Low confidence but we'll hit question limit
@@ -196,11 +196,11 @@ class TestWorkflowStage1Integration:
 
                 # Mock clarification agent - workflow continues due to question limit
                 # Mock downstream agents
-                with patch('open_deep_research_with_pydantic_ai.agents.research_executor.research_executor_agent.execute_research', return_value=[]):
-                    with patch('open_deep_research_with_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
+                with patch('open_deep_research_pydantic_ai.agents.research_executor.research_executor_agent.execute_research', return_value=[]):
+                    with patch('open_deep_research_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
                         mock_compress.return_value = CompressedFindings(summary="Test summary", key_insights=[], themes={})
 
-                        with patch('open_deep_research_with_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
+                        with patch('open_deep_research_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
                             mock_report.return_value = ResearchReport(
                                 title="AI Report",
                                 executive_summary="Test summary",
@@ -249,7 +249,7 @@ class TestWorkflowResumeIntegration:
         )
 
         # Mock brief generator to return updated brief with conversation
-        with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
+        with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
             mock_brief.return_value = BriefGeneratorResearchBrief(
                 brief="I want to research machine learning applications in healthcare, focusing on diagnostic tools and patient outcomes.",
                 confidence_score=0.9,  # High confidence after clarification
@@ -265,11 +265,11 @@ class TestWorkflowResumeIntegration:
                     confidence=0.8
                 )
             ]
-            with patch('open_deep_research_with_pydantic_ai.agents.research_executor.research_executor_agent.execute_research', return_value=mock_findings):
-                with patch('open_deep_research_with_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
+            with patch('open_deep_research_pydantic_ai.agents.research_executor.research_executor_agent.execute_research', return_value=mock_findings):
+                with patch('open_deep_research_pydantic_ai.agents.compression.compression_agent.compress_findings') as mock_compress:
                     mock_compress.return_value = CompressedFindings(summary="Healthcare ML summary", key_insights=[], themes={})
 
-                    with patch('open_deep_research_with_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
+                    with patch('open_deep_research_pydantic_ai.agents.report_generator.report_generator_agent.generate_report') as mock_report:
                         mock_report.return_value = ResearchReport(
                             title="ML Healthcare Report",
                             executive_summary="Healthcare ML analysis",
@@ -301,7 +301,7 @@ class TestWorkflowErrorHandling:
         """Test workflow handles errors in brief generation gracefully."""
 
         # Mock brief generator to raise an exception
-        with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
+        with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
             mock_brief.side_effect = Exception("Brief generation failed")
 
             # Execute the workflow
@@ -320,13 +320,13 @@ class TestWorkflowErrorHandling:
         """Test workflow handles errors in clarification gracefully."""
 
         # Mock configuration to enable interactive mode
-        with patch('open_deep_research_with_pydantic_ai.core.config.config') as mock_config:
+        with patch('open_deep_research_pydantic_ai.core.config.config') as mock_config:
             mock_config.research_interactive = True
             mock_config.max_clarification_questions = 2
             mock_config.research_brief_confidence_threshold = 0.7
 
             # Mock brief generator to return low confidence
-            with patch('open_deep_research_with_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
+            with patch('open_deep_research_pydantic_ai.agents.brief_generator.brief_generator_agent.generate_from_conversation') as mock_brief:
                 mock_brief.return_value = BriefGeneratorResearchBrief(
                     brief="I want to research AI",
                     confidence_score=0.5,  # Low confidence - needs clarification
@@ -334,7 +334,7 @@ class TestWorkflowErrorHandling:
                 )
 
                 # Mock clarification agent to raise error
-                with patch('open_deep_research_with_pydantic_ai.agents.clarification.clarification_agent.run') as mock_clarify:
+                with patch('open_deep_research_pydantic_ai.agents.clarification.clarification_agent.run') as mock_clarify:
                     mock_clarify.side_effect = Exception("Clarification failed")
 
                     # Execute the workflow

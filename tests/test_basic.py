@@ -2,12 +2,12 @@
 
 import pytest
 
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.events import (
     ResearchStartedEvent,
     emit_research_started,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.models.research import (
+from models.research import (
     ResearchBrief,
     ResearchFinding,
     ResearchStage,

@@ -8,7 +8,7 @@ This document provides a comprehensive implementation plan for migrating from th
 
 ### Dual-Agent Architecture Issues
 
-**Core/Agents Coordinator Pattern** (`src/open_deep_research_with_pydantic_ai/core/agents.py`):
+**Core/Agents Coordinator Pattern** (`src/core/agents.py`):
 
 - Contains 3 functional agents: `clarification_agent`, `transformation_agent`, `brief_agent`
 - Uses `AgentCoordinator` class for centralized management
@@ -16,7 +16,7 @@ This document provides a comprehensive implementation plan for migrating from th
 - 417 lines of code with tools and validation logic
 - Creates tight coupling between agents
 
-**Modern Individual Agent Classes** (`src/open_deep_research_with_pydantic_ai/agents/`):
+**Modern Individual Agent Classes** (`src/agents/`):
 
 - Example: `clarification.py` with sophisticated 4-category assessment framework
 - Uses class-based approach with `BaseResearchAgent` inheritance
@@ -55,7 +55,7 @@ This document provides a comprehensive implementation plan for migrating from th
 
 ### 1.1 Enhanced Base Agent Class
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/base.py`
+**File**: `src/agents/base.py`
 
 **Key Enhancements**:
 
@@ -90,7 +90,7 @@ class BaseResearchAgent(ABC, Generic[TDeps, TOutput]):
 
 ### 1.2 Agent Factory Pattern
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/factory.py`
+**File**: `src/agents/factory.py`
 
 **Features**:
 
@@ -161,7 +161,7 @@ class ModernAgent(BaseResearchAgent[ResearchDependencies, OutputModel],
 
 #### Query Transformation Agent
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/query_transformation.py`
+**File**: `src/agents/query_transformation.py`
 
 **Key Features**:
 
@@ -194,7 +194,7 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
 
 #### Brief Generation Agent
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/brief_generator.py`
+**File**: `src/agents/brief_generator.py`
 
 **Key Features**:
 
@@ -259,7 +259,7 @@ class ResearchBrief(BaseModel):
 
 ### 3.1 Modern Workflow Architecture
 
-**File**: `src/open_deep_research_with_pydantic_ai/core/workflow.py`
+**File**: `src/core/workflow.py`
 
 **Key Features**:
 
@@ -385,7 +385,7 @@ class TestWorkflowIntegration:
 
 ### 5.1 Performance Monitoring
 
-**File**: `src/open_deep_research_with_pydantic_ai/agents/performance.py`
+**File**: `src/agents/performance.py`
 
 **Features**:
 

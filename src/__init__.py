@@ -1,7 +1,7 @@
 """Deep Research with Pydantic AI - AI-powered research system."""
 
-from open_deep_research_with_pydantic_ai.core.workflow import workflow
-from open_deep_research_with_pydantic_ai.models.research import (
+from core.workflow import workflow
+from models.research import (
     ResearchBrief,
     ResearchFinding,
     ResearchReport,

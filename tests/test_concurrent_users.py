@@ -6,19 +6,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from open_deep_research_with_pydantic_ai.core.context import (
+from core.context import (
     ResearchContext,
     ResearchContextManager,
     get_current_context,
 )
-from open_deep_research_with_pydantic_ai.core.events import ResearchEventBus
-from open_deep_research_with_pydantic_ai.models.research import ResearchState
+from core.events import ResearchEventBus
+from models.research import ResearchState
 
 
 @pytest_asyncio.fixture
 async def clean_event_bus():
     """Provide a clean event bus for each test."""
-    from open_deep_research_with_pydantic_ai.core.events import research_event_bus
+    from core.events import research_event_bus
 
     # Clean up any existing state before the test
     await research_event_bus.cleanup()
@@ -96,7 +96,7 @@ class TestUserScopedEventBus:
 
     async def test_event_isolation_between_users(self, clean_event_bus):
         """Test that events are isolated between different users."""
-        from open_deep_research_with_pydantic_ai.core.events import (
+        from core.events import (
             ResearchStartedEvent,
         )
 
@@ -119,7 +119,7 @@ class TestUserScopedEventBus:
 
         # Check that each user only sees their own events
         with patch(
-            "open_deep_research_with_pydantic_ai.core.events.get_current_context",
+            "open_deep_research_pydantic_ai.core.events.get_current_context",
             return_value=ResearchContext(user_id="user1"),
         ):
             user1_history = await clean_event_bus.get_event_history("user1:req1")
@@ -127,7 +127,7 @@ class TestUserScopedEventBus:
             assert user1_history[0].request_id == "user1:req1"
 
         with patch(
-            "open_deep_research_with_pydantic_ai.core.events.get_current_context",
+            "open_deep_research_pydantic_ai.core.events.get_current_context",
             return_value=ResearchContext(user_id="user2"),
         ):
             user2_history = await clean_event_bus.get_event_history("user2:req2")
@@ -165,7 +165,7 @@ class TestUserScopedEventBus:
 
     async def test_concurrent_event_emission(self, clean_event_bus):
         """Test that concurrent event emissions are thread-safe."""
-        from open_deep_research_with_pydantic_ai.core.events import (
+        from core.events import (
             ResearchStartedEvent,
         )
 
@@ -221,9 +221,9 @@ class TestConcurrentWorkflows:
 
     async def test_concurrent_research_requests(self):
         """Test that concurrent requests from different users work correctly."""
-        from open_deep_research_with_pydantic_ai.core.workflow import ResearchWorkflow
+        from core.workflow import ResearchWorkflow
 
-        with patch("open_deep_research_with_pydantic_ai.core.workflow.httpx.AsyncClient"):
+        with patch("open_deep_research_pydantic_ai.core.workflow.httpx.AsyncClient"):
             workflow = ResearchWorkflow()
 
             # Mock the agents
@@ -283,12 +283,12 @@ class TestAPIUserContext:
         """Test that the API extracts user ID and session ID from headers."""
         from fastapi.testclient import TestClient
 
-        from open_deep_research_with_pydantic_ai.api.main import app
+        from api.main import app
 
         with TestClient(app) as client:
             # Mock the workflow execution
             with patch(
-                "open_deep_research_with_pydantic_ai.api.main.workflow.execute_research",
+                "open_deep_research_pydantic_ai.api.main.workflow.execute_research",
                 new_callable=AsyncMock,
             ) as mock_execute:
                 mock_execute.return_value = MagicMock(

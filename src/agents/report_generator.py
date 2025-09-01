@@ -4,19 +4,19 @@ from datetime import datetime
 
 from pydantic_ai import RunContext
 
-from open_deep_research_with_pydantic_ai.agents.base import (
+from agents.base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
 )
-from open_deep_research_with_pydantic_ai.agents.compression import CompressedFindings
-from open_deep_research_with_pydantic_ai.core.events import (
+from agents.compression import CompressedFindings
+from core.events import (
     ResearchCompletedEvent,
     emit_stage_completed,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.models.research import (
+from models.research import (
     ResearchBrief,
     ResearchFinding,
     ResearchReport,

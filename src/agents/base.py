@@ -1,11 +1,12 @@
-"""Enhanced base agent classes with dependency injection, performance monitoring, and factory support."""
+"""Enhanced base agent classes with dependency injection and performance monitoring."""
 
 import asyncio
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, TypeVar, Generic, Callable, Awaitable
+from typing import Any, TypeVar
 
 import httpx
 import logfire
@@ -14,22 +15,23 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import RunUsage
 
-from open_deep_research_with_pydantic_ai.core.config import config
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.events import (
     AgentDelegationEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.core.logging import configure_logging
-from open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
-from open_deep_research_with_pydantic_ai.models.research import ResearchState
+from core.logging import configure_logging
+from models.api_models import APIKeys, ResearchMetadata
+from models.research import ResearchState
 
 
 # Enhanced exception system for agent errors
 class AgentError(Exception):
     """Base exception for agent-related errors."""
-    
-    def __init__(self, message: str, agent_name: str | None = None, context: dict[str, Any] | None = None):
+
+    def __init__(
+        self, message: str, agent_name: str | None = None, context: dict[str, Any] | None = None
+    ):
         super().__init__(message)
         self.agent_name = agent_name
         self.context = context or {}
@@ -38,26 +40,31 @@ class AgentError(Exception):
 
 class AgentExecutionError(AgentError):
     """Raised when agent execution fails."""
+
     pass
 
 
 class AgentValidationError(AgentError):
     """Raised when agent input/output validation fails."""
+
     pass
 
 
 class AgentConfigurationError(AgentError):
     """Raised when agent configuration is invalid."""
+
     pass
 
 
 class AgentTimeoutError(AgentError):
     """Raised when agent execution times out."""
+
     pass
 
 
 class AgentStatus(Enum):
     """Agent execution status enumeration."""
+
     IDLE = auto()
     INITIALIZING = auto()
     RUNNING = auto()
@@ -68,7 +75,7 @@ class AgentStatus(Enum):
 
 class PerformanceMetrics(BaseModel):
     """Performance metrics for agent execution."""
-    
+
     execution_time: float = Field(default=0.0, description="Total execution time in seconds")
     token_usage: dict[str, int] = Field(default_factory=dict, description="Token usage statistics")
     api_calls: int = Field(default=0, description="Number of API calls made")
@@ -77,20 +84,20 @@ class PerformanceMetrics(BaseModel):
     retry_count: int = Field(default=0, description="Number of retries attempted")
     memory_usage: float = Field(default=0.0, description="Peak memory usage in MB")
     success_rate: float = Field(default=1.0, description="Success rate (0.0 to 1.0)")
-    
+
     def update_execution_time(self, start_time: float) -> None:
         """Update execution time from start timestamp."""
         self.execution_time = time.time() - start_time
-    
+
     def record_success(self) -> None:
         """Record a successful execution."""
         # Success rate calculation would need total attempts tracking
         pass
-    
+
     def record_failure(self) -> None:
         """Record a failed execution."""
         self.error_count += 1
-    
+
     def record_retry(self) -> None:
         """Record a retry attempt."""
         self.retry_count += 1
@@ -98,7 +105,7 @@ class PerformanceMetrics(BaseModel):
 
 class AgentConfiguration(BaseModel):
     """Configuration for agent creation and behavior."""
-    
+
     agent_name: str = Field(description="Name identifier for the agent")
     agent_type: str = Field(description="Type identifier for the agent")
     model: str | None = Field(default=None, description="LLM model to use")
@@ -107,10 +114,13 @@ class AgentConfiguration(BaseModel):
     max_retries: int = Field(default=3, description="Maximum retry attempts")
     enable_monitoring: bool = Field(default=True, description="Enable performance monitoring")
     enable_caching: bool = Field(default=False, description="Enable response caching")
-    custom_settings: dict[str, Any] = Field(default_factory=dict, description="Agent-specific settings")
-    
+    custom_settings: dict[str, Any] = Field(
+        default_factory=dict, description="Agent-specific settings"
+    )
+
     class Config:
         """Pydantic configuration."""
+
         extra = "allow"  # Allow additional fields for agent-specific config
 
 
@@ -138,19 +148,19 @@ OutputT = TypeVar("OutputT", bound=BaseModel)
 # Mixin classes for enhanced functionality
 class ToolMixin:
     """Mixin for tool management functionality."""
-    
+
     def __init__(self):
         self._tools: dict[str, Callable] = {}
-    
+
     def register_tool(self, name: str, tool: Callable) -> None:
         """Register a tool for the agent."""
         self._tools[name] = tool
         logfire.debug(f"Registered tool: {name}")
-    
+
     def get_tool(self, name: str) -> Callable | None:
         """Get a registered tool by name."""
         return self._tools.get(name)
-    
+
     def list_tools(self) -> list[str]:
         """List all registered tool names."""
         return list(self._tools.keys())
@@ -158,26 +168,26 @@ class ToolMixin:
 
 class ConversationMixin:
     """Mixin for conversation context management."""
-    
+
     def __init__(self):
         self._conversation_history: list[ModelMessage] = []
         self._context_window_size: int = 10
-    
+
     def add_message(self, message: ModelMessage) -> None:
         """Add a message to conversation history."""
         self._conversation_history.append(message)
         # Trim to context window size
         if len(self._conversation_history) > self._context_window_size:
-            self._conversation_history = self._conversation_history[-self._context_window_size:]
-    
+            self._conversation_history = self._conversation_history[-self._context_window_size :]
+
     def get_conversation_context(self) -> list[ModelMessage]:
         """Get recent conversation context."""
         return self._conversation_history.copy()
-    
+
     def clear_conversation(self) -> None:
         """Clear conversation history."""
         self._conversation_history.clear()
-    
+
     def set_context_window_size(self, size: int) -> None:
         """Set the conversation context window size."""
         self._context_window_size = max(1, size)
@@ -185,7 +195,7 @@ class ConversationMixin:
 
 class PerformanceMonitoringMixin:
     """Mixin for performance monitoring functionality."""
-    
+
     def __init__(self):
         self.metrics = PerformanceMetrics()
         self._execution_start_time: float | None = None
@@ -195,22 +205,22 @@ class PerformanceMonitoringMixin:
             "on_error": [],
             "on_retry": [],
         }
-    
+
     def start_execution_timer(self) -> None:
         """Start timing execution."""
         self._execution_start_time = time.time()
-    
+
     def end_execution_timer(self) -> None:
         """End timing and update metrics."""
         if self._execution_start_time:
             self.metrics.update_execution_time(self._execution_start_time)
             self._execution_start_time = None
-    
+
     def add_hook(self, event: str, hook: Callable) -> None:
         """Add a lifecycle hook."""
         if event in self._hooks:
             self._hooks[event].append(hook)
-    
+
     async def execute_hooks(self, event: str, context: dict[str, Any] | None = None) -> None:
         """Execute hooks for a given event."""
         for hook in self._hooks.get(event, []):
@@ -243,7 +253,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         ToolMixin.__init__(self)
         ConversationMixin.__init__(self)
         PerformanceMonitoringMixin.__init__(self)
-        
+
         # Set configuration with defaults
         self.config = config or AgentConfiguration(
             agent_name=self.__class__.__name__,
@@ -252,9 +262,10 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.name = self.config.agent_name
         self.dependencies = dependencies
         self.status = AgentStatus.IDLE
-        
+
         # Get model configuration
-        from open_deep_research_with_pydantic_ai.core.config import config as global_config
+        from core.config import config as global_config
+
         model_config = global_config.get_model_config()
         self.model = self.config.model or model_config["model"]
         self._output_type = self._get_output_type()
@@ -285,14 +296,14 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             agent_type=self.config.agent_type,
             model=self.model,
         )
-        
+
         self.status = AgentStatus.IDLE
 
     @abstractmethod
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for this agent."""
         pass
-    
+
     @abstractmethod
     def _get_output_type(self) -> type[OutputT] | None:
         """Get the output type for this agent. Override in subclasses."""
@@ -302,11 +313,11 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         """Register agent-specific tools. Override in subclasses."""
         # This is intentionally empty - subclasses can override if needed
         return
-    
+
     def update_dependencies(self, dependencies: DepsT) -> None:
         """Update agent dependencies."""
         self.dependencies = dependencies
-    
+
     def get_agent_info(self) -> dict[str, Any]:
         """Get comprehensive agent information."""
         return {
@@ -342,16 +353,16 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         if not actual_deps:
             raise AgentConfigurationError(
                 "No dependencies provided and no stored dependencies available",
-                agent_name=self.name
+                agent_name=self.name,
             )
-        
+
         # Update status and start monitoring
         self.status = AgentStatus.RUNNING
         self.start_execution_timer()
-        
+
         # Execute before_execution hooks
         await self.execute_hooks("before_execution", {"prompt": prompt})
-        
+
         try:
             # Emit streaming update if callback provided
             if actual_deps.stream_callback and stream:
@@ -371,16 +382,16 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
                     message_history=message_history or self.get_conversation_context(),
                     usage=actual_deps.usage,  # Pass usage for tracking
                 )
-                
+
                 # Update metrics and status on success
                 self.metrics.record_success()
                 self.status = AgentStatus.COMPLETED
-                
+
             except Exception as e:
                 # Record metrics for errors and retries
                 self.metrics.record_failure()
                 await self.execute_hooks("on_error", {"error": e})
-                
+
                 # Check if it's a recoverable error
                 if "rate limit" in str(e).lower():
                     self.metrics.record_retry()
@@ -395,7 +406,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
                     raise AgentExecutionError(
                         f"Agent execution failed: {e}",
                         agent_name=self.name,
-                        context={"prompt": prompt, "error": str(e)}
+                        context={"prompt": prompt, "error": str(e)},
                     ) from e
 
             # Log completion and update conversation history
@@ -405,7 +416,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
                 usage=result.usage() if result.usage() else None,
                 execution_time=self.metrics.execution_time,
             )
-            
+
             # Store conversation context if message history was provided
             if message_history:
                 for msg in message_history:
@@ -424,27 +435,30 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             # Handle unexpected errors
             self.status = AgentStatus.FAILED
             self.metrics.record_failure()
-            
+
             logfire.error(
                 f"{self.name} failed",
                 request_id=actual_deps.research_state.request_id if actual_deps else "unknown",
                 error=str(e),
                 exc_info=True,
             )
-            
+
             raise AgentExecutionError(
                 f"Unexpected error in {self.name}: {e}",
                 agent_name=self.name,
-                context={"prompt": prompt, "error": str(e)}
+                context={"prompt": prompt, "error": str(e)},
             ) from e
-        
+
         finally:
             # Always complete monitoring and execute after hooks
             self.end_execution_timer()
-            await self.execute_hooks("after_execution", {
-                "status": self.status.name,
-                "execution_time": self.metrics.execution_time,
-            })
+            await self.execute_hooks(
+                "after_execution",
+                {
+                    "status": self.status.name,
+                    "execution_time": self.metrics.execution_time,
+                },
+            )
 
     async def delegate_to_agent(
         self,

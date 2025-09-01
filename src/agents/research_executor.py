@@ -8,24 +8,24 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from open_deep_research_with_pydantic_ai.agents.base import (
+from agents.base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
 )
-from open_deep_research_with_pydantic_ai.core.events import (
+from core.events import (
     FindingDiscoveredEvent,
     emit_stage_completed,
     research_event_bus,
 )
-from open_deep_research_with_pydantic_ai.models.research import (
+from models.research import (
     ResearchBrief,
     ResearchFinding,
     ResearchResults,
     ResearchStage,
 )
-from open_deep_research_with_pydantic_ai.services.search import search_service
+from services.search import search_service
 
 # Type alias to help PyRight with type inference
 FindingsList = list[ResearchFinding]
@@ -271,9 +271,7 @@ Always provide structured findings with clear source attribution."""
             Specialized research agent
         """
         # Create proper specialized agent instead of recursive ResearchExecutorAgent
-        sub_agent = SpecializedResearchAgent(
-            name=name, specialization=specialization
-        )
+        sub_agent = SpecializedResearchAgent(name=name, specialization=specialization)
 
         self.sub_agents[name] = sub_agent
         return sub_agent

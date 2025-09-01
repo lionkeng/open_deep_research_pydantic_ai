@@ -5,6 +5,7 @@ Based on my thorough analysis of the current codebase and the original clarifica
 ## Current Status Assessment
 
 ### ✅ What's Already Done (Phase 2)
+
 - **QueryTransformationAgent**: Fully implemented with transformation logic
 - **TransformedQuery Model**: Complete data structure in models/research.py
 - **Basic clarification workflow**: Some foundation exists
@@ -19,16 +20,20 @@ Based on the code reviewer's analysis, there are significant gaps between what w
 ### Phase 1: Enhanced Clarification System Prompt (MISSING - HIGH PRIORITY)
 
 **Files to Create/Modify:**
-- Enhance `src/open_deep_research_with_pydantic_ai/agents/clarification.py`
+
+- Enhance `src/agents/clarification.py`
 
 **Key Implementation:**
+
 1. **Replace current basic system with enhanced clarification logic**:
+
    - Implement `_assess_query_breadth()` method with quantitative assessment
    - Add explicit conditional output instructions (if/then logic)
    - Create comprehensive scope assessment criteria
    - Add breadth indicators detection: ["what is", "how does", "explain", "research", etc.]
 
 2. **Enhanced ClarifyWithUser Model** (matches LangGraph approach):
+
    ```python
    class ClarifyWithUser(BaseModel):
        need_clarification: bool
@@ -37,6 +42,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 3. **Breadth Assessment Logic**:
+
    ```python
    async def _assess_query_breadth(self, query: str, conversation: list[str]) -> tuple[float, Dict[str, Any]]:
        # Calculate breadth score (0.0-1.0)
@@ -45,6 +51,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 4. **Enhanced System Prompt** (from plan lines 102-163):
+
    ```python
    def _get_default_system_prompt(self) -> str:
        return """You are a research clarification assistant. Today's date is {date}.
@@ -88,10 +95,13 @@ Based on the code reviewer's analysis, there are significant gaps between what w
 ### Phase 3: Enhanced Brief Generation Integration (CRITICAL GAP)
 
 **Files to Modify:**
-- Complete rewrite of `src/open_deep_research_with_pydantic_ai/agents/brief_generator.py`
+
+- Complete rewrite of `src/agents/brief_generator.py`
 
 **Key Implementation:**
+
 1. **Actual TransformedQuery Integration**:
+
    ```python
    async def generate_from_conversation(self, deps: ResearchDependencies) -> BriefResult:
        # Extract transformation data from metadata
@@ -108,6 +118,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 2. **Method Decomposition** (8 helper methods):
+
    - `_extract_transformation_data()` - Safe TransformedQuery extraction
    - `_build_transformed_prompt()` - Rich context prompt building
    - `_build_conversation_prompt()` - Fallback prompt
@@ -118,6 +129,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    - `_enhance_transformation_metadata()` - Additional metadata enrichment
 
 3. **Enhanced Context Integration**:
+
    ```python
    def _build_transformed_prompt(self, transformation_data: TransformedQuery, deps: ResearchDependencies) -> str:
        return f"""Generate comprehensive research brief for enhanced question:
@@ -136,6 +148,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 4. **Dynamic Confidence Scoring**:
+
    ```python
    def _calculate_base_confidence(self, transformation_data: TransformedQuery) -> float:
        base_confidence = min(0.95, max(0.7, transformation_data.specificity_score + 0.1))
@@ -154,13 +167,16 @@ Based on the code reviewer's analysis, there are significant gaps between what w
 ### Phase 4: Testing and Validation Framework (IMPLEMENT)
 
 **Files to Create:**
+
 - `tests/test_clarification_improvement.py` (main comprehensive test suite)
 - `tests/test_query_specificity.py` (focused specificity tests)
 - `tests/test_confidence_scoring.py` (confidence validation tests)
 - Enhance existing `tests/test_workflow_integration.py`
 
 **Key Testing Coverage:**
+
 1. **Parametrized Clarification Tests** (25+ test cases from plan lines 319-333):
+
    ```python
    @pytest.mark.parametrize("query,should_clarify,reason", [
        # Broad queries that SHOULD require clarification
@@ -181,6 +197,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 2. **Query Transformation Tests**:
+
    ```python
    async def test_question_transformation_specificity():
        """Test that question transformer adds appropriate specificity."""
@@ -196,6 +213,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 3. **Integration Tests** (from plan lines 367-407):
+
    ```python
    class TestWorkflowIntegration:
        async def test_broad_query_workflow(self):
@@ -212,6 +230,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 4. **Performance and Load Testing**:
+
    ```python
    async def test_concurrent_clarification_requests():
        """Test handling of concurrent clarification requests."""
@@ -229,10 +248,13 @@ Based on the code reviewer's analysis, there are significant gaps between what w
 ### Phase 5: Configuration and Tuning (ENHANCE EXISTING)
 
 **Files to Modify:**
-- Enhance `src/open_deep_research_with_pydantic_ai/core/config.py` with missing options
+
+- Enhance `src/core/config.py` with missing options
 
 **Key Additions:**
+
 1. **Missing Configuration Options** (from plan lines 420-435):
+
    ```python
    class APIConfig(BaseModel):
        # Enhanced clarification settings
@@ -254,6 +276,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 2. **Advanced Tuning Options**:
+
    ```python
    specificity_scoring_weights: Dict[str, float] = Field(
        default_factory=lambda: {
@@ -268,6 +291,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 3. **Configuration Validation**:
+
    ```python
    def validate_clarification_config(self) -> List[str]:
        """Validate clarification configuration for consistency."""
@@ -285,10 +309,13 @@ Based on the code reviewer's analysis, there are significant gaps between what w
 ### Workflow Integration (CRITICAL)
 
 **Files to Modify:**
-- `src/open_deep_research_with_pydantic_ai/core/workflow.py`
+
+- `src/core/workflow.py`
 
 **Key Integration:**
+
 1. **Enhanced Workflow Integration** (from plan lines 266-278):
+
    ```python
    # After clarification is complete, transform conversation into research question
    transformer = QueryTransformationAgent()
@@ -301,6 +328,7 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 2. **HTTP Mode Pause/Resume**:
+
    ```python
    if sys.stdin.isatty():  # Interactive terminal (CLI mode)
        # Use CLI interface for clarification
@@ -315,9 +343,10 @@ Based on the code reviewer's analysis, there are significant gaps between what w
    ```
 
 3. **CLI Interactive Mode**:
+
    ```python
    # Create CLI interface for real-time clarification
-   from open_deep_research_with_pydantic_ai.interfaces.cli_clarification import ask_single_clarification_question
+   from open_deep_research_pydantic_ai.interfaces.cli_clarification import ask_single_clarification_question
 
    user_response = ask_single_clarification_question(clarification.question)
    if user_response:
@@ -328,16 +357,19 @@ Based on the code reviewer's analysis, there are significant gaps between what w
 ## Priority Implementation Order
 
 ### 🔥 **Critical Priority (Must Complete First)**
+
 1. **Phase 1 Enhanced Clarification** - Core system is missing proper assessment logic
 2. **Phase 3 Brief Integration** - Critical gap identified by code review
 3. **Workflow Integration** - Connect all components properly
 
 ### 📋 **High Priority (Complete After Critical)**
+
 4. **Phase 4 Testing Framework** - Ensure everything works reliably with comprehensive test coverage
 5. **Phase 5 Configuration Completion** - Add missing advanced configuration options
 
 ### 📝 **Documentation & Polish**
-6. **CLI Interface Creation** - `src/open_deep_research_with_pydantic_ai/interfaces/cli_clarification.py`
+
+6. **CLI Interface Creation** - `src/interfaces/cli_clarification.py`
 7. **Examples and Documentation** - Complete user guides and examples
 8. **Performance Optimization** - Based on test results
 
@@ -356,12 +388,14 @@ After implementation, the system will achieve the vision outlined in the origina
 ## Success Metrics (From Original Plan)
 
 ### Quantitative Metrics
+
 - **Clarification Accuracy**: % of broad queries correctly identified (target: >90%)
 - **False Positive Rate**: % of specific queries incorrectly flagged (target: <10%)
 - **Question Quality**: Average length and detail of clarifying questions (target: >150 words)
 - **User Satisfaction**: Rating of clarification relevance (target: >4.5/5)
 
 ### Qualitative Metrics
+
 - Broad queries like "What is quantum computing?" should consistently trigger clarification
 - Clarifying questions should address specific missing dimensions (audience, purpose, scope)
 - Research quality should improve due to better initial specification
@@ -378,32 +412,37 @@ After implementation, the system will achieve the vision outlined in the origina
 ## Risk Mitigation
 
 ### High Risk
+
 - **Breaking existing functionality**: Comprehensive testing and backward compatibility preservation
 - **Over-clarification**: Strict limits and quality thresholds, configurable sensitivity
 
 ### Medium Risk
+
 - **Performance impact**: Caching and optimization, configurable features
 - **Prompt engineering complexity**: Modular design and extensive testing
 
 ### Low Risk
+
 - **Configuration complexity**: Sensible defaults and clear documentation
 - **Integration complexity**: Clean interfaces and staged rollout
 
 ## Files to be Modified/Created
 
 **Enhanced Files (8):**
-- `src/open_deep_research_with_pydantic_ai/agents/clarification.py` - Complete enhanced implementation
-- `src/open_deep_research_with_pydantic_ai/agents/brief_generator.py` - Add actual TransformedQuery integration
-- `src/open_deep_research_with_pydantic_ai/core/workflow.py` - Integrate transformation step
-- `src/open_deep_research_with_pydantic_ai/core/config.py` - Add missing configuration options
+
+- `src/agents/clarification.py` - Complete enhanced implementation
+- `src/agents/brief_generator.py` - Add actual TransformedQuery integration
+- `src/core/workflow.py` - Integrate transformation step
+- `src/core/config.py` - Add missing configuration options
 - `tests/test_agents.py` - Update for new functionality
 - `tests/test_workflow_integration.py` - Add comprehensive integration tests
 
 **New Files (8):**
+
 - `tests/test_clarification_improvement.py` - Main comprehensive test suite (25+ test cases)
 - `tests/test_query_specificity.py` - Focused specificity and breadth assessment tests
 - `tests/test_confidence_scoring.py` - Confidence scoring validation tests
-- `src/open_deep_research_with_pydantic_ai/interfaces/cli_clarification.py` - CLI interaction interface
+- `src/interfaces/cli_clarification.py` - CLI interaction interface
 - `examples/clarification_examples.py` - Usage examples and demonstrations
 - `docs/implementation_status.md` - Final implementation status and metrics
 - `docs/configuration_guide.md` - Complete configuration reference
@@ -412,6 +451,7 @@ After implementation, the system will achieve the vision outlined in the origina
 ## Monitoring and Observability
 
 ### Key Metrics to Track (From Original Plan)
+
 ```python
 # Add to research_state.metadata for monitoring
 clarification_metrics = {
@@ -424,6 +464,7 @@ clarification_metrics = {
 ```
 
 ### Logging and Debugging
+
 - Log all clarification decisions with reasoning
 - Track false positives/negatives for continuous improvement
 - Monitor transformation quality and user feedback
@@ -434,23 +475,27 @@ clarification_metrics = {
 **Total Estimated Work:** 12-16 hours of focused implementation
 
 ### Week 1: Core Improvements (4-6 hours)
+
 - [ ] Implement enhanced clarification system prompt with breadth assessment
 - [ ] Add scope breadth detection logic and explicit conditional output
 - [ ] Create comprehensive test cases for problem queries like "What is quantum computing?"
 
 ### Week 2: Brief Integration (4-5 hours)
+
 - [ ] Implement actual TransformedQuery integration in brief generator
 - [ ] Add method decomposition with 8 helper methods
 - [ ] Implement dynamic confidence scoring and metadata tracking
 - [ ] Test transformation output quality and integration
 
 ### Week 3: Testing & Integration (3-4 hours)
+
 - [ ] Implement comprehensive test suite with parametrized test cases
 - [ ] Add workflow integration for transformation step after clarification
 - [ ] Create CLI interface for interactive clarification
 - [ ] Performance and integration testing
 
 ### Week 4: Configuration & Optimization (1-2 hours)
+
 - [ ] Add missing configuration options and validation
 - [ ] Fine-tune thresholds and prompts based on test results
 - [ ] Documentation and deployment preparation
