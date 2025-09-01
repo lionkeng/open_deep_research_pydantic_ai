@@ -379,19 +379,19 @@ class ResearchWorkflow:
                 research_state.metadata = {}
 
             research_state.metadata["clarification_assessment"] = {
-                "needs_clarification": clarification_result.needs_clarification,
+                "need_clarification": clarification_result.need_clarification,
                 "question": clarification_result.question,
                 "verification": clarification_result.verification,
-                "confidence_score": clarification_result.confidence_score,
-                "missing_dimensions": clarification_result.missing_dimensions,
-                "breadth_score": clarification_result.breadth_score,
-                "assessment_reasoning": clarification_result.assessment_reasoning,
-                "suggested_clarifications": clarification_result.suggested_clarifications,
+                "missing_dimensions": getattr(clarification_result, "missing_dimensions", []),
+                "assessment_reasoning": getattr(clarification_result, "assessment_reasoning", ""),
+                "suggested_clarifications": getattr(
+                    clarification_result, "suggested_clarifications", []
+                ),
             }
 
             # Handle clarification if needed (simplified for non-interactive)
             clarification_responses = {}
-            if clarification_result.needs_clarification and clarification_result.question:
+            if clarification_result.need_clarification and clarification_result.question:
                 import sys
 
                 if sys.stdin.isatty():  # Interactive mode (CLI)

@@ -16,12 +16,12 @@ dependencies = [
   "rich>=13.9.0",
   "sse-starlette>=2.1.0",
   "python-multipart>=0.0.20",
-  "python-dotenv>=1.1.1",
+  "python-dotenv>=1.1.1"
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0.0",
+  "pytest>=8.4.1",
   "pytest-cov>=4.1.0",
   "pytest-asyncio>=0.23.0",
   "ruff>=0.6.0",
