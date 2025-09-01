@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic_ai import RunContext
 
 from open_deep_research_with_pydantic_ai.agents.base import (
+    AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
@@ -28,11 +29,16 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
     """Agent responsible for generating final research reports."""
 
     def __init__(self):
-        """Initialize the report generator agent."""
-        super().__init__(
-            name="report_generator_agent",
-            output_type=ResearchReport,
+        """Initialize the reportgenerator agent."""
+        config = AgentConfiguration(
+            agent_name="reportgenerator_agent",
+            agent_type="reportgenerator",
         )
+        super().__init__(config=config)
+
+    def _get_output_type(self) -> type[ResearchReport]:
+        """Get the output type for this agent."""
+        return ResearchReport
 
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for report generation."""

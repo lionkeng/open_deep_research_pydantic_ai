@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from open_deep_research_with_pydantic_ai.agents.base import (
+    AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
@@ -39,10 +40,15 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
 
     def __init__(self):
         """Initialize the brief generator agent."""
-        super().__init__(
-            name="brief_generator_agent",
-            output_type=ResearchBrief,
+        config = AgentConfiguration(
+            agent_name="brief_generator_agent",
+            agent_type="brief_generator",
         )
+        super().__init__(config=config)
+
+    def _get_output_type(self) -> type[ResearchBrief]:
+        """Get the output type for this agent."""
+        return ResearchBrief
 
     def _get_default_system_prompt(self) -> str:
         """Get system prompt from Langgraph's transform_messages_into_research_topic_prompt."""

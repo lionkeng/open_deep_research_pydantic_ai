@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from open_deep_research_with_pydantic_ai.agents.base import (
+    AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
@@ -115,10 +116,11 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
 
     def __init__(self):
         """Initialize the clarification agent."""
-        super().__init__(
-            name="clarification_agent",
-            output_type=ClarifyWithUser,
+        config = AgentConfiguration(
+            agent_name="clarification_agent",
+            agent_type="clarification",
         )
+        super().__init__(config=config)
 
         # Register dynamic instructions for assessment framework
         @self.agent.instructions
@@ -154,6 +156,10 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
 
         context = "\n".join(formatted[-4:])  # Last 4 messages for context
         return f"Recent Conversation:\n{context}\nCurrent Query: {query}"
+
+    def _get_output_type(self) -> type[ClarifyWithUser]:
+        """Get the output type for this agent."""
+        return ClarifyWithUser
 
     def _get_default_system_prompt(self) -> str:
         """ Get the basic system prompt which defines Agent role (required by base class)."""

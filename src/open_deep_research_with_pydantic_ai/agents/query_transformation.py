@@ -11,6 +11,7 @@ from typing import Any
 import logfire
 
 from open_deep_research_with_pydantic_ai.agents.base import (
+    AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
@@ -26,11 +27,16 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
     """
 
     def __init__(self):
-        """Initialize the query transformation agent."""
-        super().__init__(
-            name="query_transformation_agent",
-            output_type=TransformedQuery,
+        """Initialize the querytransformation agent."""
+        config = AgentConfiguration(
+            agent_name="querytransformation_agent",
+            agent_type="querytransformation",
         )
+        super().__init__(config=config)
+
+    def _get_output_type(self) -> type[TransformedQuery]:
+        """Get the output type for this agent."""
+        return TransformedQuery
 
     def _get_default_system_prompt(self) -> str:
         """Get the system prompt for query transformation."""

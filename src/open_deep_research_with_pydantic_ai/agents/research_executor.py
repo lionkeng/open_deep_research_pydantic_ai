@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from open_deep_research_with_pydantic_ai.agents.base import (
+    AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
@@ -30,71 +31,38 @@ from open_deep_research_with_pydantic_ai.services.search import search_service
 FindingsList = list[ResearchFinding]
 
 
-class SpecializedResearchAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
-    """Specialized research agent for focused domain research."""
-
-    def __init__(self, name: str, specialization: str):
-        """Initialize specialized research agent.
-
-        Args:
-            name: Agent name
-            specialization: Area of specialization
-        """
-        self.specialization = specialization
-        super().__init__(
-            name=f"specialized_{name}",
-            output_type=ResearchResults,
-        )
-
-    def _get_default_system_prompt(self) -> str:
-        """Get specialized system prompt."""
-        return f"""You are a specialized research agent focused on {self.specialization}.
-Your role is to conduct deep, focused research in your area of expertise.
-Provide detailed, accurate findings with proper source attribution.
-
-Expertise areas:
-- Deep domain knowledge in {self.specialization}
-- Ability to find specialized sources
-- Critical evaluation of domain-specific information
-- Synthesis of complex technical information
-
-Always:
-1. Cite sources accurately
-2. Evaluate information critically
-3. Provide balanced perspectives
-4. Highlight key insights relevant to {self.specialization}"""
-
-
 class SearchResult(BaseModel):
-    """Result from a search operation."""
+    """Search result data model."""
 
-    query: str = Field(description="Search query used")
+    query: str = Field(description="The search query")
     results: list[dict[str, Any]] = Field(description="Search results")
-    total_results: int = Field(description="Total number of results")
-    source: str = Field(description="Search source/API used")
+    total_results: int = Field(default=0, description="Total number of results found")
 
 
 class ResearchTask(BaseModel):
-    """Individual research task to be executed."""
+    """Individual research task model."""
 
     task_id: str = Field(description="Unique task identifier")
     description: str = Field(description="Task description")
-    query: str = Field(description="Search query")
-    priority: int = Field(default=0, description="Task priority")
-    completed: bool = Field(default=False, description="Completion status")
-    findings: FindingsList = Field(default_factory=list, description="Task findings")
+    query: str = Field(description="Search query for this task")
+    findings: FindingsList = Field(default_factory=list, description="Research findings")
 
 
-class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
-    """Agent responsible for executing research tasks and gathering information."""
+class SpecializedResearchAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
+    """Specialized research agent for focused domain research."""
 
     def __init__(self):
-        """Initialize the research executor agent."""
-        super().__init__(
-            name="research_executor_agent",
-            output_type=ResearchResults,
+        """Initialize the researchexecutor agent."""
+        config = AgentConfiguration(
+            agent_name="researchexecutor_agent",
+            agent_type="researchexecutor",
         )
+        super().__init__(config=config)
         self.sub_agents: dict[str, BaseResearchAgent[ResearchDependencies, BaseModel]] = {}
+
+    def _get_output_type(self) -> type[ResearchResults]:
+        """Get the output type for this agent."""
+        return ResearchResults
 
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for research execution."""
@@ -425,5 +393,5 @@ Provide structured findings with clear source attribution."""
 
 
 # Register the agent with the coordinator
-research_executor_agent = ResearchExecutorAgent()
+research_executor_agent = SpecializedResearchAgent()
 coordinator.register_agent(research_executor_agent)

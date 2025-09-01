@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from open_deep_research_with_pydantic_ai.agents.base import (
+    AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
     coordinator,
@@ -43,10 +44,15 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedFinding
 
     def __init__(self):
         """Initialize the compression agent."""
-        super().__init__(
-            name="compression_agent",
-            output_type=CompressedFindings,
+        config = AgentConfiguration(
+            agent_name="compression_agent",
+            agent_type="compression",
         )
+        super().__init__(config=config)
+
+    def _get_output_type(self) -> type[CompressedFindings]:
+        """Get the output type for this agent."""
+        return CompressedFindings
 
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for compression."""
