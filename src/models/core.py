@@ -1,10 +1,14 @@
-"""Pydantic models for the deep research workflow."""
+"""Core models for the deep research workflow."""
 
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal
-
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+
+# Import Phase 2 models
+from .brief_generator import ResearchBrief
+from .research_executor import ResearchFinding, ResearchResults
+from .report_generator import ReportSection as ResearchSection, ResearchReport
 
 if TYPE_CHECKING:
     pass  # For future type checking imports
@@ -28,10 +32,6 @@ class ResearchPriority(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
-
-
-# Pydantic-AI Agent Output Models
-# These models define the structured outputs for each phase following Pydantic-AI best practices
 
 
 class ClarificationResult(BaseModel):
@@ -199,120 +199,6 @@ class BriefGenerationResult(BaseModel):
         return self
 
 
-class ResearchBrief(BaseModel):
-    """Structured research plan generated from user request."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
-
-    topic: Annotated[str, Field(min_length=1, max_length=500, description="Main research topic")]
-    objectives: Annotated[
-        list[str], Field(min_length=1, max_length=10, description="Research objectives")
-    ]
-    key_questions: Annotated[
-        list[str], Field(min_length=1, max_length=20, description="Key questions to answer")
-    ]
-    scope: Annotated[
-        str, Field(min_length=1, max_length=1000, description="Scope and boundaries of research")
-    ]
-    priority_areas: list[str] = Field(default_factory=list, description="Priority research areas")
-    constraints: list[str] = Field(default_factory=list, description="Research constraints")
-    expected_deliverables: list[str] = Field(
-        default_factory=list, description="Expected deliverables"
-    )
-    created_at: datetime = Field(default_factory=datetime.now)
-
-
-class ResearchFinding(BaseModel):
-    """Individual research finding with source attribution."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
-
-    content: Annotated[str, Field(min_length=1, description="Finding content")]
-    source: Annotated[str, Field(min_length=1, description="Source URL or reference")]
-    relevance_score: Annotated[float, Field(ge=0.0, le=1.0, description="Relevance score")] = 0.0
-    confidence: Annotated[float, Field(ge=0.0, le=1.0, description="Confidence level")] = 0.0
-    summary: str | None = Field(default=None, description="Brief summary")
-    extracted_at: datetime = Field(default_factory=datetime.now)
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
-
-
-class ResearchResults(BaseModel):
-    """Wrapper for a list of research findings."""
-
-    findings: list[ResearchFinding] = Field(default_factory=list, description="Research findings")
-
-
-class ResearchSection(BaseModel):
-    """Section of the final research report."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
-
-    title: Annotated[str, Field(min_length=1, max_length=200, description="Section title")]
-    content: Annotated[str, Field(min_length=1, description="Section content")]
-    findings: list[ResearchFinding] = Field(default_factory=list, description="Supporting findings")
-    subsections: list["ResearchSection"] = Field(
-        default_factory=list, description="Nested subsections"
-    )
-    order: int = Field(default=0, description="Display order")
-
-
-class ResearchReport(BaseModel):
-    """Final comprehensive research report."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
-
-    title: Annotated[str, Field(min_length=1, max_length=300, description="Report title")]
-    executive_summary: Annotated[str, Field(min_length=1, description="Executive summary")]
-    introduction: Annotated[str, Field(min_length=1, description="Introduction")]
-    methodology: Annotated[str, Field(min_length=1, description="Research methodology")]
-    sections: list[ResearchSection] = Field(description="Report sections")
-    conclusion: str = Field(description="Conclusion")
-    recommendations: list[str] = Field(default_factory=list, description="Recommendations")
-    citations: list[str] = Field(default_factory=list, description="All citations")
-    appendices: dict[str, Any] = Field(default_factory=dict, description="Additional materials")
-    generated_at: datetime = Field(default_factory=datetime.now)
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Report metadata")
-
-
-class TransformedQuery(BaseModel):
-    """Model for a query that has been transformed from broad to specific."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True)
-
-    original_query: Annotated[
-        str, Field(min_length=1, description="The original user query before transformation")
-    ]
-    transformed_query: Annotated[
-        str, Field(min_length=1, description="The primary transformed research question")
-    ]
-    supporting_questions: list[str] = Field(
-        default_factory=list, description="Additional supporting research questions"
-    )
-    transformation_rationale: Annotated[
-        str, Field(min_length=1, description="Explanation of how and why the query was transformed")
-    ]
-    specificity_score: Annotated[
-        float,
-        Field(
-            ge=0.0,
-            le=1.0,
-            description="Score indicating how specific the transformed query is (0-1)",
-        ),
-    ]
-    missing_dimensions: list[str] = Field(
-        default_factory=list,
-        description="Dimensions that are still missing or could be further refined",
-    )
-    clarification_responses: dict[str, str] = Field(
-        default_factory=dict,
-        description="User responses to clarification questions that informed transformation",
-    )
-    transformation_metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata about the transformation process"
-    )
-    created_at: datetime = Field(default_factory=datetime.now)
-
-
 class ResearchState(BaseModel):
     """Current state of the research workflow."""
 
@@ -390,4 +276,5 @@ class ResearchState(BaseModel):
         return f"{user_id}:{request_uuid}"
 
 
+# ResearchSection needs model rebuild since it has self-reference
 ResearchSection.model_rebuild()

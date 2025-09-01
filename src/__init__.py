@@ -1,13 +1,10 @@
 """Deep Research with Pydantic AI - AI-powered research system."""
 
-from core.workflow import workflow
-from models.research import (
-    ResearchBrief,
-    ResearchFinding,
-    ResearchReport,
-    ResearchStage,
-    ResearchState,
-)
+from .core.workflow import workflow
+from .models.brief_generator import ResearchBrief
+from .models.core import ResearchStage, ResearchState
+from .models.report_generator import ResearchReport
+from .models.research_executor import ResearchFinding
 
 __version__ = "1.0.0"
 __all__ = [

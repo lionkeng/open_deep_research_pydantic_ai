@@ -12,7 +12,7 @@ from core.context import (
     get_current_context,
 )
 from core.events import ResearchEventBus
-from models.research import ResearchState
+from models.core import ResearchState
 
 
 @pytest_asyncio.fixture

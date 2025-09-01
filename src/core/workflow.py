@@ -22,7 +22,7 @@ from core.events import (
     emit_stage_completed,
 )
 from models.api_models import APIKeys, ResearchMetadata
-from models.research import (
+from models.core import (
     ResearchStage,
     ResearchState,
 )
@@ -229,7 +229,7 @@ class ResearchWorkflow:
                 logfire.info("Stage 4: Research execution (placeholder)", request_id=request_id)
 
                 # Create placeholder findings based on brief
-                from models.research import ResearchFinding
+                from models.research_executor import ResearchFinding
 
                 key_areas = brief_full.get("key_research_areas", ["General research"])
                 mock_findings = []
@@ -274,9 +274,9 @@ class ResearchWorkflow:
                 logfire.info("Stage 6: Report generation (placeholder)", request_id=request_id)
 
                 # Create placeholder report
-                from models.research import (
+                from models.report_generator import (
                     ResearchReport,
-                    ResearchSection,
+                    ReportSection as ResearchSection,
                 )
 
                 # Create sections based on research areas
@@ -626,7 +626,7 @@ class ResearchWorkflow:
                     )
                     if brief_text:
                         # Create minimal ResearchBrief for compatibility
-                        from models.research import (
+                        from models.brief_generator import (
                             ResearchBrief,
                         )
 
@@ -687,7 +687,7 @@ class ResearchWorkflow:
                         from agents.compression import (
                             CompressedFindings,
                         )
-                        from models.research import (
+                        from models.brief_generator import (
                             ResearchBrief,
                         )
 

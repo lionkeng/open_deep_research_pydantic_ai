@@ -16,7 +16,7 @@ from core.sse_models import (
     UpdateMessage,
 )
 from models.api_models import APIKeys
-from models.research import ResearchStage
+from models.core import ResearchStage
 
 
 class TestURLValidation:

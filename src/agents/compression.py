@@ -1,9 +1,7 @@
-"""Compression Agent for synthesizing and organizing research findings."""
+"""Compression agent for condensing research content."""
 
-from collections import defaultdict
 from typing import Any
 
-from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from agents.base import (
@@ -12,351 +10,259 @@ from agents.base import (
     ResearchDependencies,
     coordinator,
 )
-from core.events import emit_stage_completed
-from models.research import ResearchFinding, ResearchStage
+from models.compression import CompressedContent
+
+# Global system prompt template for compression
+COMPRESSION_SYSTEM_PROMPT_TEMPLATE = """
+## CONTENT COMPRESSION SPECIALIST:
+
+You are an expert at condensing lengthy content while preserving essential information 
+and maintaining clarity.
+
+### YOUR ROLE:
+1. Analyze content structure and identify key information
+2. Remove redundancies and verbose expressions
+3. Preserve critical facts, insights, and conclusions
+4. Maintain logical flow and readability
+5. Apply appropriate compression strategies
+6. Ensure no critical information is lost
+7. Measure and report compression effectiveness
+
+### COMPRESSION STRATEGIES:
+- Eliminate redundant phrases and repetitions
+- Convert verbose expressions to concise alternatives
+- Combine related points into unified statements
+- Use bullet points for lists instead of paragraphs
+- Remove filler words and unnecessary qualifiers
+- Preserve technical terms and specific data points
+- Maintain context and relationships between ideas
+
+### COMPRESSION FRAMEWORK:
+1. **Content Analysis**: Identify structure and key elements
+2. **Redundancy Detection**: Find repetitive content
+3. **Fact Extraction**: Identify critical information
+4. **Synthesis**: Combine related information
+5. **Optimization**: Apply compression techniques
+6. **Quality Check**: Ensure information retention
+7. **Metrics**: Measure compression effectiveness
+
+### PRESERVATION PRIORITIES:
+- **Must Preserve**: Facts, numbers, conclusions, recommendations
+- **Should Preserve**: Key examples, important context, methodologies
+- **Can Compress**: Verbose explanations, repetitions, filler content
+- **Can Remove**: Redundancies, unnecessary qualifiers, obvious statements
+
+## CURRENT COMPRESSION CONTEXT:
+Content Type: {content_type}
+Target Ratio: {target_ratio}
+Preservation Requirements: {preservation_requirements}
+{conversation_context}
+
+## COMPRESSION REQUIREMENTS:
+- Achieve effective compression while maintaining quality
+- Preserve all critical information
+- Maintain readability and coherence
+- Extract key facts and insights
+- Report compression metrics
+- Apply appropriate strategy for content type
+"""
 
 
-class CompressedFindings(BaseModel):
-    """Compressed and synthesized research findings."""
+class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent]):
+    """Agent responsible for compressing and summarizing research content.
 
-    summary: str = Field(description="Executive summary of all findings")
-    key_insights: list[str] = Field(description="Key insights extracted from findings")
-    themes: dict[str, list[str]] = Field(
-        description="Findings organized by theme", default_factory=dict
-    )
-    contradictions: list[str] = Field(
-        default_factory=list, description="Any contradictory findings identified"
-    )
-    gaps: list[str] = Field(default_factory=list, description="Identified gaps in the research")
-    consensus_points: list[str] = Field(
-        default_factory=list, description="Points where multiple sources agree"
-    )
-    statistical_data: dict[str, Any] = Field(
-        default_factory=dict, description="Key statistics and data points"
-    )
-    source_quality_summary: str = Field(
-        default="", description="Summary of source quality and reliability"
-    )
-
-
-class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedFindings]):
-    """Agent responsible for compressing and synthesizing research findings."""
+    This agent condenses lengthy content while preserving essential information,
+    maintaining clarity, and providing compression metrics.
+    """
 
     def __init__(self):
         """Initialize the compression agent."""
         config = AgentConfiguration(
-            agent_name="compression_agent",
-            agent_type="compression",
+            agent_name="compression",
+            agent_type="processing",
         )
         super().__init__(config=config)
 
-    def _get_output_type(self) -> type[CompressedFindings]:
-        """Get the output type for this agent."""
-        return CompressedFindings
+        # Register dynamic instructions
+        @self.agent.instructions
+        async def add_compression_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+            """Inject compression context as instructions."""
+            metadata = ctx.deps.research_state.metadata or {}
+            conversation = metadata.get("conversation_messages", [])
+            content_type = metadata.get("content_type", "general")
+            target_ratio = metadata.get("target_ratio", "0.5")
+            preservation_requirements = metadata.get("preservation_requirements", "standard")
 
-    def _get_default_system_prompt(self) -> str:
-        """Get the default system prompt for compression."""
-        return """You are a research synthesis specialist. Your role is to:
+            # Format conversation context
+            conversation_context = self._format_conversation_context(conversation)
 
-1. Synthesize multiple research findings into coherent insights
-2. Identify patterns, themes, and relationships
-3. Resolve or highlight contradictions
-4. Extract key takeaways and conclusions
-5. Organize information for maximum clarity
+            # Use global template with variable substitution
+            return COMPRESSION_SYSTEM_PROMPT_TEMPLATE.format(
+                content_type=content_type,
+                target_ratio=target_ratio,
+                preservation_requirements=preservation_requirements,
+                conversation_context=conversation_context,
+            )
 
-When compressing findings:
-
-**Synthesis Approach:**
-- Group related findings by theme
-- Identify common patterns across sources
-- Extract the most important insights
-- Combine complementary information
-- Preserve important nuances
-
-**Quality Assessment:**
-- Evaluate the consistency of findings
-- Identify areas of strong consensus
-- Note any conflicting information
-- Assess overall confidence in conclusions
-- Identify gaps that need further research
-
-**Organization Principles:**
-- Start with high-level summary
-- Group findings thematically
-- Highlight key insights prominently
-- Note statistical data separately
-- Maintain source attribution for key claims
-
-**Output Requirements:**
-- Concise yet comprehensive summary
-- Clear thematic organization
-- Explicit noting of contradictions
-- Identification of research gaps
-- Actionable insights where applicable
-
-Ensure the compressed findings are more valuable than the sum of their parts."""
-
-    def _register_tools(self) -> None:
-        """Register compression-specific tools."""
-
+        # Register compression tools
         @self.agent.tool
-        async def identify_themes(
-            _ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
-        ) -> dict[str, list[str]]:
-            """Identify themes from research findings.
+        async def calculate_compression_metrics(
+            ctx: RunContext[ResearchDependencies], original: str, compressed: str
+        ) -> dict[str, Any]:  # pyright: ignore
+            """Calculate compression metrics.
 
             Args:
-                ctx: Run context with dependencies
-                findings: List of research findings
+                original: Original text
+                compressed: Compressed text
 
             Returns:
-                Dictionary of themes with related findings
+                Dictionary of compression metrics
             """
-            themes: defaultdict[str, list[str]] = defaultdict(list)
+            original_len = len(original)
+            compressed_len = len(compressed)
+            original_words = len(original.split())
+            compressed_words = len(compressed.split())
 
-            # Common theme categories
-            theme_keywords = {
-                "Technology": ["technology", "digital", "software", "hardware", "AI", "automation"],
-                "Economics": ["cost", "price", "market", "economy", "financial", "investment"],
-                "Social Impact": ["society", "community", "people", "social", "cultural", "human"],
-                "Environment": ["environment", "climate", "sustainability", "green", "ecological"],
-                "Innovation": ["innovation", "new", "novel", "breakthrough", "advancement"],
-                "Challenges": ["challenge", "problem", "issue", "difficulty", "obstacle"],
-                "Opportunities": [
-                    "opportunity",
-                    "potential",
-                    "possibility",
-                    "benefit",
-                    "advantage",
-                ],
-                "Trends": ["trend", "future", "emerging", "growth", "development"],
+            return {
+                "character_ratio": 1 - (compressed_len / original_len) if original_len > 0 else 0,
+                "word_ratio": 1 - (compressed_words / original_words) if original_words > 0 else 0,
+                "original_characters": original_len,
+                "compressed_characters": compressed_len,
+                "original_words": original_words,
+                "compressed_words": compressed_words,
+                "percentage_retained": (compressed_len / original_len * 100)
+                if original_len > 0
+                else 100,
             }
 
-            # Categorize findings by theme
-            for finding in findings:
-                content_lower = finding.content.lower()
-                categorized = False
-
-                for theme, keywords in theme_keywords.items():
-                    if any(keyword in content_lower for keyword in keywords):
-                        themes[theme].append(finding.content[:200])
-                        categorized = True
-                        break
-
-                if not categorized:
-                    themes["Other"].append(finding.content[:200])
-
-            return dict(themes)
-
         @self.agent.tool
-        async def find_contradictions(
-            _ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
-        ) -> list[str]:
-            """Identify contradictory findings.
+        async def identify_redundancies(
+            ctx: RunContext[ResearchDependencies], text: str
+        ) -> list[str]:  # pyright: ignore
+            """Identify redundancies in text.
 
             Args:
-                ctx: Run context with dependencies
-                findings: List of research findings
+                text: Text to analyze
 
             Returns:
-                List of identified contradictions
+                List of identified redundancies
             """
-            contradictions = []
+            redundancies = []
+            sentences = text.split(". ")
 
-            # Simple contradiction detection based on opposing terms
-            opposing_pairs = [
-                ("increase", "decrease"),
-                ("positive", "negative"),
-                ("growth", "decline"),
-                ("success", "failure"),
-                ("effective", "ineffective"),
-                ("beneficial", "harmful"),
+            # Check for repeated phrases
+            phrase_count = {}
+            for sentence in sentences:
+                # Extract 3-5 word phrases
+                words = sentence.split()
+                for i in range(len(words) - 2):
+                    phrase = " ".join(words[i : i + 3])
+                    if len(phrase) > 10:
+                        phrase_count[phrase] = phrase_count.get(phrase, 0) + 1
+
+            # Identify repeated phrases
+            for phrase, count in phrase_count.items():
+                if count > 1:
+                    redundancies.append(f"Repeated phrase ({count}x): '{phrase}'")
+
+            # Check for filler phrases
+            filler_phrases = [
+                "it is important to note that",
+                "it should be mentioned that",
+                "as a matter of fact",
+                "in order to",
+                "due to the fact that",
+                "in the event that",
+                "at this point in time",
             ]
 
-            # Compare findings pairwise for potential contradictions
-            for i, finding1 in enumerate(findings):
-                for finding2 in findings[i + 1 :]:
-                    content1_lower = finding1.content.lower()
-                    content2_lower = finding2.content.lower()
+            for filler in filler_phrases:
+                if filler in text.lower():
+                    redundancies.append(f"Filler phrase: '{filler}'")
 
-                    for term1, term2 in opposing_pairs:
-                        if (term1 in content1_lower and term2 in content2_lower) or (
-                            term2 in content1_lower and term1 in content2_lower
-                        ):
-                            # Check if they're about the same subject
-                            words1 = set(content1_lower.split())
-                            words2 = set(content2_lower.split())
-                            common_words = words1.intersection(words2)
-
-                            if len(common_words) > 5:  # Arbitrary threshold
-                                contradiction = (
-                                    f"Potential contradiction between: "
-                                    f"'{finding1.content[:100]}...' and "
-                                    f"'{finding2.content[:100]}...'"
-                                )
-                                contradictions.append(contradiction)  # type: ignore[arg-type]
-                                break
-
-            return contradictions[:5]  # type: ignore[return-value]  # Limit to top 5 contradictions
+            return redundancies[:10]  # Limit to top 10
 
         @self.agent.tool
-        async def extract_consensus_points(
-            _ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
-        ) -> list[str]:
-            """Extract points where multiple sources agree.
+        async def extract_key_information(
+            ctx: RunContext[ResearchDependencies], text: str
+        ) -> dict[str, list[str]]:  # pyright: ignore
+            """Extract key information from text.
 
             Args:
-                ctx: Run context with dependencies
-                findings: List of research findings
+                text: Text to analyze
 
             Returns:
-                List of consensus points
+                Dictionary of key information types
             """
-            consensus_points: list[str] = []
+            import re
 
-            # Group findings by source
-            from typing import Any
+            key_info = {
+                "numbers": [],
+                "dates": [],
+                "names": [],
+                "conclusions": [],
+                "recommendations": [],
+            }
 
-            source_groups: defaultdict[str, list[Any]] = defaultdict(list)
-            for finding in findings:
-                source_groups[finding.source].append(finding)
+            # Extract numbers and percentages
+            numbers = re.findall(r"\b\d+\.?\d*%?\b", text)
+            key_info["numbers"] = list(set(numbers))[:10]
 
-            # Find common themes across sources
-            if len(source_groups) > 1:
-                # Extract key phrases from each source
-                source_phrases: dict[str, set[str]] = {}
-                for source, source_findings in source_groups.items():
-                    phrases: set[str] = set()
-                    for finding in source_findings:
-                        # Simple phrase extraction (in production, use NLP)
-                        words = finding.content.lower().split()
-                        for i in range(len(words) - 2):
-                            phrase = " ".join(words[i : i + 3])
-                            phrases.add(phrase)
-                    source_phrases[source] = phrases
-
-                # Find common phrases across sources
-                sources = list(source_phrases.keys())
-                if len(sources) >= 2:
-                    common: set[str] = source_phrases[sources[0]]
-                    for source in sources[1:]:
-                        common = common.intersection(source_phrases[source])
-
-                    for phrase in list(common)[:10]:
-                        consensus_points.append(f"Multiple sources agree on: {phrase}")
-
-            return consensus_points[:5]  # Top 5 consensus points
-
-        @self.agent.tool
-        async def identify_gaps(
-            _ctx: RunContext[ResearchDependencies],
-            findings: list[ResearchFinding],
-            research_questions: list[str],
-        ) -> list[str]:
-            """Identify gaps in the research.
-
-            Args:
-                ctx: Run context with dependencies
-                findings: List of research findings
-                research_questions: Original research questions
-
-            Returns:
-                List of identified gaps
-            """
-            gaps: list[str] = []
-
-            # Check if each research question was adequately addressed
-            for question in research_questions:
-                question_lower = question.lower()
-                question_addressed = False
-
-                for finding in findings:
-                    # Simple check - in production, use semantic similarity
-                    finding_lower = finding.content.lower()
-                    question_words = set(question_lower.split())
-                    finding_words = set(finding_lower.split())
-
-                    # If significant overlap, consider it addressed
-                    common_words = question_words.intersection(finding_words)
-                    if len(common_words) >= len(question_words) * 0.3:
-                        question_addressed = True
-                        break
-
-                if not question_addressed:
-                    gaps.append(f"Limited information on: {question}")
-
-            # Check for low coverage areas based on confidence scores
-            low_confidence_topics: list[str] = []
-            for finding in findings:
-                if finding.confidence < 0.5:
-                    low_confidence_topics.append(finding.summary or finding.content[:100])
-
-            if low_confidence_topics:
-                gaps.append(f"Low confidence areas: {', '.join(low_confidence_topics[:3])}")
-
-            return gaps
-
-    async def compress_findings(
-        self,
-        findings: list[ResearchFinding],
-        research_questions: list[str],
-        deps: ResearchDependencies,
-    ) -> CompressedFindings:
-        """Compress and synthesize research findings.
-
-        Args:
-            findings: List of research findings to compress
-            research_questions: Original research questions
-            deps: Research dependencies
-
-        Returns:
-            Compressed and synthesized findings
-        """
-        # Prepare findings summary for compression
-        findings_text = "\n\n".join(
-            [
-                (
-                    f"Finding {i + 1} (Source: {f.source}, "
-                    f"Relevance: {f.relevance_score:.2f}):\n{f.content}"
-                )
-                for i, f in enumerate(findings)
+            # Extract potential dates
+            date_patterns = [
+                r"\b\d{4}\b",  # Years
+                r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b",
+                r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
             ]
-        )
+            for pattern in date_patterns:
+                dates = re.findall(pattern, text, re.IGNORECASE)
+                key_info["dates"].extend(dates)
+            key_info["dates"] = list(set(key_info["dates"]))[:5]
 
-        prompt = f"""Synthesize and compress the following research findings:
+            # Extract capitalized words (potential names/entities)
+            names = re.findall(r"\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b", text)
+            # Filter out common words
+            common_words = {"The", "This", "That", "These", "Those", "However", "Therefore"}
+            key_info["names"] = [n for n in set(names) if n not in common_words][:10]
 
-Research Questions:
-{chr(10).join(f"- {q}" for q in research_questions)}
+            # Look for conclusion indicators
+            conclusion_indicators = ["conclude", "summary", "therefore", "thus", "finally"]
+            sentences = text.split(". ")
+            for sent in sentences:
+                if any(indicator in sent.lower() for indicator in conclusion_indicators):
+                    key_info["conclusions"].append(sent.strip())
 
-Findings to Compress:
-{findings_text}
+            # Look for recommendation indicators
+            recommendation_indicators = ["recommend", "suggest", "should", "must", "advise"]
+            for sent in sentences:
+                if any(indicator in sent.lower() for indicator in recommendation_indicators):
+                    key_info["recommendations"].append(sent.strip())
 
-Instructions:
-1. Create a comprehensive summary of all findings
-2. Extract 5-7 key insights
-3. Organize findings by theme
-4. Identify any contradictions
-5. Note research gaps
-6. Find consensus points where sources agree
-7. Extract important statistical data
-8. Assess overall source quality
+            return key_info
 
-Provide a structured compression that makes the findings more valuable and actionable."""
+    def _format_conversation_context(self, conversation: list[Any]) -> str:
+        """Format conversation history for the prompt."""
+        if not conversation:
+            return "No prior conversation context."
 
-        result = await self.run(prompt, deps, stream=True)
+        formatted = []
+        for msg in conversation[-3:]:  # Last 3 messages for context
+            if isinstance(msg, dict):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                formatted.append(f"{role.capitalize()}: {content}")
+            else:
+                formatted.append(str(msg))
 
-        # Store compressed findings in research state
-        deps.research_state.compressed_findings = result.summary
+        return "Recent Conversation:\n" + "\n".join(formatted)
 
-        # Emit stage completed event
-        await emit_stage_completed(
-            request_id=deps.research_state.request_id,
-            stage=ResearchStage.COMPRESSION,
-            success=True,
-            result=result,
-        )
+    def _get_default_system_prompt(self) -> str:
+        """Get the base system prompt for this agent."""
+        return "You are a Content Compression Specialist focused on condensing content effectively."
 
-        return result
+    def _get_output_type(self) -> type[CompressedContent]:
+        """Get the output type for this agent."""
+        return CompressedContent
 
 
 # Register the agent with the coordinator

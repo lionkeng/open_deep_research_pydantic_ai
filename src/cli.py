@@ -38,7 +38,8 @@ from core.sse_models import (
 )
 from core.workflow import workflow
 from models.api_models import APIKeys
-from models.research import ResearchReport, ResearchStage
+from models.core import ResearchStage
+from models.report_generator import ResearchReport
 
 # Try to import httpx-sse for HTTP mode support
 try:

@@ -22,7 +22,7 @@ from core.events import (
 )
 from core.logging import configure_logging
 from models.api_models import APIKeys, ResearchMetadata
-from models.research import ResearchState
+from models.core import ResearchState
 
 
 # Enhanced exception system for agent errors

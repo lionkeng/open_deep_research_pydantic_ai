@@ -7,12 +7,9 @@ from pydantic import SecretStr
 
 from core.workflow import workflow
 from models.api_models import APIKeys
-from models.research import (
-    ResearchStage,
-    ResearchState,
-    ResearchFinding,
-    ResearchReport,
-)
+from models.core import ResearchStage, ResearchState
+from models.research_executor import ResearchFinding
+from models.report_generator import ResearchReport
 from agents.brief_generator import ResearchBrief as BriefGeneratorResearchBrief
 from agents.clarification import ClarifyWithUser
 from agents.compression import CompressedFindings

@@ -1,6 +1,6 @@
-"""Final Report Generator Agent for creating comprehensive research reports."""
+"""Report generator agent for creating comprehensive research reports."""
 
-from datetime import datetime
+from typing import Any
 
 from pydantic_ai import RunContext
 
@@ -10,360 +10,302 @@ from agents.base import (
     ResearchDependencies,
     coordinator,
 )
-from agents.compression import CompressedFindings
-from core.events import (
-    ResearchCompletedEvent,
-    emit_stage_completed,
-    research_event_bus,
-)
-from models.research import (
-    ResearchBrief,
-    ResearchFinding,
-    ResearchReport,
-    ResearchSection,
-    ResearchStage,
-)
+from models.report_generator import ResearchReport
+
+# Global system prompt template for report generation
+REPORT_GENERATOR_SYSTEM_PROMPT_TEMPLATE = """
+## RESEARCH REPORT SPECIALIST:
+
+You are an expert at synthesizing research findings into comprehensive, well-structured, 
+professional reports.
+
+### YOUR ROLE:
+1. Organize research findings into logical sections
+2. Create clear, informative executive summaries
+3. Present findings with appropriate context and analysis
+4. Draw meaningful conclusions from the research
+5. Provide actionable recommendations
+6. Ensure proper citations and references
+7. Maintain professional tone and formatting
+
+### REPORT STRUCTURE GUIDELINES:
+- **Executive Summary**: Concise overview of key findings and recommendations
+- **Introduction**: Context, objectives, and scope
+- **Main Sections**: Organized by themes or topics
+- **Analysis**: Critical evaluation of findings
+- **Conclusions**: Synthesis of key insights
+- **Recommendations**: Actionable next steps
+- **References**: Proper attribution of sources
+- **Appendices**: Supporting materials
+
+### REPORT WRITING PRINCIPLES:
+- Clear and well-organized structure
+- Data-driven and evidence-based content
+- Actionable and practical recommendations
+- Professional and authoritative tone
+- Accessible to the target audience
+- Balanced and objective presentation
+- Proper citations and references
+
+### AUDIENCE ADAPTATION:
+- **Executive**: Focus on strategic insights and business impact
+- **Technical**: Include implementation details and specifications
+- **General**: Use clear language and avoid jargon
+- **Academic**: Follow scholarly conventions and citation styles
+
+## CURRENT REPORT CONTEXT:
+Research Topic: {research_topic}
+Target Audience: {target_audience}
+Report Format: {report_format}
+Key Findings: {key_findings}
+{conversation_context}
+
+## REPORT REQUIREMENTS:
+- Create a comprehensive research report
+- Include executive summary and introduction
+- Organize findings into logical sections
+- Provide analysis and conclusions
+- Offer actionable recommendations
+- Include proper references
+- Maintain professional quality
+"""
 
 
 class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchReport]):
-    """Agent responsible for generating final research reports."""
+    """Agent responsible for generating comprehensive research reports.
+
+    This agent synthesizes research findings into well-structured, professional
+    reports with clear sections, analysis, and recommendations.
+    """
 
     def __init__(self):
-        """Initialize the reportgenerator agent."""
+        """Initialize the report generator agent."""
         config = AgentConfiguration(
-            agent_name="reportgenerator_agent",
-            agent_type="reportgenerator",
+            agent_name="report_generator",
+            agent_type="synthesis",
         )
         super().__init__(config=config)
 
-    def _get_output_type(self) -> type[ResearchReport]:
-        """Get the output type for this agent."""
-        return ResearchReport
+        # Register dynamic instructions
+        @self.agent.instructions
+        async def add_report_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+            """Inject report generation context as instructions."""
+            query = ctx.deps.research_state.user_query
+            metadata = ctx.deps.research_state.metadata or {}
+            conversation = metadata.get("conversation_messages", [])
+            research_topic = metadata.get("research_topic", query)
+            target_audience = metadata.get("target_audience", "general")
+            report_format = metadata.get("report_format", "standard")
+            key_findings = metadata.get("key_findings", "")
 
-    def _get_default_system_prompt(self) -> str:
-        """Get the default system prompt for report generation."""
-        return """You are a research report specialist. Your role is to create comprehensive,
-well-structured, and professional research reports.
+            # Format conversation context
+            conversation_context = self._format_conversation_context(conversation)
 
-When generating reports:
+            # Use global template with variable substitution
+            return REPORT_GENERATOR_SYSTEM_PROMPT_TEMPLATE.format(
+                research_topic=research_topic,
+                target_audience=target_audience,
+                report_format=report_format,
+                key_findings=key_findings,
+                conversation_context=conversation_context,
+            )
 
-**Report Structure:**
-1. Title - Clear, descriptive, and engaging
-2. Executive Summary - High-level overview of findings and recommendations
-3. Introduction - Context, background, and research objectives
-4. Methodology - How the research was conducted
-5. Main Sections - Organized by theme or topic
-6. Conclusion - Summary of key findings
-7. Recommendations - Actionable insights and next steps
-8. Citations - All sources properly referenced
-
-**Writing Principles:**
-- Clear and concise language
-- Logical flow and organization
-- Evidence-based arguments
-- Balanced perspective
-- Professional tone
-- Accessible to target audience
-
-**Quality Standards:**
-- Accuracy: All facts are verified and correct
-- Completeness: All research questions addressed
-- Clarity: Ideas are clearly expressed
-- Coherence: Sections flow logically
-- Credibility: Proper source attribution
-- Actionability: Clear recommendations
-
-**Formatting Guidelines:**
-- Use headings and subheadings for organization
-- Include bullet points for lists
-- Highlight key findings and insights
-- Use data and statistics effectively
-- Maintain consistent style throughout
-
-Ensure the report is comprehensive yet readable, authoritative yet accessible."""
-
-    def _register_tools(self) -> None:
-        """Register report generation tools."""
-
+        # Register report generation tools
         @self.agent.tool
-        async def create_executive_summary(
-            ctx: RunContext[ResearchDependencies],
-            compressed_findings: CompressedFindings,
-            brief: ResearchBrief,
-        ) -> str:
-            """Create an executive summary for the report.
+        async def structure_content(
+            ctx: RunContext[ResearchDependencies], content: dict[str, Any]
+        ) -> dict[str, list[Any]]:  # pyright: ignore
+            """Structure content into report sections.
 
             Args:
-                ctx: Run context with dependencies
-                compressed_findings: Compressed research findings
-                brief: Original research brief
+                content: Dictionary of content to structure
+
+            Returns:
+                Structured content dictionary
+            """
+            structured = {
+                "introduction": [],
+                "background": [],
+                "findings": [],
+                "analysis": [],
+                "conclusions": [],
+                "recommendations": [],
+            }
+
+            # Categorize content based on keywords
+            categorization_rules = {
+                "introduction": ["overview", "purpose", "objective", "scope"],
+                "background": ["history", "context", "previous", "existing"],
+                "findings": ["found", "discovered", "identified", "observed", "results"],
+                "analysis": ["analysis", "evaluation", "comparison", "assessment"],
+                "conclusions": ["conclude", "summary", "overall", "final"],
+                "recommendations": ["recommend", "suggest", "should", "propose", "advise"],
+            }
+
+            for key, value in content.items():
+                value_str = str(value).lower()
+                categorized = False
+
+                for section, keywords in categorization_rules.items():
+                    if any(keyword in value_str for keyword in keywords):
+                        structured[section].append(value)
+                        categorized = True
+                        break
+
+                if not categorized:
+                    structured["findings"].append(value)
+
+            return structured
+
+        @self.agent.tool
+        async def generate_executive_summary(
+            ctx: RunContext[ResearchDependencies], findings: list[str], recommendations: list[str]
+        ) -> str:  # pyright: ignore
+            """Generate an executive summary from findings and recommendations.
+
+            Args:
+                findings: List of key findings
+                recommendations: List of recommendations
 
             Returns:
                 Executive summary text
             """
-            summary_parts: list[str] = []
+            summary_parts = []
 
-            # Opening statement
+            # Start with overview
             summary_parts.append(
-                f"This research report addresses the topic of '{brief.topic}', "
-                f"examining {len(brief.objectives)} key objectives through analysis."
+                "This research report presents comprehensive findings and actionable recommendations."
             )
 
-            # Key findings
-            if compressed_findings.key_insights:
-                summary_parts.append("\nKey Findings:")
-                for insight in compressed_findings.key_insights[:3]:
-                    summary_parts.append(f"• {insight}")
+            # Add key findings
+            if findings:
+                top_findings = findings[:3]  # Top 3 findings
+                findings_text = "Key findings include: " + "; ".join(str(f) for f in top_findings)
+                summary_parts.append(findings_text)
 
-            # Consensus points
-            if compressed_findings.consensus_points:
-                summary_parts.append("\nAreas of Consensus:")
-                for point in compressed_findings.consensus_points[:2]:
-                    summary_parts.append(f"• {point}")
-
-            # Challenges or contradictions
-            if compressed_findings.contradictions:
-                summary_parts.append(
-                    f"\nThe research identified {len(compressed_findings.contradictions)} "
-                    "areas requiring further investigation."
+            # Add primary recommendations
+            if recommendations:
+                top_recommendations = recommendations[:2]  # Top 2 recommendations
+                rec_text = "Primary recommendations: " + " and ".join(
+                    str(r) for r in top_recommendations
                 )
+                summary_parts.append(rec_text)
 
-            # Conclusion
+            # Add conclusion
             summary_parts.append(
-                f"\n{compressed_findings.summary[:200]}..."
-                if len(compressed_findings.summary) > 200
-                else f"\n{compressed_findings.summary}"
+                "The report provides detailed analysis and supporting evidence for all findings."
             )
 
-            return "\n".join(summary_parts)
+            return " ".join(summary_parts)
 
         @self.agent.tool
-        async def create_methodology_section(
-            ctx: RunContext[ResearchDependencies],
-            brief: ResearchBrief,
-            findings_count: int,
-        ) -> str:
-            """Create the methodology section of the report.
+        async def format_citations(
+            ctx: RunContext[ResearchDependencies], sources: list[dict[str, Any]]
+        ) -> list[str]:  # pyright: ignore
+            """Format citations in a consistent style.
 
             Args:
-                ctx: Run context with dependencies
-                brief: Research brief
-                findings_count: Number of findings gathered
-
-            Returns:
-                Methodology section text
-            """
-            methodology = f"""Research Methodology
-
-This research was conducted using a systematic approach to ensure comprehensive coverage
-and reliable results.
-
-Research Design:
-• Objective-driven research focusing on {len(brief.objectives)} key objectives
-• Multi-source information gathering from {findings_count} distinct findings
-• Systematic synthesis and analysis of collected data
-
-Data Collection:
-• Comprehensive search across multiple authoritative sources
-• Evaluation of source credibility and relevance
-• Cross-verification of information across sources
-
-Analysis Approach:
-• Thematic analysis to identify patterns and relationships
-• Comparative analysis to identify consensus and contradictions
-• Gap analysis to identify areas requiring further research
-
-Quality Assurance:
-• Source credibility assessment
-• Information verification across multiple sources
-• Systematic documentation of all findings
-
-Scope and Limitations:
-• Research scope: {brief.scope}
-• Constraints: {", ".join(brief.constraints) if brief.constraints else "None identified"}
-• Time frame: Current analysis based on available information"""
-
-            return methodology
-
-        @self.agent.tool
-        async def organize_sections_by_theme(
-            ctx: RunContext[ResearchDependencies],
-            compressed_findings: CompressedFindings,
-            findings: list[ResearchFinding],
-        ) -> list[ResearchSection]:
-            """Organize report sections by theme.
-
-            Args:
-                ctx: Run context with dependencies
-                compressed_findings: Compressed findings with themes
-                findings: Original research findings
-
-            Returns:
-                List of organized report sections
-            """
-            sections: list[ResearchSection] = []
-
-            for i, (theme, theme_content) in enumerate(compressed_findings.themes.items()):
-                # Get relevant findings for this theme
-                relevant_findings = [
-                    f for f in findings if any(content in f.content for content in theme_content)
-                ][:5]  # Limit to top 5 findings per theme
-
-                section = ResearchSection(
-                    title=theme,
-                    content="\n\n".join(theme_content),
-                    findings=relevant_findings,
-                    order=i,
-                )
-                sections.append(section)
-
-            return sections
-
-        @self.agent.tool
-        async def generate_recommendations(
-            ctx: RunContext[ResearchDependencies],
-            compressed_findings: CompressedFindings,
-            brief: ResearchBrief,
-        ) -> list[str]:
-            """Generate actionable recommendations.
-
-            Args:
-                ctx: Run context with dependencies
-                compressed_findings: Compressed research findings
-                brief: Research brief
-
-            Returns:
-                List of recommendations
-            """
-            recommendations: list[str] = []
-
-            # Based on key insights
-            for insight in compressed_findings.key_insights[:3]:
-                rec = (
-                    f"Based on the finding that {insight}, "
-                    "it is recommended to explore implementation strategies."
-                )
-                recommendations.append(rec)
-
-            # Based on gaps
-            for gap in compressed_findings.gaps[:2]:
-                rec = f"Further research is recommended to address: {gap}"
-                recommendations.append(rec)
-
-            # Based on opportunities in themes
-            if "Opportunities" in compressed_findings.themes:
-                rec = "Leverage identified opportunities for strategic advantage"
-                recommendations.append(rec)
-
-            # Based on challenges
-            if "Challenges" in compressed_findings.themes:
-                rec = "Develop mitigation strategies for identified challenges"
-                recommendations.append(rec)
-
-            return recommendations[:5]  # Top 5 recommendations
-
-        @self.agent.tool
-        async def compile_citations(
-            ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
-        ) -> list[str]:
-            """Compile all citations from research findings.
-
-            Args:
-                ctx: Run context with dependencies
-                findings: Research findings with sources
+                sources: List of source information
 
             Returns:
                 List of formatted citations
             """
-            # Get unique sources
-            sources = list({f.source for f in findings})
+            formatted_citations = []
 
-            # Format citations (simplified - in production, use proper citation format)
-            citations: list[str] = []
-            for i, source in enumerate(sources, 1):
-                citation = f"[{i}] {source} (Accessed: {datetime.now().strftime('%Y-%m-%d')})"
-                citations.append(citation)
+            for source in sources:
+                if isinstance(source, dict):
+                    # Build citation from components
+                    parts = []
 
-            return sorted(citations)
+                    if source.get("author"):
+                        parts.append(source["author"])
 
-    async def generate_report(
-        self,
-        brief: ResearchBrief,
-        findings: list[ResearchFinding],
-        compressed_findings: CompressedFindings,
-        deps: ResearchDependencies,
-    ) -> ResearchReport:
-        """Generate the final research report.
+                    if source.get("date"):
+                        parts.append(f"({source['date']})")
 
-        Args:
-            brief: Research brief
-            findings: All research findings
-            compressed_findings: Compressed and synthesized findings
-            deps: Research dependencies
+                    if source.get("title"):
+                        parts.append(f'"{source["title"]}"')
 
-        Returns:
-            Complete research report
-        """
-        # Prepare context for report generation
-        context = f"""Generate a comprehensive research report based on:
+                    if source.get("url"):
+                        parts.append(f"Available at: {source['url']}")
 
-Research Topic: {brief.topic}
+                    if parts:
+                        formatted_citations.append(". ".join(parts))
+                else:
+                    # Use as-is if not a dictionary
+                    formatted_citations.append(str(source))
 
-Objectives:
-{chr(10).join(f"- {obj}" for obj in brief.objectives)}
+            return formatted_citations
 
-Key Questions:
-{chr(10).join(f"- {q}" for q in brief.key_questions)}
+        @self.agent.tool
+        async def assess_report_completeness(
+            ctx: RunContext[ResearchDependencies], report_sections: dict[str, Any]
+        ) -> dict[str, Any]:  # pyright: ignore
+            """Assess the completeness of a report.
 
-Compressed Findings Summary:
-{compressed_findings.summary}
+            Args:
+                report_sections: Dictionary of report sections
 
-Key Insights:
-{chr(10).join(f"- {insight}" for insight in compressed_findings.key_insights)}
+            Returns:
+                Completeness assessment
+            """
+            required_sections = [
+                "executive_summary",
+                "introduction",
+                "findings",
+                "conclusions",
+                "recommendations",
+            ]
 
-Instructions:
-1. Create an engaging title
-2. Write a comprehensive executive summary
-3. Provide a clear introduction with context
-4. Explain the research methodology
-5. Organize findings into logical sections
-6. Draw clear conclusions
-7. Provide actionable recommendations
-8. Include all source citations
+            assessment = {
+                "complete_sections": [],
+                "missing_sections": [],
+                "weak_sections": [],
+                "completeness_score": 0.0,
+            }
 
-Ensure the report is professional, comprehensive, and actionable."""
+            for section in required_sections:
+                if section in report_sections:
+                    content = report_sections[section]
+                    if content and len(str(content)) > 50:
+                        assessment["complete_sections"].append(section)
+                    else:
+                        assessment["weak_sections"].append(section)
+                else:
+                    assessment["missing_sections"].append(section)
 
-        result = await self.run(context, deps, stream=True)
+            # Calculate completeness score
+            total_sections = len(required_sections)
+            complete_count = len(assessment["complete_sections"])
+            weak_count = len(assessment["weak_sections"])
 
-        # Update research state
-        deps.research_state.final_report = result
-        deps.research_state.current_stage = ResearchStage.COMPLETED
-        deps.research_state.completed_at = datetime.now()
+            assessment["completeness_score"] = (complete_count + 0.5 * weak_count) / total_sections
 
-        # Calculate duration
-        duration = (
-            deps.research_state.completed_at - deps.research_state.started_at
-        ).total_seconds()
+            return assessment
 
-        # Emit research completed event
-        await research_event_bus.emit(
-            ResearchCompletedEvent(
-                _request_id=deps.research_state.request_id,
-                report=result,
-                success=True,
-                duration_seconds=duration,
-            )
-        )
+    def _format_conversation_context(self, conversation: list[Any]) -> str:
+        """Format conversation history for the prompt."""
+        if not conversation:
+            return "No prior conversation context."
 
-        # Emit stage completed event
-        await emit_stage_completed(
-            request_id=deps.research_state.request_id,
-            stage=ResearchStage.REPORT_GENERATION,
-            success=True,
-            result={"report_sections": len(result.sections)},
-        )
+        formatted = []
+        for msg in conversation[-3:]:  # Last 3 messages for context
+            if isinstance(msg, dict):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                formatted.append(f"{role.capitalize()}: {content}")
+            else:
+                formatted.append(str(msg))
 
-        return result
+        return "Recent Conversation:\n" + "\n".join(formatted)
+
+    def _get_default_system_prompt(self) -> str:
+        """Get the base system prompt for this agent."""
+        return "You are a Research Report Specialist focused on creating comprehensive reports."
+
+    def _get_output_type(self) -> type[ResearchReport]:
+        """Get the output type for this agent."""
+        return ResearchReport
 
 
 # Register the agent with the coordinator

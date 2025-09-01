@@ -11,10 +11,8 @@ from typing import Any
 import logfire
 from pydantic_ai import Agent, ModelRetry, RunContext
 
-from ..dependencies import (
-    ResearchDependencies,
-)
-from ..models.research import BriefGenerationResult, ClarificationResult, TransformedQueryResult
+from agents.base import ResearchDependencies
+from models.core import BriefGenerationResult, ClarificationResult, TransformedQueryResult
 
 # Clarification Agent following Pydantic-AI patterns
 clarification_agent = Agent[ResearchDependencies, ClarificationResult](

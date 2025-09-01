@@ -5,9 +5,9 @@ import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import Dict, List, Any
 
-from src.open_deep_research_pydantic_ai.core.workflow import workflow
-from src.open_deep_research_pydantic_ai.models.api_models import APIKeys
-from src.open_deep_research_pydantic_ai.models.research import ResearchState, ResearchStage
+from core.workflow import workflow
+from models.api_models import APIKeys
+from models.core import ResearchState, ResearchStage
 
 
 class TestThreePhaseIntegration:

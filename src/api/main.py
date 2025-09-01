@@ -14,7 +14,7 @@ from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.workflow import workflow
 from models.api_models import APIKeys
-from models.research import ResearchStage, ResearchState
+from models.core import ResearchStage, ResearchState
 
 from ..core.logging import configure_logging
 

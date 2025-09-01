@@ -5,9 +5,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from typing import Dict, Any
 
-from src.open_deep_research_pydantic_ai.agents.base import ResearchDependencies
-from src.open_deep_research_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
-from src.open_deep_research_pydantic_ai.models.research import ResearchState, ResearchStage
+from agents.base import ResearchDependencies
+from models.api_models import APIKeys, ResearchMetadata
+from models.core import ResearchState, ResearchStage
 
 
 @pytest.fixture

@@ -25,6 +25,10 @@ from .base import (
     ToolMixin,
 )
 
+# Phase 2 agent imports
+from .brief_generator import brief_generator_agent
+from .compression import compression_agent
+
 # Factory system for agent creation and management
 from .factory import (
     AgentCreationError,
@@ -41,8 +45,9 @@ from .factory import (
     get_agent_type_from_string,
     register_agent_type,
 )
-
-# Legacy imports removed - use factory system instead
+from .query_transformation import query_transformation_agent
+from .report_generator import report_generator_agent
+from .research_executor import research_executor_agent
 
 __all__ = [
     # Enhanced base agent system
@@ -73,4 +78,10 @@ __all__ = [
     "create_agent",
     "register_agent_type",
     "get_agent_type_from_string",
+    # Phase 2 agents
+    "query_transformation_agent",
+    "brief_generator_agent",
+    "research_executor_agent",
+    "compression_agent",
+    "report_generator_agent",
 ]

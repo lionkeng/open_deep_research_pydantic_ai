@@ -7,12 +7,9 @@ from core.events import (
     emit_research_started,
     research_event_bus,
 )
-from models.research import (
-    ResearchBrief,
-    ResearchFinding,
-    ResearchStage,
-    ResearchState,
-)
+from models.brief_generator import ResearchBrief
+from models.core import ResearchStage, ResearchState
+from models.research_executor import ResearchFinding
 
 
 def test_research_state():
