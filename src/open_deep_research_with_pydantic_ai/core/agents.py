@@ -21,7 +21,8 @@ clarification_agent = Agent[ResearchDependencies, ClarificationResult](
     "openai:gpt-4o",
     deps_type=ResearchDependencies,
     output_type=ClarificationResult,
-    system_prompt="""You are a research clarification assistant following structured assessment protocols.
+    system_prompt="""You are a research clarification assistant following structured
+assessment protocols.
 
 Your role is to assess whether user queries need clarification to produce high-quality research.
 
@@ -149,7 +150,8 @@ transformation_agent = Agent[ResearchDependencies, TransformedQueryResult](
     "openai:gpt-4o",
     deps_type=ResearchDependencies,
     output_type=TransformedQueryResult,
-    system_prompt="""You are a query transformation specialist that converts broad research queries into specific, actionable research questions.
+    system_prompt="""You are a query transformation specialist that converts broad
+research queries into specific, actionable research questions.
 
 TRANSFORMATION PRINCIPLES:
 
@@ -183,9 +185,10 @@ async def enhance_query_specificity(
     # Extract clarification responses if available
     clarification_responses = clarification_data.get("clarification_responses", {})
 
-    # Analyze query characteristics
+    # Analyze query characteristics with explicit types
+    word_count: int = len(original_query.split())
     query_analysis = {
-        "word_count": len(original_query.split()),
+        "word_count": word_count,
         "has_temporal_context": any(
             word in original_query.lower()
             for word in ["recent", "current", "2024", "2023", "past", "future", "when", "since"]
@@ -198,7 +201,7 @@ async def enhance_query_specificity(
     }
 
     # Estimate specificity improvement potential
-    base_specificity = min(0.9, query_analysis["word_count"] / 20)  # Longer queries more specific
+    base_specificity = min(0.9, word_count / 20)  # Longer queries more specific
     if clarification_responses:
         base_specificity += min(0.3, len(clarification_responses) * 0.1)
 
@@ -217,9 +220,11 @@ async def validate_transformation_result(
     """Validate transformation quality and completeness."""
 
     # Ensure meaningful transformation occurred
-    if output.original_query.strip().lower() == output.transformed_query.strip().lower():
+    if (output.original_query.strip().lower() ==
+        output.transformed_query.strip().lower()):
         raise ModelRetry(
-            "You must meaningfully transform the query - it should be more specific than the original"
+            "You must meaningfully transform the query - "
+            "it should be more specific than the original"
         )
 
     # Check for minimum specificity improvement
@@ -345,7 +350,8 @@ async def validate_brief_result(
     # Check for reasonable confidence given complexity
     if output.estimated_complexity == "high" and output.confidence_score > 0.9:
         raise ModelRetry(
-            "High confidence seems unrealistic for high complexity research - consider lowering confidence or complexity assessment"
+            "High confidence seems unrealistic for high complexity research - "
+            "consider lowering confidence or complexity assessment"
         )
 
     # Ensure practical elements are included for medium/high complexity
@@ -369,7 +375,7 @@ class AgentCoordinator:
         }
         self._agent_stats = {name: {"calls": 0, "errors": 0} for name in self.agents}
 
-    def get_agent(self, agent_type: str) -> Agent:
+    def get_agent(self, agent_type: str) -> Agent[ResearchDependencies, Any]:
         """Get agent by type with validation."""
         if agent_type not in self.agents:
             available = ", ".join(self.agents.keys())
@@ -377,7 +383,7 @@ class AgentCoordinator:
         return self.agents[agent_type]
 
     async def run_agent(
-        self, agent_type: str, prompt: str, deps: ResearchDependencies, **kwargs
+        self, agent_type: str, prompt: str, deps: ResearchDependencies, **kwargs: Any
     ) -> Any:
         """Run agent with error tracking and logging."""
         agent = self.get_agent(agent_type)
@@ -386,7 +392,7 @@ class AgentCoordinator:
             self._agent_stats[agent_type]["calls"] += 1
 
             logfire.info(f"Running {agent_type} agent", prompt=prompt[:100])
-            result = await agent.run(prompt, deps=deps, **kwargs)
+            result = await agent.run(prompt, deps=deps)
 
             logfire.info(f"Agent {agent_type} completed successfully")
             return result

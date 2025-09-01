@@ -81,8 +81,8 @@ Output the transformed query with:
         self,
         original_query: str,
         clarification_responses: dict[str, str],
-        conversation_context: list[str] = None,
-        deps: ResearchDependencies = None,
+        conversation_context: list[str] | None = None,
+        deps: ResearchDependencies | None = None,
     ) -> TransformedQuery:
         """Transform a query based on clarification responses.
 
@@ -144,7 +144,7 @@ Output the transformed query with:
         self,
         original_query: str,
         clarification_responses: dict[str, str],
-        conversation_context: list[str] = None,
+        conversation_context: list[str] | None = None,
     ) -> str:
         """Build the prompt for query transformation."""
         prompt_parts = [f"Original Query: {original_query}", "", "Clarification Responses:"]
@@ -180,7 +180,7 @@ Output the transformed query with:
 
         # Basic transformation: combine original query with key responses
         enhanced_query = original_query
-        context_additions = []
+        context_additions: list[str] = []
 
         for question, response in clarification_responses.items():
             if response.strip() and response.lower() not in ["no", "none", "n/a", ""]:
@@ -284,7 +284,7 @@ Output the transformed query with:
         clarity_score = 8 if len(transformation.transformed_query) > 20 else 5
         scores["clarity"] = clarity_score
 
-        overall_score = sum(scores.values()) / len(scores)
+        overall_score = sum(scores.values()) / len(scores)  # type: ignore[arg-type]
 
         return {
             "scores": scores,

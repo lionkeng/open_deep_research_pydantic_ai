@@ -5,7 +5,8 @@ from collections.abc import AsyncGenerator
 
 import logfire
 from fastapi import Request
-from sse_starlette.sse import EventSourceResponse, ServerSentEvent
+from sse_starlette import EventSourceResponse
+from sse_starlette.event import ServerSentEvent
 
 from open_deep_research_with_pydantic_ai.core.events import (
     ErrorEvent,
@@ -54,13 +55,13 @@ class SSEHandler:
         if event.request_id == self.request_id:
             await self.event_queue.put(event)
 
-    def subscribe_to_events(self) -> None:
+    async def subscribe_to_events(self) -> None:
         """Subscribe to relevant research events."""
         if not self._subscribed:
-            research_event_bus.subscribe(StreamingUpdateEvent, self.capture_event)
-            research_event_bus.subscribe(StageCompletedEvent, self.capture_event)
-            research_event_bus.subscribe(ErrorEvent, self.capture_event)
-            research_event_bus.subscribe(ResearchCompletedEvent, self.capture_event)
+            await research_event_bus.subscribe(StreamingUpdateEvent, self.capture_event)
+            await research_event_bus.subscribe(StageCompletedEvent, self.capture_event)
+            await research_event_bus.subscribe(ErrorEvent, self.capture_event)
+            await research_event_bus.subscribe(ResearchCompletedEvent, self.capture_event)
             self._subscribed = True
             logfire.info(f"SSE handler subscribed to events for {self.request_id}")
 
@@ -75,7 +76,7 @@ class SSEHandler:
         Yields:
             ServerSentEvent instances
         """
-        self.subscribe_to_events()
+        await self.subscribe_to_events()
 
         try:
             # Send initial connection event with retry interval
@@ -171,9 +172,15 @@ class SSEHandler:
                         state = active_sessions[self.request_id]
                         if state.is_completed() and not isinstance(event, ResearchCompletedEvent):
                             # Send completion event if not already sent
+                            # Calculate duration if timing information is available
+                            duration = None
+                            if state.started_at and state.completed_at:
+                                duration = (state.completed_at - state.started_at).total_seconds()
+
                             completed_msg = CompletedMessage(
                                 request_id=self.request_id,
                                 success=state.error_message is None,
+                                duration=duration,
                                 error=state.error_message,
                                 has_report=state.final_report is not None,
                             )

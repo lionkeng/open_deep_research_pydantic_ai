@@ -72,10 +72,10 @@ async def test_event_bus():
     """Test event bus functionality."""
     # Clean up any existing state first
     await research_event_bus.cleanup()
-    async with research_event_bus._history_lock:  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_history.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_count_by_user.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._active_users.clear()  # pyright: ignore[reportPrivateUsage]
+    async with research_event_bus._history_lock:
+        research_event_bus._event_history.clear()
+        research_event_bus._event_count_by_user.clear()
+        research_event_bus._active_users.clear()
 
     received_events: list[ResearchStartedEvent] = []
 
@@ -100,7 +100,7 @@ async def test_event_bus():
 
     # Cleanup
     await research_event_bus.cleanup()
-    async with research_event_bus._history_lock:  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_history.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_count_by_user.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._active_users.clear()  # pyright: ignore[reportPrivateUsage]
+    async with research_event_bus._history_lock:
+        research_event_bus._event_history.clear()
+        research_event_bus._event_count_by_user.clear()
+        research_event_bus._active_users.clear()

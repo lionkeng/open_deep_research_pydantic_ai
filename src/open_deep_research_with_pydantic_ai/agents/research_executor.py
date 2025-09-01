@@ -1,5 +1,7 @@
 """Research Execution Agents for parallel information gathering."""
 
+from __future__ import annotations
+
 import asyncio
 from typing import Any
 
@@ -19,12 +21,16 @@ from open_deep_research_with_pydantic_ai.core.events import (
 from open_deep_research_with_pydantic_ai.models.research import (
     ResearchBrief,
     ResearchFinding,
+    ResearchResults,
     ResearchStage,
 )
 from open_deep_research_with_pydantic_ai.services.search import search_service
 
+# Type alias to help PyRight with type inference
+FindingsList = list[ResearchFinding]
 
-class SpecializedResearchAgent(BaseResearchAgent[ResearchDependencies, list[ResearchFinding]]):
+
+class SpecializedResearchAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
     """Specialized research agent for focused domain research."""
 
     def __init__(self, name: str, specialization: str):
@@ -37,7 +43,7 @@ class SpecializedResearchAgent(BaseResearchAgent[ResearchDependencies, list[Rese
         self.specialization = specialization
         super().__init__(
             name=f"specialized_{name}",
-            output_type=list[ResearchFinding],
+            output_type=ResearchResults,
         )
 
     def _get_default_system_prompt(self) -> str:
@@ -76,19 +82,19 @@ class ResearchTask(BaseModel):
     query: str = Field(description="Search query")
     priority: int = Field(default=0, description="Task priority")
     completed: bool = Field(default=False, description="Completion status")
-    findings: list[ResearchFinding] = Field(default_factory=list, description="Task findings")
+    findings: FindingsList = Field(default_factory=list, description="Task findings")
 
 
-class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, list[ResearchFinding]]):
+class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
     """Agent responsible for executing research tasks and gathering information."""
 
     def __init__(self):
         """Initialize the research executor agent."""
         super().__init__(
             name="research_executor_agent",
-            output_type=list[ResearchFinding],
+            output_type=ResearchResults,
         )
-        self.sub_agents: dict[str, BaseResearchAgent] = {}
+        self.sub_agents: dict[str, BaseResearchAgent[ResearchDependencies, BaseModel]] = {}
 
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for research execution."""
@@ -142,7 +148,7 @@ Always provide structured findings with clear source attribution."""
             )
 
             # Convert search response to SearchResult format
-            results = []
+            results: list[dict[str, Any]] = []
             for result in search_response.results:
                 results.append(
                     {
@@ -225,9 +231,9 @@ Always provide structured findings with clear source attribution."""
             )
 
             # Convert to SearchResult format
-            results = []
+            results: list[SearchResult] = []
             for response in search_responses:
-                result_data = []
+                result_data: list[dict[str, Any]] = []
                 for r in response.results:
                     result_data.append(
                         {
@@ -284,7 +290,9 @@ Always provide structured findings with clear source attribution."""
 
             return score
 
-    def create_sub_agent(self, name: str, specialization: str) -> BaseResearchAgent:
+    def create_sub_agent(
+        self, name: str, specialization: str
+    ) -> BaseResearchAgent[ResearchDependencies, BaseModel]:
         """Create a specialized sub-agent for delegation.
 
         Args:
@@ -296,7 +304,7 @@ Always provide structured findings with clear source attribution."""
         """
         # Create proper specialized agent instead of recursive ResearchExecutorAgent
         sub_agent = SpecializedResearchAgent(
-            name=name, specialization=specialization, model=self.model
+            name=name, specialization=specialization
         )
 
         self.sub_agents[name] = sub_agent
@@ -319,7 +327,7 @@ Always provide structured findings with clear source attribution."""
             List of research findings
         """
         # Generate research tasks from brief
-        tasks = []
+        tasks: list[ResearchTask] = []
         for i, question in enumerate(brief.key_questions[:max_parallel_tasks]):
             task = ResearchTask(
                 task_id=f"task_{i}",
@@ -330,10 +338,10 @@ Always provide structured findings with clear source attribution."""
             tasks.append(task)
 
         # Execute tasks in parallel
-        all_findings = []
+        all_findings: list[ResearchFinding] = []
 
         # Create prompts for each task
-        task_prompts = []
+        task_prompts: list[str] = []
         for task in tasks:
             prompt = f"""Execute the following research task:
 

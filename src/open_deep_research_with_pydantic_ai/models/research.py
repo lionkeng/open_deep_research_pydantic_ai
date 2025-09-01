@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 if TYPE_CHECKING:
     pass  # For future type checking imports
@@ -61,7 +61,7 @@ class ClarificationResult(BaseModel):
 
     @field_validator("question", "verification")
     @classmethod
-    def validate_conditional_fields(cls, v: str, info) -> str:
+    def validate_conditional_fields(cls, v: str, info: ValidationInfo) -> str:
         """Validate conditional field population based on needs_clarification."""
         if info.data and "needs_clarification" in info.data:
             needs_clarification = info.data["needs_clarification"]
@@ -236,6 +236,12 @@ class ResearchFinding(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
+class ResearchResults(BaseModel):
+    """Wrapper for a list of research findings."""
+
+    findings: list[ResearchFinding] = Field(default_factory=list, description="Research findings")
+
+
 class ResearchSection(BaseModel):
     """Section of the final research report."""
 
@@ -243,10 +249,10 @@ class ResearchSection(BaseModel):
 
     title: Annotated[str, Field(min_length=1, max_length=200, description="Section title")]
     content: Annotated[str, Field(min_length=1, description="Section content")]
-    findings: list[ResearchFinding] = Field(default_factory=list, description="Supporting findings")  # pyright: ignore[reportUnknownVariableType]
+    findings: list[ResearchFinding] = Field(default_factory=list, description="Supporting findings")
     subsections: list["ResearchSection"] = Field(
         default_factory=list, description="Nested subsections"
-    )  # pyright: ignore[reportUnknownVariableType]
+    )
     order: int = Field(default=0, description="Display order")
 
 
@@ -329,7 +335,7 @@ class ResearchState(BaseModel):
         default=None, description="Clarified query after validation"
     )
     research_brief: ResearchBrief | None = Field(default=None, description="Research plan")
-    findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")  # pyright: ignore[reportUnknownVariableType]
+    findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")
     compressed_findings: str | None = Field(default=None, description="Synthesized findings")
     final_report: ResearchReport | None = Field(default=None, description="Final report")
     error_message: str | None = Field(default=None, description="Error message if any")

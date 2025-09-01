@@ -6,6 +6,7 @@ from typing import Any
 
 import logfire
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent
 
 from open_deep_research_with_pydantic_ai.agents.base import (
     BaseResearchAgent,
@@ -286,8 +287,6 @@ information to understand what the user wants to research, proceed without askin
             system_prompt = self._get_default_system_prompt().replace("{date}", current_date)
 
             # Create agent with formatted system prompt
-            from pydantic_ai import Agent
-
             temp_agent = Agent(
                 model=self.model,
                 deps_type=ResearchDependencies,
@@ -300,24 +299,27 @@ information to understand what the user wants to research, proceed without askin
                 prompt,
                 deps=deps,
             )
+            clarification_data: ClarifyWithUser = result.output
 
             # Store breadth assessment in metadata for monitoring
             metadata["breadth_assessment"] = {"score": breadth_score, "metadata": breadth_metadata}
 
             # Update metadata with clarification status
-            if result.data.need_clarification:  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+            if clarification_data.need_clarification:
                 metadata["clarification_count"] = metadata.get("clarification_count", 0) + 1
-                metadata["last_clarification_question"] = result.data.question  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+                metadata["last_clarification_question"] = clarification_data.question
             else:
                 metadata["clarification_complete"] = True
-                metadata["verification_message"] = result.data.verification  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+                metadata["verification_message"] = clarification_data.verification
 
             deps.research_state.metadata = metadata
 
             # Log the assessment for monitoring
             logfire.info(
-                f"Query breadth assessment - Score: {breadth_score:.2f}, "
-                f"Clarification needed: {result.data.need_clarification}",  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+                (
+                    f"Query breadth assessment - Score: {breadth_score:.2f}, "
+                    f"Clarification needed: {clarification_data.need_clarification}"
+                ),
                 request_id=deps.research_state.request_id,
                 breadth_score=breadth_score,
                 breadth_metadata=breadth_metadata,
@@ -327,11 +329,11 @@ information to understand what the user wants to research, proceed without askin
             await emit_stage_completed(
                 request_id=deps.research_state.request_id,
                 stage=ResearchStage.CLARIFICATION,
-                success=not result.data.need_clarification,  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
-                result=result.data,  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+                success=not clarification_data.need_clarification,
+                result=clarification_data,
             )
 
-            return result.data  # pyright: ignore[reportUnknownMemberType,reportAttributeAccessIssue]
+            return clarification_data
 
         except Exception as e:
             logfire.error(
@@ -403,7 +405,7 @@ Your refined queries should:
 
             result = await refinement_agent.run(prompt, deps=deps)
 
-            refined_query = result.data
+            refined_query: str = result.output
             logfire.info(
                 "Query refined successfully",
                 original_query=original_query,
@@ -481,6 +483,13 @@ Your refined queries should:
                 return self._create_basic_transformation(original_query, clarification_responses)
 
             # Use the transformation agent to process the clarifications
+            from typing import cast
+
+            from open_deep_research_with_pydantic_ai.agents.query_transformation import (
+                QueryTransformationAgent,
+            )
+
+            transformation_agent = cast(QueryTransformationAgent, transformation_agent)
             transformed_query = await transformation_agent.transform_query(
                 original_query=original_query,
                 clarification_responses=clarification_responses,
@@ -539,7 +548,7 @@ Your refined queries should:
 
         # Simple enhancement of query with clarification responses
         enhanced_query = original_query
-        context_parts = []
+        context_parts: list[str] = []
 
         for question, response in clarification_responses.items():
             if response.strip() and response.lower() not in ["no", "none", "n/a"]:

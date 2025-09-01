@@ -103,13 +103,13 @@ class TestClarificationAgent:
 
         assert agent.name == "clarification_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == ClarifyWithUser  # pyright: ignore[reportPrivateUsage]
+        assert agent.agent._output_type == ClarifyWithUser
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""
         agent = ClarificationAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportPrivateUsage]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""
 
         # Check for key elements adapted from Langgraph approach
         assert "research assistant" in prompt
@@ -655,13 +655,13 @@ class TestBriefGeneratorAgent:
 
         assert agent.name == "brief_generator_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == BriefGeneratorResearchBrief  # pyright: ignore[reportPrivateUsage]
+        assert agent.agent._output_type == BriefGeneratorResearchBrief
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""
         agent = BriefGeneratorAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportPrivateUsage]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""
 
         # Check for key elements in the system prompt
         assert "messages that have been exchanged" in prompt
@@ -909,7 +909,7 @@ class TestBriefGeneratorEdgeCases:
             questions.append(template.format(topic=topic))
 
         # No objective-specific questions should be added
-        for obj in objectives[:3]:  # pyright: ignore[reportUnknownVariableType]
+        for obj in objectives[:3]:
             questions.append(f"How can we achieve: {obj}?")
 
         # Should have template questions but no objective questions
@@ -924,9 +924,9 @@ class TestBriefGeneratorEdgeCases:
         priority_areas: list[str] = []
 
         # Test the logic branches
-        if complexity == "complex":  # pyright: ignore[reportUnnecessaryComparison]
+        if complexity == "complex":
             priority_areas.extend(["complex1", "complex2"])
-        elif complexity == "medium":  # pyright: ignore[reportUnnecessaryComparison]
+        elif complexity == "medium":
             priority_areas.extend(["medium1", "medium2"])
         else:  # This should be the default case
             priority_areas.extend([
@@ -1034,13 +1034,13 @@ class TestSpecializedResearchAgent:
         assert agent.name == "specialized_healthcare"
         assert agent.specialization == "Medical AI Applications"
         # Check output type is configured correctly
-        assert agent.agent._output_type == list  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        assert agent.agent._output_type == list
 
     def test_specialized_system_prompt(self):
         """Test specialized system prompt content."""
         agent = SpecializedResearchAgent("tech", "Software Engineering")
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""
 
         assert "Software Engineering" in prompt
         assert "specialized research agent" in prompt
@@ -1057,37 +1057,37 @@ class TestResearchExecutorAgent:
 
         assert agent.name == "research_executor_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == list  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
-        assert len(agent.sub_agents) == 0  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        assert agent.agent._output_type == list
+        assert len(agent.sub_agents) == 0
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""
         agent = ResearchExecutorAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""
 
         # Check for key elements
-        assert "research execution specialist" in prompt  # pyright: ignore[reportUnknownArgumentType]
-        assert "gather information" in prompt.lower()  # pyright: ignore[reportUnknownMemberType]
-        assert "evaluate source credibility" in prompt.lower()  # pyright: ignore[reportUnknownMemberType]
-        assert "source attribution" in prompt  # pyright: ignore[reportUnknownArgumentType]
-        assert "quality criteria" in prompt.lower()  # pyright: ignore[reportUnknownMemberType]
+        assert "research execution specialist" in prompt
+        assert "gather information" in prompt.lower()
+        assert "evaluate source credibility" in prompt.lower()
+        assert "source attribution" in prompt
+        assert "quality criteria" in prompt.lower()
 
     def test_create_sub_agent(self):
         """Test creating specialized sub-agents."""
         agent = ResearchExecutorAgent()
 
         # Create a sub-agent
-        sub_agent = agent.create_sub_agent("medical", "Healthcare AI")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        sub_agent = agent.create_sub_agent("medical", "Healthcare AI")
 
         assert isinstance(sub_agent, SpecializedResearchAgent)
         assert sub_agent.name == "specialized_medical"
         assert sub_agent.specialization == "Healthcare AI"
-        assert "medical" in agent.sub_agents  # pyright: ignore[reportUnknownMemberType]
-        assert agent.sub_agents["medical"] == sub_agent  # pyright: ignore[reportUnknownMemberType]
+        assert "medical" in agent.sub_agents
+        assert agent.sub_agents["medical"] == sub_agent
 
         # Test getting existing sub-agent
-        existing_agent = agent.sub_agents["medical"]  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        existing_agent = agent.sub_agents["medical"]
         assert existing_agent == sub_agent
 
 
@@ -1173,9 +1173,9 @@ class TestResearchExecutorTools:
         ]
 
         # Test conversion to SearchResult format
-        converted_results = []  # pyright: ignore[reportUnknownVariableType]
+        converted_results = []
         for result in mock_search_results:
-            converted_results.append({  # pyright: ignore[reportUnknownMemberType]
+            converted_results.append({
                 "title": result["title"],
                 "url": result["url"],
                 "snippet": result["snippet"],
@@ -1184,8 +1184,8 @@ class TestResearchExecutorTools:
 
         search_result = SearchResult(
             query="test query",
-            results=converted_results,  # pyright: ignore[reportUnknownArgumentType]
-            total_results=len(converted_results),  # pyright: ignore[reportUnknownArgumentType]
+            results=converted_results,
+            total_results=len(converted_results),
             source="test_source",
         )
 
@@ -1270,7 +1270,7 @@ class TestResearchExecutorWorkflow:
         )
 
         # Mock mixed results: one success, one failure
-        def mock_run_side_effect(*args, **kwargs):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+        def mock_run_side_effect(*args, **kwargs):
             if "Question 1" in args[0]:
                 return [ResearchFinding(
                     content="Successful finding",
@@ -1324,8 +1324,8 @@ class TestResearchExecutorWorkflow:
             )
 
             # Verify sub-agent was created
-            assert "medical_ai" in agent.sub_agents  # pyright: ignore[reportUnknownMemberType]
-            assert isinstance(agent.sub_agents["medical_ai"], SpecializedResearchAgent)  # pyright: ignore[reportUnknownMemberType]
+            assert "medical_ai" in agent.sub_agents
+            assert isinstance(agent.sub_agents["medical_ai"], SpecializedResearchAgent)
 
             # Verify delegation was called
             mock_delegate.assert_called_once()
@@ -1344,7 +1344,7 @@ class TestResearchExecutorWorkflow:
         agent = ResearchExecutorAgent()
 
         # Pre-create a sub-agent
-        existing_agent = agent.create_sub_agent("tech", "Software Engineering")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        existing_agent = agent.create_sub_agent("tech", "Software Engineering")
 
         # Mock RunContext
         ctx = MagicMock()
@@ -1365,8 +1365,8 @@ class TestResearchExecutorWorkflow:
             )
 
             # Should use existing sub-agent, not create new one
-            assert len(agent.sub_agents) == 1  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            assert agent.sub_agents["tech"] == existing_agent  # pyright: ignore[reportUnknownMemberType]
+            assert len(agent.sub_agents) == 1
+            assert agent.sub_agents["tech"] == existing_agent
 
             # Verify result
             assert result == mock_findings
@@ -1531,7 +1531,7 @@ class TestCompressionAgent:
         """Test that system prompt contains compression-specific instructions."""
         agent = CompressionAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""
 
         # Check for key compression concepts
         assert "synthesis" in prompt.lower()
@@ -2085,7 +2085,7 @@ class TestReportGeneratorAgent:
         """Test that system prompt contains report generation instructions."""
         agent = ReportGeneratorAgent()
         # Get system prompt through agent configuration
-        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+        prompt = agent.agent._system_prompt if hasattr(agent.agent, "_system_prompt") else ""
 
         # Check for key report generation concepts
         assert "research report specialist" in prompt.lower()
@@ -2187,7 +2187,9 @@ class TestReportGeneratorAgent:
 
     @pytest.mark.asyncio
     async def test_create_methodology_section_tool_logic(self, mock_dependencies: ResearchDependencies):
-        """Test the create_methodology_section tool logic."""        ReportGeneratorAgent()        ResearchBrief(
+        """Test the create_methodology_section tool logic."""
+        ReportGeneratorAgent()
+        ResearchBrief(
             topic="Machine Learning in Finance",
             objectives=["Analyze applications", "Assess risks"],
             key_questions=["What are the use cases?"],

@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
 
 
 class APIKeys(BaseModel):
@@ -20,7 +20,9 @@ class APIKeys(BaseModel):
 
     @field_validator("openai", "anthropic", "tavily", mode="before")
     @classmethod
-    def validate_api_key_format(cls, v: str | SecretStr | None, info) -> SecretStr | None:
+    def validate_api_key_format(
+        cls, v: str | SecretStr | None, info: ValidationInfo
+    ) -> SecretStr | None:
         """Validate API key format and convert to SecretStr."""
         if v is None:
             return None

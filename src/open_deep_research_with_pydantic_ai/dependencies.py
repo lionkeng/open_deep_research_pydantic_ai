@@ -34,7 +34,7 @@ class ResearchDependencies:
     request_timeout: float = 30.0
     retry_attempts: int = 3
 
-    async def fetch_external_data(self, url: str, **kwargs) -> str:
+    async def fetch_external_data(self, url: str, **kwargs: Any) -> str:
         """Fetch data from external URL with proper error handling."""
         try:
             response = await self.http_client.get(url, timeout=self.request_timeout, **kwargs)
@@ -47,7 +47,7 @@ class ResearchDependencies:
             logfire.error(f"HTTP error for {url}: {e.response.status_code}")
             raise
 
-    async def post_external_data(self, url: str, data: Any, **kwargs) -> str:
+    async def post_external_data(self, url: str, data: Any, **kwargs: Any) -> str:
         """Post data to external URL with proper error handling."""
         try:
             response = await self.http_client.post(
@@ -62,7 +62,7 @@ class ResearchDependencies:
             logfire.error(f"HTTP error for {url}: {e.response.status_code}")
             raise
 
-    def update_research_state(self, **updates) -> None:
+    def update_research_state(self, **updates: Any) -> None:
         """Update research state with new data."""
         for key, value in updates.items():
             if hasattr(self.research_state, key):

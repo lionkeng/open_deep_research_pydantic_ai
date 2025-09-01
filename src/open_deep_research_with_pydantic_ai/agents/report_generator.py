@@ -95,12 +95,12 @@ Ensure the report is comprehensive yet readable, authoritative yet accessible.""
             Returns:
                 Executive summary text
             """
-            summary_parts = []
+            summary_parts: list[str] = []
 
             # Opening statement
             summary_parts.append(
                 f"This research report addresses the topic of '{brief.topic}', "
-                f"examining {len(brief.objectives)} key objectives through comprehensive analysis."
+                f"examining {len(brief.objectives)} key objectives through analysis."
             )
 
             # Key findings
@@ -195,7 +195,7 @@ Scope and Limitations:
             Returns:
                 List of organized report sections
             """
-            sections = []
+            sections: list[ResearchSection] = []
 
             for i, (theme, theme_content) in enumerate(compressed_findings.themes.items()):
                 # Get relevant findings for this theme
@@ -229,7 +229,7 @@ Scope and Limitations:
             Returns:
                 List of recommendations
             """
-            recommendations = []
+            recommendations: list[str] = []
 
             # Based on key insights
             for insight in compressed_findings.key_insights[:3]:
@@ -273,7 +273,7 @@ Scope and Limitations:
             sources = list({f.source for f in findings})
 
             # Format citations (simplified - in production, use proper citation format)
-            citations = []
+            citations: list[str] = []
             for i, source in enumerate(sources, 1):
                 citation = f"[{i}] {source} (Accessed: {datetime.now().strftime('%Y-%m-%d')})"
                 citations.append(citation)

@@ -130,8 +130,10 @@ class TavilySearchProvider(SearchProvider):
                 SearchResult(
                     title=f"Result {i + 1}: {query}",
                     url=f"https://example.com/result{i + 1}",
-                    snippet=f"This is relevant information about {query}. "
-                    f"It provides comprehensive details that address the research question.",
+                    snippet=(
+                        f"This is relevant information about {query}. "
+                        f"It provides comprehensive details that address the research question."
+                    ),
                     score=0.9 - (i * 0.1),
                 )
             )
@@ -177,6 +179,8 @@ class WebSearchService:
             Search response
         """
         # Select provider
+        search_provider = None
+
         if provider and provider in self.providers:
             search_provider = self.providers[provider]
         elif self.providers:
@@ -187,7 +191,8 @@ class WebSearchService:
                     break
             else:
                 search_provider = self.providers.get("mock")
-        else:
+
+        if search_provider is None:
             # No providers available
             raise ValueError("No search providers configured")
 

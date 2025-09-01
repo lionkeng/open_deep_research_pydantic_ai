@@ -136,7 +136,12 @@ class ResearchContextManager:
         logfire.debug(f"Entered research context: {self.context}")
         return self.context
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
+    ) -> None:
         """Exit the context."""
         _current_context.reset(self._token)
         logfire.debug(f"Exited research context: {self.context}")
@@ -145,6 +150,11 @@ class ResearchContextManager:
         """Async enter the context."""
         return self.__enter__()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
+    ) -> None:
         """Async exit the context."""
         return self.__exit__(exc_type, exc_val, exc_tb)

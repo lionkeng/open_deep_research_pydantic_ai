@@ -22,19 +22,19 @@ async def clean_event_bus():
 
     # Clean up any existing state before the test
     await research_event_bus.cleanup()
-    async with research_event_bus._history_lock:  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_history.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_count_by_user.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._active_users.clear()  # pyright: ignore[reportPrivateUsage]
+    async with research_event_bus._history_lock:
+        research_event_bus._event_history.clear()
+        research_event_bus._event_count_by_user.clear()
+        research_event_bus._active_users.clear()
 
     yield research_event_bus
 
     # Clean up after the test
     await research_event_bus.cleanup()
-    async with research_event_bus._history_lock:  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_history.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._event_count_by_user.clear()  # pyright: ignore[reportPrivateUsage]
-        research_event_bus._active_users.clear()  # pyright: ignore[reportPrivateUsage]
+    async with research_event_bus._history_lock:
+        research_event_bus._event_history.clear()
+        research_event_bus._event_count_by_user.clear()
+        research_event_bus._active_users.clear()
 
 
 class TestResearchContext:
@@ -94,7 +94,7 @@ class TestRequestIDGeneration:
 class TestUserScopedEventBus:
     """Test user-scoped event isolation in ResearchEventBus."""
 
-    async def test_event_isolation_between_users(self, clean_event_bus):  # pyright: ignore[reportUnknownParameterType]
+    async def test_event_isolation_between_users(self, clean_event_bus):
         """Test that events are isolated between different users."""
         from open_deep_research_with_pydantic_ai.core.events import (
             ResearchStartedEvent,
@@ -112,27 +112,27 @@ class TestUserScopedEventBus:
 
         # Emit events with different user contexts
         async with ResearchContextManager(user_id="user1"):
-            await clean_event_bus.emit(event1)  # pyright: ignore[reportUnknownMemberType]
+            await clean_event_bus.emit(event1)
 
         async with ResearchContextManager(user_id="user2"):
-            await clean_event_bus.emit(event2)  # pyright: ignore[reportUnknownMemberType]
+            await clean_event_bus.emit(event2)
 
         # Check that each user only sees their own events
         with patch(
             "open_deep_research_with_pydantic_ai.core.events.get_current_context",
             return_value=ResearchContext(user_id="user1"),
         ):
-            user1_history = await clean_event_bus.get_event_history("user1:req1")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-            assert len(user1_history) == 1  # pyright: ignore[reportUnknownArgumentType]
-            assert user1_history[0].request_id == "user1:req1"  # pyright: ignore[reportUnknownMemberType]
+            user1_history = await clean_event_bus.get_event_history("user1:req1")
+            assert len(user1_history) == 1
+            assert user1_history[0].request_id == "user1:req1"
 
         with patch(
             "open_deep_research_with_pydantic_ai.core.events.get_current_context",
             return_value=ResearchContext(user_id="user2"),
         ):
-            user2_history = await clean_event_bus.get_event_history("user2:req2")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-            assert len(user2_history) == 1  # pyright: ignore[reportUnknownArgumentType]
-            assert user2_history[0].request_id == "user2:req2"  # pyright: ignore[reportUnknownMemberType]
+            user2_history = await clean_event_bus.get_event_history("user2:req2")
+            assert len(user2_history) == 1
+            assert user2_history[0].request_id == "user2:req2"
 
     async def test_user_cleanup(self):
         """Test that user resources can be cleaned up."""
@@ -159,11 +159,11 @@ class TestUserScopedEventBus:
             assert "user1" not in event_bus._active_users
 
             # Check user2 resources remain
-            assert "user2:req1" in event_bus._event_history  # pyright: ignore[reportPrivateUsage]
-            assert event_bus._event_count_by_user["user2"] == 5  # pyright: ignore[reportPrivateUsage]
-            assert "user2" in event_bus._active_users  # pyright: ignore[reportPrivateUsage]
+            assert "user2:req1" in event_bus._event_history
+            assert event_bus._event_count_by_user["user2"] == 5
+            assert "user2" in event_bus._active_users
 
-    async def test_concurrent_event_emission(self, clean_event_bus):  # pyright: ignore[reportUnknownParameterType]
+    async def test_concurrent_event_emission(self, clean_event_bus):
         """Test that concurrent event emissions are thread-safe."""
         from open_deep_research_with_pydantic_ai.core.events import (
             ResearchStartedEvent,
@@ -177,7 +177,7 @@ class TestUserScopedEventBus:
                         _request_id=f"{user_id}:req{i}",
                         user_query=f"Query {i} from {user_id}",
                     )
-                    await clean_event_bus.emit(event)  # pyright: ignore[reportUnknownMemberType]
+                    await clean_event_bus.emit(event)
 
         # Run multiple users concurrently
         await asyncio.gather(
@@ -187,22 +187,22 @@ class TestUserScopedEventBus:
         )
 
         # Verify all events were recorded correctly
-        async with clean_event_bus._history_lock:  # pyright: ignore[reportUnknownMemberType]
+        async with clean_event_bus._history_lock:
             # Count events per user
             user1_events = sum(
                 1
                 for key in clean_event_bus._event_history.keys()
-                if key.startswith("user1:")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+                if key.startswith("user1:")
             )
             user2_events = sum(
                 1
                 for key in clean_event_bus._event_history.keys()
-                if key.startswith("user2:")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+                if key.startswith("user2:")
             )
             user3_events = sum(
                 1
                 for key in clean_event_bus._event_history.keys()
-                if key.startswith("user3:")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+                if key.startswith("user3:")
             )
 
             assert user1_events == 50, f"Expected 50 user1 events, got {user1_events}"
@@ -210,9 +210,9 @@ class TestUserScopedEventBus:
             assert user3_events == 50, f"Expected 50 user3 events, got {user3_events}"
 
             # Verify event counts
-            assert clean_event_bus._event_count_by_user["user1"] == 50  # pyright: ignore[reportUnknownMemberType]
-            assert clean_event_bus._event_count_by_user["user2"] == 50  # pyright: ignore[reportUnknownMemberType]
-            assert clean_event_bus._event_count_by_user["user3"] == 50  # pyright: ignore[reportUnknownMemberType]
+            assert clean_event_bus._event_count_by_user["user1"] == 50
+            assert clean_event_bus._event_count_by_user["user2"] == 50
+            assert clean_event_bus._event_count_by_user["user3"] == 50
 
 
 @pytest.mark.asyncio

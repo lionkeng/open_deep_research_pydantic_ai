@@ -8,6 +8,12 @@ import httpx
 import logfire
 
 # Import new pydantic-ai compliant agents and dependencies
+from open_deep_research_with_pydantic_ai.agents import (
+    compression_agent,
+    report_generator_agent,
+    research_executor_agent,
+)
+from open_deep_research_with_pydantic_ai.agents.base import ResearchDependencies
 from open_deep_research_with_pydantic_ai.core.agents import coordinator
 from open_deep_research_with_pydantic_ai.core.context import get_current_context
 from open_deep_research_with_pydantic_ai.core.events import (
@@ -15,7 +21,6 @@ from open_deep_research_with_pydantic_ai.core.events import (
     emit_research_started,
     emit_stage_completed,
 )
-from open_deep_research_with_pydantic_ai.dependencies import ResearchDependencies
 from open_deep_research_with_pydantic_ai.models.api_models import APIKeys, ResearchMetadata
 from open_deep_research_with_pydantic_ai.models.research import (
     ResearchStage,
@@ -102,7 +107,7 @@ class ResearchWorkflow:
             )
 
     async def _run_agent_with_circuit_breaker(
-        self, agent_type: str, prompt: str, deps: ResearchDependencies, **kwargs
+        self, agent_type: str, prompt: str, deps: ResearchDependencies, **kwargs: Any
     ) -> Any:
         """Run agent with circuit breaker pattern and error handling.
 
@@ -250,7 +255,10 @@ class ResearchWorkflow:
                 logfire.info("Stage 5: Compression (placeholder)", request_id=request_id)
 
                 # Create placeholder compressed findings
-                research_state.compressed_findings = f"Compressed findings based on {len(mock_findings)} research findings covering key areas: {', '.join(key_areas[:3])}"
+                research_state.compressed_findings = (
+                    f"Compressed findings based on {len(mock_findings)} research findings "
+                    f"covering key areas: {', '.join(key_areas[:3])}"
+                )
                 research_state.metadata["compressed_findings_summary"] = {
                     "total_findings": len(mock_findings),
                     "key_themes": key_areas[:3],
@@ -286,9 +294,14 @@ class ResearchWorkflow:
                     title=f"Research Report: {user_query}",
                     executive_summary=brief_text[:500],
                     introduction=f"This report presents research findings for: {user_query}",
-                    methodology="Three-phase clarification system with enhanced brief generation",
+                    methodology=(
+                        "Three-phase clarification system with enhanced brief generation"
+                    ),
                     sections=sections,
-                    conclusion="Research completed successfully using the three-phase clarification system.",
+                    conclusion=(
+                        "Research completed successfully using the "
+                        "three-phase clarification system."
+                    ),
                     recommendations=[
                         f"Further investigation into {area}" for area in key_areas[:2]
                     ],
@@ -344,7 +357,6 @@ class ResearchWorkflow:
         Phase 3: Enhanced Brief Generation
         """
         # Create tasks for concurrent processing where possible
-        phase_tasks = []
         phase_results = {}
 
         try:
@@ -384,7 +396,7 @@ class ResearchWorkflow:
 
                 if sys.stdin.isatty():  # Interactive mode (CLI)
                     try:
-                        from open_deep_research_with_pydantic_ai.interfaces.cli_clarification import (
+                        from open_deep_research_with_pydantic_ai.interfaces.cli_clarification import (  # noqa: E501
                             ask_single_clarification_question,
                         )
 
@@ -487,7 +499,8 @@ class ResearchWorkflow:
                 # Prepare brief generation data
                 brief_prompt = f"""Generate a comprehensive research brief based on:
                 Original Query: {user_query}
-                Transformed Query: {research_state.metadata.get("transformed_query", {}).get("transformed_query", user_query)}
+                Transformed Query: {research_state.metadata.get("transformed_query", {})
+                    .get("transformed_query", user_query)}
                 Research Context: Clarification and transformation completed
                 """
 

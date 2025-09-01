@@ -286,14 +286,12 @@ class ResearchEventBus:
                 weak_handler = WeakMethod(handler, self._cleanup_dead_handler)
                 # Store the weak method in a way that WeakSet can track it
                 self._handlers[event_type].add(weak_handler)
-                handler_ref = weak_handler
             else:
                 # For functions, use regular weak reference
-                weak_handler = weakref.ref(handler, self._cleanup_dead_handler)
+                weakref.ref(handler, self._cleanup_dead_handler)
                 # WeakSet doesn't work with weakref.ref directly, so we add the handler directly
                 # and rely on WeakSet's internal weak referencing
                 self._handlers[event_type].add(handler)
-                handler_ref = weak_handler
 
             logfire.debug(
                 f"Handler subscribed to {event_type.__name__}",
@@ -384,7 +382,7 @@ class ResearchEventBus:
         # Process handlers concurrently with semaphore to limit concurrency
         semaphore = asyncio.Semaphore(10)  # Limit concurrent handler calls
 
-        async def call_handler_with_limit(handler):
+        async def call_handler_with_limit(handler: EventHandler[T]):
             async with semaphore:
                 await self._safe_call_handler(handler, event)
 
@@ -471,6 +469,8 @@ class ResearchEventBus:
                     logfire.info(f"Event cleanup completed: removed {events_removed} old events")
 
                 # Clean up inactive users (no events in last hour)
+                import time
+                current_time = time.time()
                 cutoff_time = current_time - 3600  # 1 hour ago
                 inactive_users = set()
 

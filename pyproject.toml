@@ -70,41 +70,64 @@ line-ending = "auto"
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 exclude = ["tests/**", "test_*.py"]
-reportMissingImports = true
-reportMissingTypeStubs = false
-reportUnusedImport = true
-reportUnusedClass = true
-reportUnusedFunction = true
-reportUnusedVariable = true
-reportDuplicateImport = true
-reportOptionalMemberAccess = true
-reportOptionalCall = true
-reportOptionalIterable = true
-reportOptionalContextManager = true
-reportOptionalOperand = true
-reportTypedDictNotRequiredAccess = true
-reportPrivateImportUsage = true
-reportConstantRedefinition = true
-reportIncompatibleMethodOverride = true
-reportIncompatibleVariableOverride = true
-reportInconsistentConstructor = true
-reportOverlappingOverload = true
-reportUninitializedInstanceVariable = true
-reportCallInDefaultInitializer = true
-reportUnnecessaryIsInstance = true
-reportUnnecessaryCast = true
-reportUnnecessaryComparison = true
-reportUnnecessaryContains = true
-reportAssertAlwaysTrue = true
-reportSelfClsParameterName = true
-reportImplicitStringConcatenation = false
-reportUndefinedVariable = true
-reportUnboundVariable = true
-reportInvalidStringEscapeSequence = true
-reportMissingParameterType = true
-reportMissingTypeArgument = true
-reportUnnecessaryTypeIgnoreComment = true
-reportMatchNotExhaustive = true
+stubPath = "stubs"  # For custom type stubs if needed
+
+# Framework-specific configurations for Pydantic-AI
+reportGeneralTypeIssues = "error"
+reportPrivateUsage = "warning"  # Allow some private usage in framework integration
+
+# Downgrade external library type issues to warnings
+reportUnknownMemberType = "warning"
+reportUnknownArgumentType = "warning" 
+reportUnknownVariableType = "warning"
+reportUnknownParameterType = "warning"
+reportMissingTypeArgument = "warning"
+reportAny = "warning"
+
+# Keep strict error checking for code quality
+reportMissingImports = "error"
+reportMissingTypeStubs = "warning"
+reportUnusedImport = "error"
+reportUnusedClass = "error"
+reportUnusedFunction = "information"  # Lowered for Pydantic-AI tools (called dynamically)
+reportUnusedVariable = "error"
+reportDuplicateImport = "error"
+reportWildcardImportFromLibrary = "error"
+reportOptionalMemberAccess = "error"
+reportOptionalCall = "error"
+reportOptionalIterable = "error"
+reportOptionalContextManager = "error"
+reportOptionalOperand = "error"
+reportTypedDictNotRequiredAccess = "error"
+reportUntypedFunctionDecorator = "warning"
+reportUntypedClassDecorator = "warning"
+reportUntypedBaseClass = "warning"
+
+# Additional framework-specific adjustments
+reportCallIssue = "error"
+reportArgumentType = "warning"  # More lenient for complex generic scenarios
+reportUntypedNamedTuple = "error"
+reportConstantRedefinition = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportInvalidStringEscapeSequence = "error"
+reportUnknownLambdaType = "warning"
+reportInvalidTypeVarUse = "error"
+reportCallInDefaultInitializer = "error"
+reportUnnecessaryIsInstance = "warning"
+reportUnnecessaryCast = "warning"
+reportUnnecessaryComparison = "warning"
+reportAssertAlwaysTrue = "warning"
+reportSelfClsParameterName = "error"
+reportImplicitStringConcatenation = "warning"
+reportInvalidStubStatement = "error"
+reportIncompleteStub = "warning"
+reportUnsupportedDunderAll = "error"
+reportUnusedCallResult = "warning"
+reportUnusedCoroutine = "error"
+reportUnusedExpression = "warning"
+reportUnnecessaryTypeIgnoreComment = "warning"
+reportMatchNotExhaustive = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

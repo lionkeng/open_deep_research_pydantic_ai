@@ -87,7 +87,7 @@ class TestClarificationAgent:
 
         assert agent.name == "clarification_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == ClarifyWithUser  # pyright: ignore[reportPrivateUsage]
+        assert agent.agent._output_type == ClarifyWithUser
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""
@@ -143,7 +143,7 @@ class TestBriefGeneratorAgent:
 
         assert agent.name == "brief_generator_agent"
         # Check output type is configured correctly
-        assert agent.agent._output_type == BriefGeneratorResearchBrief  # pyright: ignore[reportPrivateUsage]
+        assert agent.agent._output_type == BriefGeneratorResearchBrief
 
     def test_system_prompt_content(self):
         """Test that system prompt contains required content."""

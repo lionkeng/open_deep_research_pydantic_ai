@@ -94,7 +94,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
         """Register compression-specific tools."""
 
         @self.agent.tool
-        async def identify_themes(  # pyright: ignore[reportUnusedFunction]
+        async def identify_themes(
             _ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
         ) -> dict[str, list[str]]:
             """Identify themes from research findings.
@@ -143,7 +143,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
             return dict(themes)
 
         @self.agent.tool
-        async def find_contradictions(  # pyright: ignore[reportUnusedFunction]
+        async def find_contradictions(
             _ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
         ) -> list[str]:
             """Identify contradictory findings.
@@ -188,13 +188,13 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
                                     f"'{finding1.content[:100]}...' and "
                                     f"'{finding2.content[:100]}...'"
                                 )
-                                contradictions.append(contradiction)
+                                contradictions.append(contradiction)  # type: ignore[arg-type]
                                 break
 
-            return contradictions[:5]  # Limit to top 5 contradictions
+            return contradictions[:5]  # type: ignore[return-value]  # Limit to top 5 contradictions
 
         @self.agent.tool
-        async def extract_consensus_points(  # pyright: ignore[reportUnusedFunction]
+        async def extract_consensus_points(
             _ctx: RunContext[ResearchDependencies], findings: list[ResearchFinding]
         ) -> list[str]:
             """Extract points where multiple sources agree.
@@ -206,19 +206,20 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
             Returns:
                 List of consensus points
             """
-            consensus_points = []
+            consensus_points: list[str] = []
 
             # Group findings by source
-            source_groups = defaultdict(list)
+            from typing import Any
+            source_groups: defaultdict[str, list[Any]] = defaultdict(list)
             for finding in findings:
                 source_groups[finding.source].append(finding)
 
             # Find common themes across sources
             if len(source_groups) > 1:
                 # Extract key phrases from each source
-                source_phrases = {}
+                source_phrases: dict[str, set[str]] = {}
                 for source, source_findings in source_groups.items():
-                    phrases = set()
+                    phrases: set[str] = set()
                     for finding in source_findings:
                         # Simple phrase extraction (in production, use NLP)
                         words = finding.content.lower().split()
@@ -230,7 +231,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
                 # Find common phrases across sources
                 sources = list(source_phrases.keys())
                 if len(sources) >= 2:
-                    common = source_phrases[sources[0]]
+                    common: set[str] = source_phrases[sources[0]]
                     for source in sources[1:]:
                         common = common.intersection(source_phrases[source])
 
@@ -240,7 +241,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
             return consensus_points[:5]  # Top 5 consensus points
 
         @self.agent.tool
-        async def identify_gaps(  # pyright: ignore[reportUnusedFunction]
+        async def identify_gaps(
             _ctx: RunContext[ResearchDependencies],
             findings: list[ResearchFinding],
             research_questions: list[str],
@@ -255,7 +256,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
             Returns:
                 List of identified gaps
             """
-            gaps = []
+            gaps: list[str] = []
 
             # Check if each research question was adequately addressed
             for question in research_questions:
@@ -278,7 +279,7 @@ Ensure the compressed findings are more valuable than the sum of their parts."""
                     gaps.append(f"Limited information on: {question}")
 
             # Check for low coverage areas based on confidence scores
-            low_confidence_topics = []
+            low_confidence_topics: list[str] = []
             for finding in findings:
                 if finding.confidence < 0.5:
                     low_confidence_topics.append(finding.summary or finding.content[:100])
