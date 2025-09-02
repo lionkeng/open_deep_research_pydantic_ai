@@ -5,7 +5,7 @@ This package contains all research agents with enhanced base functionality inclu
 - Advanced error handling with retry mechanisms
 - Performance monitoring and metrics collection
 - Tool management and conversation context handling
-- Agent factory pattern for creation and pooling
+- Simple agent factory pattern for creation
 - Full integration with Pydantic AI framework and Logfire logging
 """
 
@@ -31,19 +31,14 @@ from .compression import compression_agent
 
 # Factory system for agent creation and management
 from .factory import (
-    AgentCreationError,
     AgentFactory,
-    AgentPool,
-    AgentPoolConfig,
-    AgentPoolError,
-    AgentRegistrationError,
-    AgentRegistry,
     AgentType,
-    FactoryError,
-    create_agent,
-    get_agent_factory,
-    get_agent_type_from_string,
-    register_agent_type,
+    create_brief_generator_agent,
+    create_clarification_agent,
+    create_compression_agent,
+    create_query_transformation_agent,
+    create_report_generator_agent,
+    create_research_executor_agent,
 )
 from .query_transformation import query_transformation_agent
 from .report_generator import report_generator_agent
@@ -65,19 +60,14 @@ __all__ = [
     "PerformanceMonitoringMixin",
     # Factory system
     "AgentType",
-    "AgentPoolConfig",
     "AgentFactory",
-    "AgentRegistry",
-    "AgentPool",
-    "FactoryError",
-    "AgentRegistrationError",
-    "AgentCreationError",
-    "AgentPoolError",
-    # Convenience functions
-    "get_agent_factory",
-    "create_agent",
-    "register_agent_type",
-    "get_agent_type_from_string",
+    # Factory convenience functions
+    "create_clarification_agent",
+    "create_query_transformation_agent",
+    "create_brief_generator_agent",
+    "create_research_executor_agent",
+    "create_compression_agent",
+    "create_report_generator_agent",
     # Phase 2 agents
     "query_transformation_agent",
     "brief_generator_agent",

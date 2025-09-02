@@ -8,21 +8,21 @@ import httpx
 import logfire
 
 # Import new pydantic-ai compliant agents and dependencies
-from agents import (
+from ..agents import (
     compression_agent,
     report_generator_agent,
     research_executor_agent,
 )
-from agents.base import ResearchDependencies
-from core.agents import coordinator
-from core.context import get_current_context
-from core.events import (
+from ..agents.base import ResearchDependencies
+from ..core.agents import coordinator
+from ..core.context import get_current_context
+from ..core.events import (
     emit_error,
     emit_research_started,
     emit_stage_completed,
 )
-from models.api_models import APIKeys, ResearchMetadata
-from models.core import (
+from ..models.api_models import APIKeys, ResearchMetadata
+from ..models.core import (
     ResearchStage,
     ResearchState,
 )

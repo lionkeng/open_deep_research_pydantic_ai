@@ -15,14 +15,14 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import RunUsage
 
-from core.events import (
+from ..core.events import (
     AgentDelegationEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
-from core.logging import configure_logging
-from models.api_models import APIKeys, ResearchMetadata
-from models.core import ResearchState
+from ..core.logging import configure_logging
+from ..models.api_models import APIKeys, ResearchMetadata
+from ..models.core import ResearchState
 
 
 # Enhanced exception system for agent errors

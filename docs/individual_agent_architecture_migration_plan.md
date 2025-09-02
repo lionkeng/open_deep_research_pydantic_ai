@@ -328,7 +328,6 @@ from ..agents.factory import AgentFactory, AgentType, AgentPool
 2. **Individual Agent Tests** - One file per agent
 3. **Factory Tests** - `tests/agents/test_factory.py`
 4. **Integration Tests** - `tests/test_workflow_integration.py`
-5. **Performance Tests** - `tests/test_performance.py`
 
 ### 4.2 Testing Strategies
 
@@ -371,16 +370,7 @@ class TestWorkflowIntegration:
         assert result.brief_result is not None
 ```
 
-### 4.3 Performance Testing
-
-**Metrics Collection**:
-
-- Execution times per agent
-- Memory usage tracking
-- Token consumption monitoring
-- Success rates and retry counts
-- Cache hit rates
-
+<!-- 
 ## Phase 5: Performance Optimization (1-2 Days)
 
 ### 5.1 Performance Monitoring
