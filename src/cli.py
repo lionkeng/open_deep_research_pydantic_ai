@@ -224,7 +224,7 @@ class HTTPResearchClient:
                 "stream": True,
             },
         )
-        response.raise_for_status()
+        response.raise_for_status()  # type: ignore[func-returns-value]
         data = response.json()  # httpx Response.json() is synchronous
         return data["request_id"]
 
@@ -328,10 +328,11 @@ class HTTPResearchClient:
                     retry_count += 1
                     if retry_count >= max_retries:
                         raise
-                    console.print(
-                        f"[yellow]Connection failed, retrying "
-                        f"{retry_count}/{max_retries}...[/yellow]"
+                    msg = (
+                        f"[yellow]Connection failed, "
+                        f"retrying {retry_count}/{max_retries}...[/yellow]"
                     )
+                    console.print(msg)
                     await asyncio.sleep(2**retry_count)  # Exponential backoff
                 else:
                     console.print(f"[red]Stream error: {e}[/red]")
@@ -347,7 +348,7 @@ class HTTPResearchClient:
             Report data as dictionary
         """
         response = await self.client.get(f"{self.base_url}/research/{request_id}/report")
-        response.raise_for_status()
+        response.raise_for_status()  # type: ignore[func-returns-value]
         return response.json()
 
     async def close(self) -> None:
@@ -544,7 +545,7 @@ def save_http_report(report_data: dict[str, Any], filename: str) -> None:
             content.append(f"- {str(citation)}\n")
 
     with open(filename, "w") as f:
-        f.write("\n".join(content))
+        f.write("\n".join(content))  # type: ignore[func-returns-value]
 
 
 async def run_research(
@@ -611,7 +612,7 @@ async def run_research(
         if not _http_mode_available:
             console.print(
                 "[red]HTTP mode requires additional dependencies.[/red]\n"
-                "Install with: uv add --optional cli"
+                + "Install with: uv add --optional cli"
             )
             sys.exit(1)
 
@@ -644,15 +645,15 @@ async def run_research(
                         if e.response.status_code == 400:
                             console.print(
                                 "[yellow]Report not yet available. "
-                                "Research may still be in progress.[/yellow]"
+                                + "Research may still be in progress.[/yellow]"
                             )
                         else:
                             console.print(f"[red]Failed to fetch report: {e}[/red]")
                     elif isinstance(e, httpx.ConnectError):
                         console.print(
                             f"[red]Failed to connect to server at {server_url}[/red]\n"
-                            f"Ensure the server is running: "
-                            f"uvicorn open_deep_research_pydantic_ai.api.main:app"
+                            + "Ensure the server is running: "
+                            + "uvicorn open_deep_research_pydantic_ai.api.main:app"
                         )
                     else:
                         console.print(f"[red]Failed to fetch report: {e}[/red]")
@@ -671,10 +672,9 @@ def save_report_object(report: ResearchReport, filename: str) -> None:
 
     # Format as markdown
     content.append(f"# {report.title}\n")
-    content.append(f"*Generated: {report.generated_at}*\n")
+    content.append(f"*Generated: {report.metadata.created_at}*\n")
     content.append(f"\n## Executive Summary\n\n{report.executive_summary}\n")
     content.append(f"\n## Introduction\n\n{report.introduction}\n")
-    content.append(f"\n## Methodology\n\n{report.methodology}\n")
 
     for section in report.sections:
         content.append(f"\n## {section.title}\n\n{section.content}\n")
@@ -682,20 +682,20 @@ def save_report_object(report: ResearchReport, filename: str) -> None:
             for subsection in section.subsections:
                 content.append(f"\n### {subsection.title}\n\n{subsection.content}\n")
 
-    content.append(f"\n## Conclusion\n\n{report.conclusion}\n")
+    content.append(f"\n## Conclusions\n\n{report.conclusions}\n")
 
     if report.recommendations:
         content.append("\n## Recommendations\n")
         for rec in report.recommendations:
             content.append(f"- {rec}\n")
 
-    if report.citations:
+    if report.references:
         content.append("\n## References\n")
-        for citation in report.citations:
-            content.append(f"- {citation}\n")
+        for reference in report.references:
+            content.append(f"- {reference}\n")
 
     with open(filename, "w") as f:
-        f.write("\n".join(content))
+        f.write("\n".join(content))  # type: ignore[func-returns-value]
 
 
 def save_report(state: Any, filename: str) -> None:
@@ -791,7 +791,7 @@ def research(query: str, api_key: tuple[str, ...], verbose: bool, mode: str, ser
     console.print(
         Panel(
             f"[bold cyan]Research Query:[/bold cyan] {query}\n"
-            f"[bold cyan]Mode:[/bold cyan] {mode.upper()}"
+            + f"[bold cyan]Mode:[/bold cyan] {mode.upper()}"
             + (f"\n[bold cyan]Server:[/bold cyan] {server_url}" if mode == "http" else ""),
             title="Deep Research System",
             border_style="cyan",
@@ -829,8 +829,8 @@ def interactive(mode: str, server_url: str):
     """Start an interactive research session."""
     console.print(
         Panel(
-            f"[bold cyan]Deep Research Interactive Mode[/bold cyan]\n"
-            f"Mode: {mode.upper()}"
+            "[bold cyan]Deep Research Interactive Mode[/bold cyan]\n"
+            + f"Mode: {mode.upper()}"
             + (f" | Server: {server_url}" if mode == "http" else "")
             + "\n\nEnter your research queries, or type 'help' for commands.",
             border_style="cyan",
