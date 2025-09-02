@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 import httpx
 import logfire
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import RunUsage
@@ -116,10 +116,7 @@ class AgentConfiguration(BaseModel):
         default_factory=dict, description="Agent-specific settings"
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "allow"  # Allow additional fields for agent-specific config
+    model_config = ConfigDict(extra="allow")  # Allow additional fields for agent-specific config
 
 
 @dataclass

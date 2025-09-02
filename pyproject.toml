@@ -137,14 +137,14 @@ reportMatchNotExhaustive = "error"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = [
-  "--cov=open_deep_research_pydantic_ai",
+  "--cov=src",
   "--cov-report=term-missing",
   "--cov-report=html",
   "-v",
 ]
 
 [tool.coverage.run]
-source = ["src/open_deep_research_pydantic_ai"]
+source = ["src"]
 omit = ["*/tests/*", "*/__init__.py"]
 
 [tool.coverage.report]
