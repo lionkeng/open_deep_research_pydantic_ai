@@ -87,10 +87,14 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         async def add_execution_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
             """Inject research execution context as instructions."""
             query = ctx.deps.research_state.user_query
-            metadata = ctx.deps.research_state.metadata or {}
-            conversation = metadata.get("conversation_messages", [])
-            research_brief = metadata.get("research_brief", "")
-            methodology = metadata.get("methodology", "")
+            metadata = ctx.deps.research_state.metadata
+            conversation = metadata.conversation_messages if metadata else []
+            research_brief = metadata.research_brief_text if metadata else ""
+            methodology = (
+                metadata.methodology_suggestions[0]
+                if metadata and metadata.methodology_suggestions
+                else ""
+            )
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

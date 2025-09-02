@@ -90,12 +90,16 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         async def add_report_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
             """Inject report generation context as instructions."""
             query = ctx.deps.research_state.user_query
-            metadata = ctx.deps.research_state.metadata or {}
-            conversation = metadata.get("conversation_messages", [])
-            research_topic = metadata.get("research_topic", query)
-            target_audience = metadata.get("target_audience", "general")
-            report_format = metadata.get("report_format", "standard")
-            key_findings = metadata.get("key_findings", "")
+            metadata = ctx.deps.research_state.metadata
+            conversation = metadata.conversation_messages if metadata else []
+            research_topic = getattr(metadata, "research_topic", query) if metadata else query
+            target_audience = (
+                getattr(metadata, "target_audience", "general") if metadata else "general"
+            )
+            report_format = (
+                getattr(metadata, "report_format", "standard") if metadata else "standard"
+            )
+            key_findings = metadata.compressed_findings_summary if metadata else ""
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

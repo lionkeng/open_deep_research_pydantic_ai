@@ -88,9 +88,11 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
         async def add_brief_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
             """Inject brief generation context as instructions."""
             query = ctx.deps.research_state.user_query
-            metadata = ctx.deps.research_state.metadata or {}
-            conversation = metadata.get("conversation_messages", [])
-            transformed_query = metadata.get("transformed_query", query)
+            metadata = ctx.deps.research_state.metadata
+            conversation = metadata.conversation_messages if metadata else []
+            transformed_query = (
+                metadata.transformed_query if metadata and metadata.transformed_query else query
+            )
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

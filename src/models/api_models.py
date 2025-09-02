@@ -1,7 +1,7 @@
 """Pydantic models for API requests, responses, and configuration."""
 
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
 
@@ -80,11 +80,68 @@ class APIKeys(BaseModel):
         )
 
 
+class ConversationMessage(TypedDict):
+    """Typed structure for conversation messages between user and assistant.
+
+    Used to track the dialogue history during the research workflow,
+    particularly for clarification exchanges.
+    """
+
+    role: Literal["user", "assistant", "system"]
+    content: str
+
+
 class ResearchMetadata(BaseModel):
-    """Typed metadata for research state and results."""
+    """Strongly typed metadata for research workflow.
 
-    model_config = ConfigDict(extra="allow")
+    This consolidates all metadata fields used throughout the research workflow,
+    providing type safety and validation for all metadata operations.
+    """
 
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
+
+    # Conversation and clarification fields
+    conversation_messages: list[ConversationMessage] = Field(
+        default_factory=list, description="Conversation history between user and system"
+    )
+    clarification_assessment: dict[str, Any] | None = Field(
+        default=None, description="Clarification agent's assessment results"
+    )
+    clarification_responses: dict[str, str] = Field(
+        default_factory=dict, description="User's responses to clarification questions"
+    )
+    clarification_question: str | None = Field(
+        default=None, description="Current clarification question awaiting response"
+    )
+    awaiting_clarification: bool = Field(
+        default=False, description="Whether system is waiting for clarification response"
+    )
+
+    # Query transformation fields
+    transformed_query: dict[str, Any] | None = Field(
+        default=None, description="Query transformation results"
+    )
+
+    # Research brief fields
+    research_brief_text: str | None = Field(
+        default=None, description="Generated research brief text"
+    )
+    research_brief_full: dict[str, Any] | None = Field(
+        default=None, description="Complete research brief with all metadata"
+    )
+    research_brief_confidence: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Confidence score for research brief"
+    )
+
+    # Compression and findings fields
+    compressed_findings_summary: dict[str, Any] | None = Field(
+        default=None, description="Summary of compressed research findings"
+    )
+    compressed_findings_full: Any | None = Field(
+        default=None, description="Full compressed findings object"
+    )
+
+    # Legacy fields (kept for compatibility)
     clarifying_questions: list[str] = Field(
         default_factory=list, description="Questions that need clarification"
     )

@@ -21,7 +21,7 @@ from ..core.events import (
     emit_research_started,
     emit_stage_completed,
 )
-from ..models.api_models import APIKeys, ResearchMetadata
+from ..models.api_models import APIKeys, ConversationMessage
 from ..models.core import (
     ResearchStage,
     ResearchState,
@@ -194,7 +194,7 @@ class ResearchWorkflow:
                 http_client=http_client,
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
-                metadata=ResearchMetadata(),
+                # metadata now accessed via research_state.metadata
             )
 
             try:
@@ -205,7 +205,7 @@ class ResearchWorkflow:
                 await emit_research_started(request_id, user_query)
 
                 # Execute the integrated three-phase clarification system
-                await self._execute_three_phase_clarification(research_state, deps, user_query)
+                await self._execute_three_phase_clarification(deps, user_query)
 
                 research_state.advance_stage()
 
@@ -215,9 +215,9 @@ class ResearchWorkflow:
                 )
 
                 # Get the enhanced brief from metadata
-                brief_full = research_state.metadata.get("research_brief_full", {})
-                brief_text = research_state.metadata.get(
-                    "research_brief_text", "No research brief available"
+                brief_full = research_state.metadata.research_brief_full or {}
+                brief_text = (
+                    research_state.metadata.research_brief_text or "No research brief available"
                 )
 
                 if not brief_full or not brief_text:
@@ -260,7 +260,7 @@ class ResearchWorkflow:
                     f"Compressed findings based on {len(mock_findings)} research findings "
                     f"covering key areas: {', '.join(key_areas[:3])}"
                 )
-                research_state.metadata["compressed_findings_summary"] = {
+                research_state.metadata.compressed_findings_summary = {
                     "total_findings": len(mock_findings),
                     "key_themes": key_areas[:3],
                     "confidence_average": 0.75,
@@ -349,7 +349,7 @@ class ResearchWorkflow:
                 return research_state
 
     async def _execute_three_phase_clarification(
-        self, research_state: ResearchState, deps: ResearchDependencies, user_query: str
+        self, deps: ResearchDependencies, user_query: str
     ) -> None:
         """Execute the integrated three-phase clarification system with concurrent processing.
 
@@ -357,6 +357,9 @@ class ResearchWorkflow:
         Phase 2: Query Transformation
         Phase 3: Enhanced Brief Generation
         """
+        # Access research_state from dependencies
+        research_state = deps.research_state
+
         # Create tasks for concurrent processing where possible
         phase_results = {}
 
@@ -376,7 +379,7 @@ class ResearchWorkflow:
             if not research_state.metadata:
                 research_state.metadata = {}
 
-            research_state.metadata["clarification_assessment"] = {
+            research_state.metadata.clarification_assessment = {
                 "need_clarification": clarification_result.need_clarification,
                 "question": clarification_result.question,
                 "verification": clarification_result.verification,
@@ -406,29 +409,24 @@ class ResearchWorkflow:
                             clarification_responses[clarification_result.question] = user_response
 
                             # Add to conversation messages
-                            if "conversation_messages" not in research_state.metadata:
-                                research_state.metadata["conversation_messages"] = []
-                            research_state.metadata["conversation_messages"].extend(
-                                [
-                                    {"role": "assistant", "content": clarification_result.question},
-                                    {"role": "user", "content": user_response},
-                                ]
-                            )
+                            if not hasattr(research_state.metadata, "conversation_messages"):
+                                research_state.metadata.conversation_messages = []
+                            messages: list[ConversationMessage] = [
+                                {"role": "assistant", "content": clarification_result.question},
+                                {"role": "user", "content": user_response},
+                            ]
+                            research_state.metadata.conversation_messages.extend(messages)
 
                     except (KeyboardInterrupt, EOFError):
                         logfire.info("User cancelled clarification")
                 else:
                     # Non-interactive mode - store for HTTP handling
-                    research_state.metadata.update(
-                        {
-                            "awaiting_clarification": True,
-                            "clarification_question": clarification_result.question,
-                        }
-                    )
+                    research_state.metadata.awaiting_clarification = True
+                    research_state.metadata.clarification_question = clarification_result.question
                     return  # Exit early for HTTP handling
 
             # Store clarification responses in metadata
-            research_state.metadata["clarification_responses"] = clarification_responses
+            research_state.metadata.clarification_responses = clarification_responses
 
             await emit_stage_completed(
                 research_state.request_id, ResearchStage.CLARIFICATION, True, clarification_result
@@ -441,9 +439,7 @@ class ResearchWorkflow:
                 # Prepare transformation data
                 transformation_data = {
                     "original_query": user_query,
-                    "clarification_data": research_state.metadata.get(
-                        "clarification_assessment", {}
-                    ),
+                    "clarification_data": research_state.metadata.clarification_assessment or {},
                 }
 
                 # Run transformation agent with circuit breaker
@@ -457,7 +453,7 @@ class ResearchWorkflow:
                 )
 
                 # Store comprehensive transformation data in structured format
-                research_state.metadata["transformed_query"] = {
+                research_state.metadata.transformed_query = {
                     "original_query": transformed_query.original_query,
                     "transformed_query": transformed_query.transformed_query,
                     "transformation_rationale": transformed_query.transformation_rationale,
@@ -498,7 +494,7 @@ class ResearchWorkflow:
                 brief_prompt = f"""Generate a comprehensive research brief based on:
                 Original Query: {user_query}
                 Transformed Query: {
-                    research_state.metadata.get("transformed_query", {}).get(
+                    (research_state.metadata.transformed_query or {}).get(
                         "transformed_query", user_query
                     )
                 }
@@ -511,9 +507,9 @@ class ResearchWorkflow:
                 )
 
                 # Store brief in structured format with all metadata
-                research_state.metadata["research_brief_text"] = brief_result.brief_text
-                research_state.metadata["research_brief_confidence"] = brief_result.confidence_score
-                research_state.metadata["research_brief_full"] = {
+                research_state.metadata.research_brief_text = brief_result.brief_text
+                research_state.metadata.research_brief_confidence = brief_result.confidence_score
+                research_state.metadata.research_brief_full = {
                     "brief_text": brief_result.brief_text,
                     "confidence_score": brief_result.confidence_score,
                     "key_research_areas": brief_result.key_research_areas,
@@ -535,7 +531,7 @@ class ResearchWorkflow:
                     confidence=brief_result.confidence_score,
                     brief_length=len(brief_result.brief_text),
                     key_areas_count=len(brief_result.key_research_areas),
-                    has_transformation="transformed_query" in research_state.metadata,
+                    has_transformation=research_state.metadata.transformed_query is not None,
                     clarification_count=len(clarification_responses),
                     estimated_complexity=brief_result.estimated_complexity,
                 )
@@ -590,7 +586,7 @@ class ResearchWorkflow:
                 http_client=http_client,
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
-                metadata=ResearchMetadata(),
+                # metadata now accessed via research_state.metadata
             )
 
             try:
@@ -599,17 +595,13 @@ class ResearchWorkflow:
 
                 if current_stage == ResearchStage.CLARIFICATION:
                     # Check if we're waiting for clarification response
-                    if research_state.metadata and research_state.metadata.get(
-                        "awaiting_clarification"
-                    ):
+                    if research_state.metadata and research_state.metadata.awaiting_clarification:
                         # Still waiting for user response in HTTP mode
                         logfire.info("Still awaiting clarification response")
                         return research_state
 
                     # Re-execute three-phase clarification system
-                    await self._execute_three_phase_clarification(
-                        research_state, deps, research_state.user_query
-                    )
+                    await self._execute_three_phase_clarification(deps, research_state.user_query)
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
@@ -620,7 +612,7 @@ class ResearchWorkflow:
 
                 elif current_stage == ResearchStage.RESEARCH_EXECUTION:
                     brief_text = (
-                        research_state.metadata.get("research_brief_text")
+                        research_state.metadata.research_brief_text
                         if research_state.metadata
                         else None
                     )
@@ -655,7 +647,7 @@ class ResearchWorkflow:
 
                 elif current_stage == ResearchStage.COMPRESSION:
                     brief_text = (
-                        research_state.metadata.get("research_brief_text")
+                        research_state.metadata.research_brief_text
                         if research_state.metadata
                         else None
                     )
@@ -668,13 +660,13 @@ class ResearchWorkflow:
                             deps,
                         )
                         research_state.compressed_findings = compressed.summary
-                        research_state.metadata["compressed_findings_full"] = compressed
+                        research_state.metadata.compressed_findings_full = compressed
                         research_state.advance_stage()
                         return await self.resume_research(research_state, api_keys, stream_callback)
 
                 elif current_stage == ResearchStage.REPORT_GENERATION:
                     brief_text = (
-                        research_state.metadata.get("research_brief_text")
+                        research_state.metadata.research_brief_text
                         if research_state.metadata
                         else None
                     )
@@ -691,9 +683,9 @@ class ResearchWorkflow:
                             ResearchBrief,
                         )
 
-                        if "compressed_findings_full" in research_state.metadata:
+                        if research_state.metadata.compressed_findings_full is not None:
                             # Use the full object stored in metadata
-                            compressed = research_state.metadata["compressed_findings_full"]
+                            compressed = research_state.metadata.compressed_findings_full
                         else:
                             # Fallback to basic reconstruction
                             compressed = CompressedFindings(
@@ -785,7 +777,7 @@ class ResearchWorkflow:
                 http_client=http_client,
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
-                metadata=ResearchMetadata(),
+                # metadata now accessed via research_state.metadata
             )
 
             try:
@@ -794,7 +786,7 @@ class ResearchWorkflow:
                 await emit_research_started(request_id, user_query)
 
                 # Execute integrated three-phase system
-                await self._execute_three_phase_clarification(research_state, deps, user_query)
+                await self._execute_three_phase_clarification(deps, user_query)
 
                 # Mark planning as complete
                 research_state.current_stage = ResearchStage.BRIEF_GENERATION
@@ -803,7 +795,7 @@ class ResearchWorkflow:
                 logfire.info(
                     "Planning phase completed with three-phase clarification",
                     request_id=request_id,
-                    brief_confidence=research_state.metadata.get("research_brief_confidence", 0.0),
+                    brief_confidence=research_state.metadata.research_brief_confidence,
                 )
 
                 return research_state

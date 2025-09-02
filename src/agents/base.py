@@ -19,7 +19,7 @@ from ..core.events import (
     research_event_bus,
 )
 from ..core.logging import configure_logging
-from ..models.api_models import APIKeys, ResearchMetadata
+from ..models.api_models import APIKeys
 from ..models.core import ResearchState
 
 
@@ -124,19 +124,18 @@ class AgentConfiguration(BaseModel):
 
 @dataclass
 class ResearchDependencies:
-    """Shared dependencies for research agents."""
+    """Shared dependencies for research agents.
+
+    Metadata is accessed through research_state.metadata, which is now
+    properly typed as ResearchMetadata instead of dict[str, Any].
+    """
 
     http_client: httpx.AsyncClient
     api_keys: APIKeys  # Changed from dict to typed model
     research_state: ResearchState
-    metadata: ResearchMetadata | None = None  # Added typed metadata
+    # Removed redundant metadata field - access via research_state.metadata
     usage: RunUsage | None = None
     stream_callback: Any | None = None
-
-    def __post_init__(self):
-        """Initialize metadata if not provided."""
-        if self.metadata is None:
-            self.metadata = ResearchMetadata()
 
 
 DepsT = TypeVar("DepsT", bound=ResearchDependencies)

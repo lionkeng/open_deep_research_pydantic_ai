@@ -121,8 +121,8 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
         async def add_assessment_framework(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
             """Inject structured clarification assessment framework as instructions."""
             query = ctx.deps.research_state.user_query
-            metadata = ctx.deps.research_state.metadata or {}
-            conversation = metadata.get("conversation_messages", [])
+            metadata = ctx.deps.research_state.metadata
+            conversation = metadata.conversation_messages if metadata else []
 
             # Format conversation context for template substitution
             conversation_context = self._format_conversation_context(conversation, query)
@@ -141,8 +141,9 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
         formatted = []
         for msg in conversation:
             if isinstance(msg, dict):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
+                # With TypedDict, we know these fields exist
+                role = msg["role"]
+                content = msg["content"]
                 formatted.append(f"{role.capitalize()}: {content}")
             else:
                 formatted.append(str(msg))

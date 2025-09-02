@@ -83,8 +83,8 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
         async def add_transformation_context(ctx: RunContext[ResearchDependencies]) -> str:
             """Inject query transformation context as instructions."""
             query = ctx.deps.research_state.user_query
-            metadata = ctx.deps.research_state.metadata or {}
-            conversation = metadata.get("conversation_messages", [])
+            metadata = ctx.deps.research_state.metadata
+            conversation = metadata.conversation_messages if metadata else []
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

@@ -86,11 +86,15 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
         @self.agent.instructions
         async def add_compression_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
             """Inject compression context as instructions."""
-            metadata = ctx.deps.research_state.metadata or {}
-            conversation = metadata.get("conversation_messages", [])
-            content_type = metadata.get("content_type", "general")
-            target_ratio = metadata.get("target_ratio", "0.5")
-            preservation_requirements = metadata.get("preservation_requirements", "standard")
+            metadata = ctx.deps.research_state.metadata
+            conversation = metadata.conversation_messages if metadata else []
+            content_type = getattr(metadata, "content_type", "general") if metadata else "general"
+            target_ratio = getattr(metadata, "target_ratio", "0.5") if metadata else "0.5"
+            preservation_requirements = (
+                getattr(metadata, "preservation_requirements", "standard")
+                if metadata
+                else "standard"
+            )
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

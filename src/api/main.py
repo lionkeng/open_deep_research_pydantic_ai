@@ -13,7 +13,7 @@ from api.sse_handler import create_sse_response
 from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.workflow import workflow
-from models.api_models import APIKeys
+from models.api_models import APIKeys, ConversationMessage
 from models.core import ResearchStage, ResearchState
 
 from ..core.logging import configure_logging
@@ -311,12 +311,12 @@ async def get_clarification_question(request_id: str):
     # Check if there's a pending clarification
     if (
         state.metadata
-        and state.metadata.get("awaiting_clarification")
-        and state.metadata.get("clarification_question")
+        and state.metadata.awaiting_clarification
+        and state.metadata.clarification_question
     ):
         return {
             "request_id": request_id,
-            "question": state.metadata["clarification_question"],
+            "question": state.metadata.clarification_question,
             "original_query": state.user_query,
             "awaiting_response": True,
         }
@@ -341,21 +341,21 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
         state = active_sessions[request_id]
 
     # Check if there's a pending clarification
-    if not (state.metadata and state.metadata.get("awaiting_clarification")):
+    if not (state.metadata and state.metadata.awaiting_clarification):
         raise HTTPException(status_code=400, detail="No pending clarification for this request")
 
     # Update conversation with the clarification response
-    conversation = state.metadata.get("conversation_messages", [])
-    conversation.extend([state.metadata["clarification_question"], clarification_response.response])
+    conversation = list(state.metadata.conversation_messages)
+    new_messages: list[ConversationMessage] = [
+        {"role": "assistant", "content": state.metadata.clarification_question or ""},
+        {"role": "user", "content": clarification_response.response},
+    ]
+    conversation.extend(new_messages)
 
     # Update metadata to clear the pending clarification
-    state.metadata.update(
-        {
-            "awaiting_clarification": False,
-            "conversation_messages": conversation,
-            "clarification_question": None,
-        }
-    )
+    state.metadata.awaiting_clarification = False
+    state.metadata.conversation_messages = conversation
+    state.metadata.clarification_question = None
 
     # Resume research workflow
     try:

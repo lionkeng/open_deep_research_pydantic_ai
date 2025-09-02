@@ -2,11 +2,12 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 # Import Phase 2 models
+from .api_models import ResearchMetadata
 from .brief_generator import ResearchBrief
 from .report_generator import ReportSection as ResearchSection
 from .report_generator import ResearchReport
@@ -229,7 +230,19 @@ class ResearchState(BaseModel):
     error_message: str | None = Field(default=None, description="Error message if any")
     started_at: datetime = Field(default_factory=datetime.now)
     completed_at: datetime | None = Field(default=None)
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional state data")
+    metadata: ResearchMetadata = Field(
+        default_factory=ResearchMetadata, description="Typed metadata for research workflow"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_metadata(cls, values: dict) -> dict:
+        """Migrate dict metadata to ResearchMetadata if needed for backward compatibility."""
+        if "metadata" in values and isinstance(values["metadata"], dict):
+            # Convert dict to ResearchMetadata
+            metadata_dict = values["metadata"]
+            values["metadata"] = ResearchMetadata(**metadata_dict)
+        return values
 
     def advance_stage(self) -> None:
         """Advance to the next research stage."""
