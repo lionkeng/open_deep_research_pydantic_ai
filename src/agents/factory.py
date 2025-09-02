@@ -33,7 +33,7 @@ class AgentFactory:
     """
 
     # Registry of agent classes
-    _agent_registry: dict[AgentType, type[BaseResearchAgent]] = {
+    _agent_registry: dict[AgentType, type[BaseResearchAgent[ResearchDependencies, Any]]] = {
         AgentType.CLARIFICATION: ClarificationAgent,
         AgentType.QUERY_TRANSFORMATION: QueryTransformationAgent,
         AgentType.BRIEF_GENERATOR: BriefGeneratorAgent,

@@ -107,13 +107,12 @@ class ResearchWorkflow:
             )
 
     async def _run_agent_with_circuit_breaker(
-        self, agent_type: str, prompt: str, deps: ResearchDependencies, **kwargs: Any
+        self, agent_type: AgentType, deps: ResearchDependencies, **kwargs: Any
     ) -> Any:
         """Run agent with circuit breaker pattern and error handling.
 
         Args:
             agent_type: Type of agent to run
-            prompt: Prompt to send to agent
             deps: Research dependencies
             **kwargs: Additional arguments for agent
 
@@ -131,7 +130,7 @@ class ResearchWorkflow:
             # Create agent and execute
             agent = self.agent_factory.create_agent(agent_type, deps)
             result = await asyncio.wait_for(
-                agent.execute(deps),
+                agent.run(deps),
                 timeout=self._task_timeout,
             )
 
@@ -368,12 +367,9 @@ class ResearchWorkflow:
                 research_state.request_id, ResearchStage.CLARIFICATION, False
             )
 
-            # Create a simple prompt for clarification assessment
-            clarification_prompt = f"Assess if this query needs clarification: {user_query}"
-
             # Run clarification agent with circuit breaker
             clarification_result = await self._run_agent_with_circuit_breaker(
-                "clarification", clarification_prompt, deps
+                AgentType.CLARIFICATION, deps
             )
 
             # Store clarification assessment in structured format

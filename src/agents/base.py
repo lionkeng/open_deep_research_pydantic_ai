@@ -1,6 +1,5 @@
 """Enhanced base agent classes with dependency injection and performance monitoring."""
 
-import asyncio
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -11,12 +10,11 @@ from typing import Any, TypeVar
 import httpx
 import logfire
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import RunUsage
 
 from ..core.events import (
-    AgentDelegationEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
@@ -150,14 +148,14 @@ class ToolMixin:
     """Mixin for tool management functionality."""
 
     def __init__(self):
-        self._tools: dict[str, Callable] = {}
+        self._tools: dict[str, Callable[..., Any]] = {}
 
-    def register_tool(self, name: str, tool: Callable) -> None:
+    def register_tool(self, name: str, tool: Callable[..., Any]) -> None:
         """Register a tool for the agent."""
         self._tools[name] = tool
         logfire.debug(f"Registered tool: {name}")
 
-    def get_tool(self, name: str) -> Callable | None:
+    def get_tool(self, name: str) -> Callable[..., Any] | None:
         """Get a registered tool by name."""
         return self._tools.get(name)
 
@@ -199,12 +197,12 @@ class PerformanceMonitoringMixin:
     def __init__(self):
         self.metrics = PerformanceMetrics()
         self._execution_start_time: float | None = None
-        self._hooks: dict[str, list[Callable]] = {
-            "before_execution": [],
-            "after_execution": [],
-            "on_error": [],
-            "on_retry": [],
-        }
+        # self._hooks: dict[str, list[Callable[[dict[str, Any]], Any]]] = {
+        #     "before_execution": [],
+        #     "after_execution": [],
+        #     "on_error": [],
+        #     "on_retry": [],
+        # }
 
     def start_execution_timer(self) -> None:
         """Start timing execution."""
@@ -216,21 +214,21 @@ class PerformanceMonitoringMixin:
             self.metrics.update_execution_time(self._execution_start_time)
             self._execution_start_time = None
 
-    def add_hook(self, event: str, hook: Callable) -> None:
-        """Add a lifecycle hook."""
-        if event in self._hooks:
-            self._hooks[event].append(hook)
+    # def add_hook(self, event: str, hook: Callable[[dict[str, Any]], Any]) -> None:
+    #     """Add a lifecycle hook."""
+    #     if event in self._hooks:
+    #         self._hooks[event].append(hook)
 
-    async def execute_hooks(self, event: str, context: dict[str, Any] | None = None) -> None:
-        """Execute hooks for a given event."""
-        for hook in self._hooks.get(event, []):
-            try:
-                if asyncio.iscoroutinefunction(hook):
-                    await hook(context or {})
-                else:
-                    hook(context or {})
-            except Exception as e:
-                logfire.error(f"Hook execution failed: {e}")
+    # async def execute_hooks(self, event: str, context: dict[str, Any] | None = None) -> None:
+    #     """Execute hooks for a given event."""
+    #     for hook in self._hooks.get(event, []):
+    #         try:
+    #             if asyncio.iscoroutinefunction(hook):
+    #                 await hook(context or {})
+    #             else:
+    #                 hook(context or {})
+    #         except Exception as e:
+    #             logfire.error(f"Hook execution failed: {e}")
 
 
 class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
@@ -252,7 +250,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         # Initialize mixins
         ToolMixin.__init__(self)
         ConversationMixin.__init__(self)
-        PerformanceMonitoringMixin.__init__(self)
+        # PerformanceMonitoringMixin.__init__(self)
 
         # Set configuration with defaults
         self.config = config or AgentConfiguration(
@@ -278,7 +276,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             actual_output_type = self._output_type
 
         # Create the Pydantic AI agent with proper configuration
-        self.agent: Agent[DepsT, OutputT] = Agent(
+        self.agent: Agent[DepsT | ResearchDependencies, OutputT | dict[Any, Any]] = Agent(
             model=self.model,
             retries=self.config.max_retries,
             deps_type=type(dependencies) if dependencies else ResearchDependencies,
@@ -332,15 +330,13 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
 
     async def run(
         self,
-        prompt: str,
         deps: DepsT | None = None,
         message_history: list[ModelMessage] | None = None,
         stream: bool = False,
-    ) -> OutputT:
+    ) -> OutputT | dict[Any, Any]:
         """Run the agent with the given prompt.
 
         Args:
-            prompt: User prompt or task description
             deps: Agent dependencies (uses stored dependencies if None)
             message_history: Previous conversation history
             stream: Whether to stream the response
@@ -361,7 +357,10 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.start_execution_timer()
 
         # Execute before_execution hooks
-        await self.execute_hooks("before_execution", {"prompt": prompt})
+        # await self.execute_hooks(
+        #     "before_execution",
+        #     {"user_prompt": self.get_conversation_context()[-1]},
+        # )
 
         try:
             # Emit streaming update if callback provided
@@ -377,7 +376,6 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             # Run the agent with proper error handling
             try:
                 result = await self.agent.run(
-                    prompt,
                     deps=actual_deps,
                     message_history=message_history or self.get_conversation_context(),
                     usage=actual_deps.usage,  # Pass usage for tracking
@@ -390,23 +388,23 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             except Exception as e:
                 # Record metrics for errors and retries
                 self.metrics.record_failure()
-                await self.execute_hooks("on_error", {"error": e})
 
                 # Check if it's a recoverable error
                 if "rate limit" in str(e).lower():
                     self.metrics.record_retry()
-                    await self.execute_hooks("on_retry", {"reason": "rate_limit"})
                     raise ModelRetry(f"Rate limit hit, retrying: {e}") from e
                 elif "timeout" in str(e).lower():
                     self.metrics.record_retry()
-                    await self.execute_hooks("on_retry", {"reason": "timeout"})
                     raise ModelRetry(f"Request timeout, retrying: {e}") from e
                 else:
                     self.status = AgentStatus.FAILED
                     raise AgentExecutionError(
                         f"Agent execution failed: {e}",
                         agent_name=self.name,
-                        context={"prompt": prompt, "error": str(e)},
+                        context={
+                            "user_prompt": self.get_conversation_context()[-1],
+                            "error": str(e),
+                        },
                     ) from e
 
             # Log completion and update conversation history
@@ -446,60 +444,16 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             raise AgentExecutionError(
                 f"Unexpected error in {self.name}: {e}",
                 agent_name=self.name,
-                context={"prompt": prompt, "error": str(e)},
+                context={"user_prompt": self.get_conversation_context()[-1], "error": str(e)},
             ) from e
 
         finally:
             # Always complete monitoring and execute after hooks
             self.end_execution_timer()
-            await self.execute_hooks(
-                "after_execution",
-                {
-                    "status": self.status.name,
-                    "execution_time": self.metrics.execution_time,
-                },
-            )
-
-    async def delegate_to_agent(
-        self,
-        ctx: RunContext[DepsT],
-        target_agent: "BaseResearchAgent[DepsT, Any]",
-        prompt: str,
-        context: dict[str, Any] | None = None,
-    ) -> Any:
-        """Delegate a task to another agent.
-
-        Args:
-            ctx: Current run context
-            target_agent: Agent to delegate to
-            prompt: Task prompt for the target agent
-            context: Additional context for delegation
-
-        Returns:
-            Result from the delegated agent
-        """
-        # Emit delegation event
-        await research_event_bus.emit(
-            AgentDelegationEvent(
-                _request_id=ctx.deps.research_state.request_id,
-                from_agent=self.name,
-                to_agent=target_agent.name,
-                task_description=prompt,
-                context=context,
-            )
-        )
-
-        # Run the target agent with shared dependencies and usage tracking
-        result = await target_agent.run(
-            prompt=prompt,
-            deps=ctx.deps,
-            message_history=None,  # Start fresh for delegated task
-            stream=ctx.deps.stream_callback is not None,
-        )
-
-        logfire.info(
-            f"Delegation completed: {self.name} -> {target_agent.name}",
-            request_id=ctx.deps.research_state.request_id,
-        )
-
-        return result
+            # await self.execute_hooks(
+            #     "after_execution",
+            #     {
+            #         "status": self.status.name,
+            #         "metrics": self.metrics.model_dump(),
+            #     },
+            # )
