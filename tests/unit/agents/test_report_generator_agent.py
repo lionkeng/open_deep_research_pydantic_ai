@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.report_generator import ReportGeneratorAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.report_generator import ResearchReport, ReportSection, Citation
+from src.models.report_generator import ResearchReport, ReportSection
 from src.models.api_models import APIKeys, ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 
@@ -39,6 +39,8 @@ class TestReportGeneratorAgent:
     def report_generator_agent(self, agent_dependencies):
         """Create a ReportGeneratorAgent instance."""
         config = AgentConfiguration(
+            agent_name="report_generator",
+            agent_type="report_generator",
             max_retries=3,
             timeout_seconds=30.0,
             temperature=0.7
@@ -89,13 +91,7 @@ class TestReportGeneratorAgent:
                             subsections=[],
                             key_findings=["GPT-4 capabilities", "Multimodal understanding"],
                             citations=[
-                                Citation(
-                                    source="Research Paper A",
-                                    title="Advances in Transformer Models",
-                                    authors=["Smith, J.", "Doe, A."],
-                                    year=2024,
-                                    url="https://example.com/paper-a"
-                                )
+                                "Smith, J., Doe, A. (2024). Advances in Transformer Models. Research Paper A. https://example.com/paper-a"
                             ]
                         )
                     ],
@@ -108,13 +104,7 @@ class TestReportGeneratorAgent:
                     subsections=[],
                     key_findings=["Object detection accuracy", "Real-time processing"],
                     citations=[
-                        Citation(
-                            source="Conference B",
-                            title="CV Advances 2024",
-                            authors=["Johnson, M."],
-                            year=2024,
-                            url="https://example.com/conf-b"
-                        )
+                        "Johnson, M. (2024). CV Advances 2024. Conference B. https://example.com/conf-b"
                     ]
                 ),
                 ReportSection(
@@ -123,13 +113,7 @@ class TestReportGeneratorAgent:
                     subsections=[],
                     key_findings=["Sample efficiency improved", "Generalization enhanced"],
                     citations=[
-                        Citation(
-                            source="Journal C",
-                            title="RL Efficiency Gains",
-                            authors=["Williams, R."],
-                            year=2024,
-                            url="https://example.com/journal-c"
-                        )
+                        "Williams, R. (2024). RL Efficiency Gains. Journal C. https://example.com/journal-c"
                     ]
                 )
             ],
@@ -270,23 +254,8 @@ class TestReportGeneratorAgent:
                     subsections=[],
                     key_findings=["Finding 1"],
                     citations=[
-                        Citation(
-                            source="Journal Article",
-                            title="Important Research",
-                            authors=["Smith, J.", "Doe, A.", "Johnson, M."],
-                            year=2024,
-                            url="https://doi.org/10.1234/example",
-                            doi="10.1234/example",
-                            publication="Nature AI"
-                        ),
-                        Citation(
-                            source="Conference Paper",
-                            title="Novel Approach",
-                            authors=["Williams, R."],
-                            year=2023,
-                            url="https://conference.org/paper",
-                            conference="ICML 2023"
-                        )
+                        "Smith, J., Doe, A., Johnson, M. (2024). Important Research. Nature AI. DOI: 10.1234/example",
+                        "Williams, R. (2023). Novel Approach. ICML 2023. https://conference.org/paper"
                     ]
                 )
             ],
@@ -297,13 +266,7 @@ class TestReportGeneratorAgent:
             future_work=[],
             appendices=[],
             citations=[
-                Citation(
-                    source="Book",
-                    title="AI Fundamentals",
-                    authors=["Brown, T."],
-                    year=2024,
-                    publisher="Academic Press"
-                )
+                "Brown, T. (2024). AI Fundamentals. Academic Press."
             ],
             metadata={}
         )
@@ -313,12 +276,11 @@ class TestReportGeneratorAgent:
 
             # Check section citations
             assert len(result.sections[0].citations) == 2
-            assert all(c.source is not None for c in result.sections[0].citations)
-            assert all(c.title is not None for c in result.sections[0].citations)
-            assert all(c.year is not None for c in result.sections[0].citations)
+            assert all(isinstance(c, str) and len(c) > 0 for c in result.sections[0].citations)
 
             # Check global citations
             assert len(result.citations) == 1
+            assert all(isinstance(c, str) for c in result.citations)
 
     @pytest.mark.asyncio
     async def test_recommendations_generation(self, report_generator_agent, agent_dependencies):

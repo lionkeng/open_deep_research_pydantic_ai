@@ -38,6 +38,7 @@ cli = [
 
 [project.scripts]
 deep-research = "cli:cli"
+test = "pytest:main"
 
 [build-system]
 requires = ["hatchling"]

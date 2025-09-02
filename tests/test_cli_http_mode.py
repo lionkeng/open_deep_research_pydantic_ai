@@ -4,19 +4,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cli import (
+from src.cli import (
     CLIStreamHandler,
     HTTPResearchClient,
     validate_server_url,
 )
-from core.sse_models import (
+from src.core.sse_models import (
     CompletedMessage,
     SSEDataType,
     SSEEventType,
     UpdateMessage,
 )
-from models.api_models import APIKeys
-from models.core import ResearchStage
+from src.models.api_models import APIKeys
+from src.models.core import ResearchStage
 
 
 class TestURLValidation:

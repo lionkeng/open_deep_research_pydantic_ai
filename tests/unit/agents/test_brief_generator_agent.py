@@ -39,6 +39,8 @@ class TestBriefGeneratorAgent:
     def brief_generator_agent(self, agent_dependencies):
         """Create a BriefGeneratorAgent instance."""
         config = AgentConfiguration(
+            agent_name="brief_generator",
+            agent_type="brief_generator",
             max_retries=3,
             timeout_seconds=30.0,
             temperature=0.7
@@ -88,14 +90,8 @@ class TestBriefGeneratorAgent:
                 "What technological breakthroughs are expected?"
             ],
             constraints=[
-                ResearchConstraint(
-                    constraint_type="temporal",
-                    description="Focus on 2020-2024 data"
-                ),
-                ResearchConstraint(
-                    constraint_type="geographic",
-                    description="Global scope with emphasis on leading markets"
-                )
+                "Temporal: Focus on 2020-2024 data",
+                "Geographic: Global scope with emphasis on leading markets"
             ],
             deliverables=["Comprehensive report", "Executive summary", "Data visualizations"],
             timeline="2 weeks for complete research",
@@ -226,18 +222,9 @@ class TestBriefGeneratorAgent:
             methodology="Constrained methodology",
             key_questions=["Q1"],
             constraints=[
-                ResearchConstraint(
-                    constraint_type="temporal",
-                    description="Last 12 months only"
-                ),
-                ResearchConstraint(
-                    constraint_type="budget",
-                    description="Limited to public data sources"
-                ),
-                ResearchConstraint(
-                    constraint_type="scope",
-                    description="Focus on North America"
-                )
+                "Temporal: Last 12 months only",
+                "Budget: Limited to public data sources",
+                "Scope: Focus on North America"
             ],
             deliverables=["Report"],
             timeline="1 week",
@@ -253,10 +240,10 @@ class TestBriefGeneratorAgent:
             result = await brief_generator_agent.execute(agent_dependencies)
 
             assert len(result.constraints) == 3
-            constraint_types = [c.constraint_type for c in result.constraints]
-            assert "temporal" in constraint_types
-            assert "budget" in constraint_types
-            assert "scope" in constraint_types
+            constraints_text = ' '.join(result.constraints).lower()
+            assert "temporal" in constraints_text
+            assert "budget" in constraints_text
+            assert "scope" in constraints_text
 
     @pytest.mark.asyncio
     async def test_edge_case_minimal_brief(self, brief_generator_agent, agent_dependencies):
@@ -377,14 +364,8 @@ class TestBriefGeneratorAgent:
                 "What are common compliance failures?"
             ],
             constraints=[
-                ResearchConstraint(
-                    constraint_type="geographic",
-                    description="EU member states only"
-                ),
-                ResearchConstraint(
-                    constraint_type="regulatory",
-                    description="Current regulations as of 2024"
-                )
+                "Geographic: EU member states only",
+                "Regulatory: Current regulations as of 2024"
             ],
             deliverables=["Compliance framework", "Best practices guide", "Risk assessment"],
             timeline="3 weeks",

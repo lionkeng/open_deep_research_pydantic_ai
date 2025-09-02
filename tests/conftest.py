@@ -1,9 +1,28 @@
 """Pytest configuration and fixtures for the three-phase clarification system tests."""
 
+import os
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 from typing import Dict, Any
+from pathlib import Path
+
+# Load environment variables from .env file before any imports
+try:
+    from dotenv import load_dotenv
+    # Look for .env file in project root
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"Loaded .env from {env_path}")
+    else:
+        # Set test defaults if no .env file
+        os.environ.setdefault('OPENAI_API_KEY', 'test-key')
+        os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
+except ImportError:
+    # If python-dotenv is not installed, just set defaults
+    os.environ.setdefault('OPENAI_API_KEY', 'test-key')
+    os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
 
 from src.agents.base import ResearchDependencies
 from src.models.api_models import APIKeys, ResearchMetadata

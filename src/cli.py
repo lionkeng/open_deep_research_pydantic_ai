@@ -17,15 +17,15 @@ from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
 
-from core.events import (
+from .core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
     StageCompletedEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
-from core.logging import configure_logging
-from core.sse_models import (
+from .core.logging import configure_logging
+from .core.sse_models import (
     CompletedMessage,
     ConnectionMessage,
     ErrorMessage,
@@ -36,10 +36,10 @@ from core.sse_models import (
     UpdateMessage,
     parse_sse_message,
 )
-from core.workflow import workflow
-from models.api_models import APIKeys
-from models.core import ResearchStage
-from models.report_generator import ResearchReport
+from .core.workflow import workflow
+from .models.api_models import APIKeys
+from .models.core import ResearchStage
+from .models.report_generator import ResearchReport
 
 # Try to import httpx-sse for HTTP mode support
 try:
