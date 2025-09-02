@@ -64,9 +64,9 @@ class TestReportGeneratorAgent:
     async def test_agent_initialization(self):
         """Test agent initializes correctly."""
         agent = ReportGeneratorAgent()
-        assert agent.agent_name == "report_generator"
+        assert agent.name == "report_generator"
         assert agent.agent is not None
-        assert agent.result_validator is not None
+        assert agent.config is not None
 
     @pytest.mark.asyncio
     async def test_comprehensive_report_generation(self, report_generator_agent, agent_dependencies, sample_research_data):

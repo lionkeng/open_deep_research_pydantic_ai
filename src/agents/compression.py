@@ -4,19 +4,18 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
-from agents.base import (
+from ..models.compression import CompressedContent
+from .base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
-    coordinator,
 )
-from models.compression import CompressedContent
 
 # Global system prompt template for compression
 COMPRESSION_SYSTEM_PROMPT_TEMPLATE = """
 ## CONTENT COMPRESSION SPECIALIST:
 
-You are an expert at condensing lengthy content while preserving essential information 
+You are an expert at condensing lengthy content while preserving essential information
 and maintaining clarity.
 
 ### YOUR ROLE:
@@ -265,6 +264,5 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
         return CompressedContent
 
 
-# Register the agent with the coordinator
+# Create module-level instance
 compression_agent = CompressionAgent()
-coordinator.register_agent(compression_agent)

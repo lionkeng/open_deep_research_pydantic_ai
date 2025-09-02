@@ -5,19 +5,18 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
-from agents.base import (
+from ..models.research_executor import ResearchResults
+from .base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
-    coordinator,
 )
-from models.research_executor import ResearchResults
 
 # Global system prompt template for research execution
 RESEARCH_EXECUTOR_SYSTEM_PROMPT_TEMPLATE = """
 ## RESEARCH EXECUTOR:
 
-You are an expert at conducting thorough, systematic research to gather comprehensive 
+You are an expert at conducting thorough, systematic research to gather comprehensive
 findings and insights.
 
 ### YOUR ROLE:
@@ -276,6 +275,5 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         return ResearchResults
 
 
-# Register the agent with the coordinator
+# Create module-level instance
 research_executor_agent = ResearchExecutorAgent()
-coordinator.register_agent(research_executor_agent)

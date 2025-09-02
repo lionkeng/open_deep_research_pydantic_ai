@@ -1,6 +1,9 @@
 """Data models for the deep research system."""
 
 # Core models
+# Phase 2 model imports
+from .brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
+from .compression import CompressedContent, CompressedSection
 from .core import (
     BriefGenerationResult,
     ClarificationResult,
@@ -9,10 +12,6 @@ from .core import (
     ResearchState,
     TransformedQueryResult,
 )
-
-# Phase 2 model imports
-from .brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
-from .compression import CompressedContent, CompressedSection
 from .query_transformation import TransformedQuery
 from .report_generator import ReportMetadata, ReportSection, ResearchReport
 from .research_executor import ResearchFinding, ResearchResults, ResearchSource

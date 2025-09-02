@@ -4,19 +4,18 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
-from agents.base import (
+from ..models.brief_generator import ResearchBrief
+from .base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
-    coordinator,
 )
-from models.brief_generator import ResearchBrief
 
 # Global system prompt template for brief generation
 BRIEF_GENERATOR_SYSTEM_PROMPT_TEMPLATE = """
 ## RESEARCH BRIEF SPECIALIST:
 
-You are an expert at creating comprehensive, actionable research briefs that guide 
+You are an expert at creating comprehensive, actionable research briefs that guide
 effective research execution.
 
 ### YOUR ROLE:
@@ -202,6 +201,5 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
         return ResearchBrief
 
 
-# Register the agent with the coordinator
+# Create module-level instance
 brief_generator_agent = BriefGeneratorAgent()
-coordinator.register_agent(brief_generator_agent)

@@ -5,11 +5,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
-from agents.base import (
+from .base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
-    coordinator,
 )
 
 # Global system prompt template for structured clarification assessment
@@ -172,6 +171,5 @@ high-quality research."""
         pass
 
 
-# Register the agent with the coordinator
+# Create module-level instance
 clarification_agent = ClarificationAgent()
-coordinator.register_agent(clarification_agent)

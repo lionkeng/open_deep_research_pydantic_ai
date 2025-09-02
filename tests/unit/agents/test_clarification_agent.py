@@ -51,9 +51,9 @@ class TestClarificationAgent:
     async def test_agent_initialization(self):
         """Test agent initializes correctly."""
         agent = ClarificationAgent()
-        assert agent.agent_name == "clarification_agent"
+        assert agent.name == "clarification_agent"
         assert agent.agent is not None
-        assert agent.result_validator is not None
+        assert agent.config is not None
 
     @pytest.mark.asyncio
     async def test_needs_clarification_detection(self, clarification_agent, agent_dependencies):

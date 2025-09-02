@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.brief_generator import BriefGeneratorAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.brief_generator import ResearchBrief, ResearchObjective, ResearchConstraint
+from src.models.brief_generator import ResearchBrief, ResearchObjective
 from src.models.api_models import APIKeys, ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 
@@ -51,9 +51,9 @@ class TestBriefGeneratorAgent:
     async def test_agent_initialization(self):
         """Test agent initializes correctly."""
         agent = BriefGeneratorAgent()
-        assert agent.agent_name == "brief_generator"
+        assert agent.name == "brief_generator"
         assert agent.agent is not None
-        assert agent.result_validator is not None
+        assert agent.config is not None
 
     @pytest.mark.asyncio
     async def test_comprehensive_brief_generation(self, brief_generator_agent, agent_dependencies):

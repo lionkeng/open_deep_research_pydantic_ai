@@ -51,9 +51,9 @@ class TestQueryTransformationAgent:
     async def test_agent_initialization(self):
         """Test agent initializes correctly."""
         agent = QueryTransformationAgent()
-        assert agent.agent_name == "query_transformation"
+        assert agent.name == "query_transformation"
         assert agent.agent is not None
-        assert agent.result_validator is not None
+        assert agent.config is not None
 
     @pytest.mark.asyncio
     async def test_simple_query_transformation(self, transformation_agent, agent_dependencies):

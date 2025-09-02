@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_ai.models import KnownModelName
 
-from models.api_models import APIKeys
+from ..models.api_models import APIKeys
 
 # Load .env file if it exists
 try:

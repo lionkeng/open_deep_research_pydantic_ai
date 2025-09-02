@@ -4,19 +4,18 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
-from agents.base import (
+from ..models.query_transformation import TransformedQuery
+from .base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
-    coordinator,
 )
-from models.query_transformation import TransformedQuery
 
 # Global system prompt template for query transformation
 QUERY_TRANSFORMATION_SYSTEM_PROMPT_TEMPLATE = """
 ## QUERY TRANSFORMATION SPECIALIST:
 
-You are an expert at analyzing and optimizing research queries to make them more effective 
+You are an expert at analyzing and optimizing research queries to make them more effective
 for comprehensive research.
 
 ### YOUR ROLE:
@@ -43,9 +42,12 @@ for comprehensive research.
 5. **Search Strategy**: What keywords and phrases will yield the best results?
 
 ### EXAMPLES OF GOOD TRANSFORMATIONS:
-- Vague: "Tell me about AI" → Specific: "What are the current applications, benefits, and limitations of artificial intelligence in healthcare diagnostics?"
-- Broad: "Research climate change" → Focused: "What are the primary causes and measurable impacts of climate change on coastal ecosystems in the past decade?"
-- Ambiguous: "How does it work?" → Clear: "Explain the technical architecture and data flow of transformer neural networks"
+- Vague: "Tell me about AI" → Specific: "What are the current applications, benefits, and
+  limitations of artificial intelligence in healthcare diagnostics?"
+- Broad: "Research climate change" → Focused: "What are the primary causes and measurable
+  impacts of climate change on coastal ecosystems in the past decade?"
+- Ambiguous: "How does it work?" → Clear: "Explain the technical architecture and data flow
+  of transformer neural networks"
 
 ## CURRENT QUERY CONTEXT:
 Original Query: {original_query}
@@ -170,6 +172,5 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
         return TransformedQuery
 
 
-# Register the agent with the coordinator
+# Create module-level instance
 query_transformation_agent = QueryTransformationAgent()
-coordinator.register_agent(query_transformation_agent)

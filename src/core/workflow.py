@@ -14,7 +14,7 @@ from ..agents import (
     research_executor_agent,
 )
 from ..agents.base import ResearchDependencies
-from ..core.agents import coordinator
+from ..agents.factory import AgentFactory, AgentType
 from ..core.context import get_current_context
 from ..core.events import (
     emit_error,
@@ -37,7 +37,7 @@ class ResearchWorkflow:
 
     def __init__(self):
         """Initialize the research workflow."""
-        self.coordinator = coordinator
+        self.agent_factory = AgentFactory
         self._initialized = False
 
         # Concurrent processing configuration
@@ -58,7 +58,7 @@ class ResearchWorkflow:
             self._initialized = True
             logfire.info(
                 "Research workflow initialized with three-phase clarification system",
-                agents=list(self.coordinator.agents.keys()),
+                agents=[agent.value for agent in AgentType],
                 max_concurrent_tasks=self._max_concurrent_tasks,
             )
 
@@ -128,8 +128,10 @@ class ResearchWorkflow:
 
         try:
             # Run agent with timeout
+            # Create agent and execute
+            agent = self.agent_factory.create_agent(agent_type, deps)
             result = await asyncio.wait_for(
-                self.coordinator.run_agent(agent_type, prompt, deps, **kwargs),
+                agent.execute(deps),
                 timeout=self._task_timeout,
             )
 
@@ -275,8 +277,10 @@ class ResearchWorkflow:
 
                 # Create placeholder report
                 from models.report_generator import (
-                    ResearchReport,
                     ReportSection as ResearchSection,
+                )
+                from models.report_generator import (
+                    ResearchReport,
                 )
 
                 # Create sections based on research areas

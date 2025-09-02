@@ -4,19 +4,18 @@ from typing import Any
 
 from pydantic_ai import RunContext
 
-from agents.base import (
+from ..models.report_generator import ResearchReport
+from .base import (
     AgentConfiguration,
     BaseResearchAgent,
     ResearchDependencies,
-    coordinator,
 )
-from models.report_generator import ResearchReport
 
 # Global system prompt template for report generation
 REPORT_GENERATOR_SYSTEM_PROMPT_TEMPLATE = """
 ## RESEARCH REPORT SPECIALIST:
 
-You are an expert at synthesizing research findings into comprehensive, well-structured, 
+You are an expert at synthesizing research findings into comprehensive, well-structured,
 professional reports.
 
 ### YOUR ROLE:
@@ -142,7 +141,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 "recommendations": ["recommend", "suggest", "should", "propose", "advise"],
             }
 
-            for key, value in content.items():
+            for _key, value in content.items():
                 value_str = str(value).lower()
                 categorized = False
 
@@ -174,7 +173,8 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
 
             # Start with overview
             summary_parts.append(
-                "This research report presents comprehensive findings and actionable recommendations."
+                "This research report presents comprehensive findings "
+                "and actionable recommendations."
             )
 
             # Add key findings
@@ -308,6 +308,5 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         return ResearchReport
 
 
-# Register the agent with the coordinator
+# Create module-level instance
 report_generator_agent = ReportGeneratorAgent()
-coordinator.register_agent(report_generator_agent)

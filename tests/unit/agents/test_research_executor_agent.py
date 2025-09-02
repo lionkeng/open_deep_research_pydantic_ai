@@ -52,9 +52,9 @@ class TestResearchExecutorAgent:
     async def test_agent_initialization(self):
         """Test agent initializes correctly."""
         agent = ResearchExecutorAgent()
-        assert agent.agent_name == "research_executor"
+        assert agent.name == "research_executor"
         assert agent.agent is not None
-        assert agent.result_validator is not None
+        assert agent.config is not None
 
     @pytest.mark.asyncio
     async def test_successful_research_execution(self, research_executor_agent, agent_dependencies):

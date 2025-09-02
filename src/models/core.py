@@ -3,12 +3,14 @@
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Any, Literal
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 # Import Phase 2 models
 from .brief_generator import ResearchBrief
-from .research_executor import ResearchFinding, ResearchResults
-from .report_generator import ReportSection as ResearchSection, ResearchReport
+from .report_generator import ReportSection as ResearchSection
+from .report_generator import ResearchReport
+from .research_executor import ResearchFinding
 
 if TYPE_CHECKING:
     pass  # For future type checking imports

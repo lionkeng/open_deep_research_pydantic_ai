@@ -264,7 +264,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.status = AgentStatus.IDLE
 
         # Get model configuration
-        from core.config import config as global_config
+        from ..core.config import config as global_config
 
         model_config = global_config.get_model_config()
         self.model = self.config.model or model_config["model"]
@@ -503,99 +503,3 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         )
 
         return result
-
-
-class MultiAgentCoordinator:
-    """Coordinator for managing multiple research agents."""
-
-    def __init__(self):
-        """Initialize the multi-agent coordinator."""
-        self.agents: dict[str, BaseResearchAgent[Any, Any]] = {}
-        self._initialized = False
-        self._agents_lock = asyncio.Lock()  # Lock for thread-safe agent registration
-
-    def register_agent(self, agent: BaseResearchAgent[Any, Any]) -> None:
-        """Register an agent with the coordinator (sync version for module init).
-
-        Args:
-            agent: Agent to register
-        """
-        # This is safe without lock during module import (single-threaded)
-        self.agents[agent.name] = agent
-        logfire.info(f"Registered agent: {agent.name}")
-
-    async def register_agent_async(self, agent: BaseResearchAgent[Any, Any]) -> None:
-        """Register an agent with the coordinator (async version for runtime).
-
-        Args:
-            agent: Agent to register
-        """
-        async with self._agents_lock:
-            self.agents[agent.name] = agent
-            logfire.info(f"Registered agent: {agent.name}")
-
-    async def get_agent(self, name: str) -> BaseResearchAgent[Any, Any] | None:
-        """Get a registered agent by name.
-
-        Args:
-            name: Agent name
-
-        Returns:
-            The agent if found, None otherwise
-        """
-        async with self._agents_lock:
-            return self.agents.get(name)
-
-    async def execute_workflow(
-        self,
-        user_query: str,
-        http_client: httpx.AsyncClient,
-        api_keys: APIKeys,
-        stream_callback: Any | None = None,
-    ) -> ResearchState:
-        """Execute the complete research workflow.
-
-        Args:
-            user_query: User's research query
-            http_client: HTTP client for API calls
-            api_keys: API keys for various services
-            stream_callback: Callback for streaming updates
-
-        Returns:
-            Final research state with results
-        """
-        # Create initial research state
-        import uuid
-
-        research_state = ResearchState(
-            request_id=str(uuid.uuid4()),
-            user_id="api-user",
-            session_id=None,
-            user_query=user_query,
-        )
-
-        # Execute workflow stages
-        # This will be implemented when we have all agents ready
-        logfire.info(
-            "Starting research workflow",
-            request_id=research_state.request_id,
-            query=user_query,
-        )
-
-        return research_state
-
-    async def get_stats(self) -> dict[str, Any]:
-        """Get coordinator statistics.
-
-        Returns:
-            Dictionary with coordinator stats
-        """
-        async with self._agents_lock:
-            return {
-                "registered_agents": list(self.agents.keys()),
-                "total_agents": len(self.agents),
-            }
-
-
-# Global coordinator instance
-coordinator = MultiAgentCoordinator()

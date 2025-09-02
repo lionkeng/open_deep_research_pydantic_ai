@@ -18,10 +18,10 @@ from weakref import WeakMethod, WeakSet
 
 import logfire
 
-from core.context import get_current_context
-from models.core import ResearchStage
-from models.report_generator import ResearchReport
-from models.research_executor import ResearchFinding
+from ..models.core import ResearchStage
+from ..models.report_generator import ResearchReport
+from ..models.research_executor import ResearchFinding
+from .context import get_current_context
 
 
 class ResearchEvent(ABC):

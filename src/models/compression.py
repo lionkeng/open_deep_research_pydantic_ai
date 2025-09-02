@@ -1,6 +1,5 @@
 """Compression models for the research system."""
 
-
 from pydantic import BaseModel, Field
 
 
