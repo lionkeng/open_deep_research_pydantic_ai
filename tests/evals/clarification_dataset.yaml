@@ -8,6 +8,79 @@ dataset:
 
 # Test cases organized by category
 cases:
+  # Category: Multi-Question Test Cases (NEW)
+  multi_question_cases:
+    - name: broad_ml_research
+      description: Broad ML query requiring multiple clarifications
+      input:
+        query: "I want to learn about machine learning"
+      expected:
+        needs_clarification: true
+        min_questions: 2
+        max_questions: 5
+        expected_question_types: ["choice", "text"]
+        dimension_categories:
+          - audience_level
+          - scope_focus
+          - deliverable
+        key_themes:
+          - "specific area"
+          - "technical level"
+          - "practical application"
+          - "learning goal"
+      tags: ["multi-question", "broad", "learning"]
+
+    - name: project_architecture
+      description: Architecture query needing multiple aspects clarified
+      input:
+        query: "Help me design my system architecture"
+      expected:
+        needs_clarification: true
+        min_questions: 3
+        max_questions: 6
+        expected_question_types: ["text", "choice", "multi_choice"]
+        dimension_categories:
+          - scope_focus
+          - deliverable
+        key_themes:
+          - "system type"
+          - "scale"
+          - "requirements"
+          - "technology stack"
+      tags: ["multi-question", "architecture", "design"]
+
+    - name: database_selection
+      description: Database choice requiring multiple considerations
+      input:
+        query: "Which database should I use?"
+      expected:
+        needs_clarification: true
+        min_questions: 2
+        max_questions: 4
+        expected_question_types: ["choice", "multi_choice", "text"]
+        key_themes:
+          - "data type"
+          - "scale"
+          - "performance"
+          - "use case"
+      tags: ["multi-question", "database", "selection"]
+
+    - name: performance_optimization
+      description: Performance query needing context on multiple dimensions
+      input:
+        query: "My application is slow, how can I optimize it?"
+      expected:
+        needs_clarification: true
+        min_questions: 3
+        max_questions: 5
+        expected_question_types: ["text", "choice"]
+        key_themes:
+          - "application type"
+          - "performance metrics"
+          - "bottleneck"
+          - "environment"
+      tags: ["multi-question", "performance", "optimization"]
+
   # Category: Clear, Specific Queries (Should NOT need clarification)
   clear_queries:
     - name: bitcoin_price
@@ -15,7 +88,7 @@ cases:
       input:
         query: "What is the current Bitcoin price in USD?"
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["financial", "specific", "current"]
 
     - name: technical_comparison
@@ -23,7 +96,7 @@ cases:
       input:
         query: "Compare ResNet-50 vs VGG-16 for ImageNet classification accuracy"
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["technical", "comparison", "specific"]
 
     - name: code_implementation
@@ -31,7 +104,7 @@ cases:
       input:
         query: "How to implement binary search algorithm in Python with O(log n) complexity"
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["programming", "algorithm", "specific"]
 
     - name: scientific_fact
@@ -39,7 +112,7 @@ cases:
       input:
         query: "What is the speed of light in meters per second?"
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["science", "fact", "specific"]
 
     - name: mathematical_calculation
@@ -47,7 +120,7 @@ cases:
       input:
         query: "Calculate 15% of 2500"
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["math", "calculation", "specific"]
 
   # Category: Ambiguous Queries (SHOULD need clarification)
@@ -57,7 +130,7 @@ cases:
       input:
         query: "What is AI?"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - audience_level
           - scope_focus
@@ -74,7 +147,7 @@ cases:
       input:
         query: "Tell me about Python"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - scope_focus
         key_themes:
@@ -88,7 +161,7 @@ cases:
       input:
         query: "Research climate change"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - scope_focus
           - deliverable
@@ -105,7 +178,7 @@ cases:
       input:
         query: "How does it work?"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - scope_focus
         key_themes:
@@ -119,7 +192,7 @@ cases:
       input:
         query: "Explain technology"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - audience_level
           - scope_focus
@@ -135,7 +208,7 @@ cases:
       input:
         query: "I need help"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - scope_focus
         key_themes:
@@ -151,7 +224,7 @@ cases:
       input:
         query: "?"
       expected:
-        need_clarification: true
+        needs_clarification: true
         key_themes:
           - "question"
           - "help"
@@ -163,7 +236,7 @@ cases:
       input:
         query: "What is machine learning and how does it compare to deep learning and can you also explain neural networks?"
       expected:
-        need_clarification: true
+        needs_clarification: true
         dimension_categories:
           - scope_focus
           - deliverable
@@ -179,7 +252,7 @@ cases:
       input:
         query: "Wat is teh curent temprature in New York?"
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["typo", "clear-intent"]
 
     - name: non_english_simple
@@ -187,7 +260,7 @@ cases:
       input:
         query: "Bonjour"
       expected:
-        need_clarification: true
+        needs_clarification: true
         key_themes:
           - "language"
           - "help"
@@ -206,7 +279,7 @@ cases:
           - role: assistant
             content: "The Tesla Model 3 is an electric sedan..."
       expected:
-        need_clarification: false
+        needs_clarification: false
       tags: ["context", "follow-up"]
 
     - name: ambiguous_followup
@@ -217,7 +290,7 @@ cases:
           - role: user
             content: "Compare iPhone and Android"
       expected:
-        need_clarification: true
+        needs_clarification: true
         key_themes:
           - "which"
           - "specific"
@@ -239,7 +312,12 @@ evaluation:
     - name: QuestionRelevanceEvaluator
       description: Evaluates relevance and quality of questions
       weight: 0.9
-      applies_to: ["ambiguous_queries"]
+      applies_to: ["ambiguous_queries", "multi_question_cases"]
+
+    - name: MultiQuestionEvaluator
+      description: Evaluates multi-question generation capabilities
+      weight: 1.0
+      applies_to: ["multi_question_cases"]
 
     - name: ConsistencyEvaluator
       description: Evaluates consistency across multiple runs
@@ -267,6 +345,9 @@ metrics:
     - question_quality: Average quality score of clarification questions
     - consistency_score: Consistency across multiple runs
     - response_time: Average response time in milliseconds
+    - avg_question_count: Average number of questions generated
+    - question_type_diversity: Diversity of question types used
+    - required_optional_ratio: Ratio of required to optional questions
 
   qualitative:
     - common_failure_patterns: List of common failure cases

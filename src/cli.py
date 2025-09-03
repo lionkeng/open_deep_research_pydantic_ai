@@ -17,6 +17,17 @@ from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
 
+# Optional imports for HTTP mode support
+try:
+    import httpx
+    from httpx_sse import aconnect_sse
+
+    _http_mode_available = True
+except ImportError:
+    httpx = None
+    aconnect_sse = None
+    _http_mode_available = False
+
 from .core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
@@ -40,17 +51,6 @@ from .core.workflow import workflow
 from .models.api_models import APIKeys
 from .models.core import ResearchStage
 from .models.report_generator import ResearchReport
-
-# Try to import httpx-sse for HTTP mode support
-try:
-    import httpx
-    from httpx_sse import aconnect_sse
-
-    _http_mode_available = True
-except ImportError:
-    _http_mode_available = False
-    httpx = None
-    aconnect_sse = None
 
 console = Console()
 

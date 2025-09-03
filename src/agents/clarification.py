@@ -80,16 +80,11 @@ generate structured clarification questions as separate ClarificationQuestion ob
 class ClarifyWithUser(BaseModel):
     """Agent output for clarification needs with multi-question support."""
 
-    needs_clarification: bool = Field(
-        description="Whether clarification is needed from the user"
-    )
+    needs_clarification: bool = Field(description="Whether clarification is needed from the user")
     request: ClarificationRequest | None = Field(
-        default=None,
-        description="Structured clarification request with one or more questions"
+        default=None, description="Structured clarification request with one or more questions"
     )
-    reasoning: str = Field(
-        description="Explanation of why clarification is or isn't needed"
-    )
+    reasoning: str = Field(description="Explanation of why clarification is or isn't needed")
 
     # Structured qualitative assessment fields
     missing_dimensions: list[str] = Field(
@@ -100,7 +95,7 @@ class ClarifyWithUser(BaseModel):
         default="", description="Detailed reasoning behind the clarification decision"
     )
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_request_consistency(self) -> Self:
         """Ensure request presence matches needs_clarification."""
         if self.needs_clarification and not self.request:
@@ -110,7 +105,7 @@ class ClarifyWithUser(BaseModel):
                 questions=[
                     ClarificationQuestion(
                         question="Could you provide more details about your research needs?",
-                        is_required=True
+                        is_required=True,
                     )
                 ]
             )
@@ -132,12 +127,17 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
     Now supports multiple questions with UUID-based tracking.
     """
 
-    def __init__(self):
-        """Initialize the clarification agent."""
-        config = AgentConfiguration(
-            agent_name="clarification_agent",
-            agent_type="clarification",
-        )
+    def __init__(self, config: AgentConfiguration | None = None):
+        """Initialize the clarification agent.
+
+        Args:
+            config: Optional agent configuration. If not provided, uses defaults.
+        """
+        if config is None:
+            config = AgentConfiguration(
+                agent_name="clarification_agent",
+                agent_type="clarification",
+            )
         super().__init__(config=config)
 
         # Register dynamic instructions for assessment framework

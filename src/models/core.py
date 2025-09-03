@@ -1,5 +1,6 @@
 """Core models for the deep research workflow."""
 
+import uuid
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Annotated, Literal
@@ -283,8 +284,6 @@ class ResearchState(BaseModel):
         Returns:
             Scoped request identifier
         """
-        import uuid
-
         request_uuid = str(uuid.uuid4())
         if session_id:
             return f"{user_id}:{session_id}:{request_uuid}"

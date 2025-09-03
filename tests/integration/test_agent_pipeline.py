@@ -4,6 +4,7 @@ Integration tests for agent pipeline data flow and interactions.
 
 import asyncio
 import pytest
+import pytest_asyncio
 from typing import Dict, Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,7 +22,7 @@ from src.models.report_generator import ResearchReport, ReportSection
 class TestAgentPipelineIntegration:
     """Test integration between agents in the research pipeline."""
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def pipeline_dependencies(self):
         """Create dependencies for pipeline testing."""
         return ResearchDependencies(
@@ -32,9 +33,9 @@ class TestAgentPipelineIntegration:
                 user_id="test-user",
                 session_id="test-session",
                 user_query="Research the impact of AI on healthcare",
-                current_stage=ResearchStage.CLARIFICATION
+                current_stage=ResearchStage.CLARIFICATION,
+                metadata=ResearchMetadata()
             ),
-            metadata=ResearchMetadata(),
             usage=None
         )
 
@@ -57,13 +58,14 @@ class TestAgentPipelineIntegration:
         clarification_result.transformed_query = "AI applications in healthcare diagnostics and treatment"
         clarification_result.confidence_score = 0.9
 
-        with patch.object(clarification_agent, 'execute', return_value=clarification_result):
+        with patch.object(clarification_agent, 'run') as mock_run:
+            mock_run.return_value = clarification_result
             # Execute clarification
-            clarified = await clarification_agent.execute(pipeline_dependencies)
+            clarified = await clarification_agent.run(pipeline_dependencies)
 
             # Update state with clarification result
-            pipeline_dependencies.research_state.metadata = {
-                "clarified_query": clarified.transformed_query
+            pipeline_dependencies.research_state.metadata.transformed_query = {
+                "query": clarified.transformed_query
             }
 
             # Mock transformation output
@@ -78,9 +80,10 @@ class TestAgentPipelineIntegration:
                 transformation_metadata={}
             )
 
-            with patch.object(transformation_agent, 'execute', return_value=transformation_result):
+            with patch.object(transformation_agent, 'run') as mock_transform_run:
+                mock_transform_run.return_value = transformation_result
                 # Execute transformation
-                transformed = await transformation_agent.execute(pipeline_dependencies)
+                transformed = await transformation_agent.run(pipeline_dependencies)
 
                 # Verify data flow
                 assert transformed.original_query == clarified.transformed_query
@@ -111,8 +114,8 @@ class TestAgentPipelineIntegration:
             transformation_metadata={}
         )
 
-        with patch.object(transformation_agent, 'execute', return_value=transformation_result):
-            transformed = await transformation_agent.execute(pipeline_dependencies)
+        with patch.object(transformation_agent, 'run', return_value=transformation_result):
+            transformed = await transformation_agent.run(pipeline_dependencies)
 
             # Update dependencies with transformation result
             pipeline_dependencies.metadata.additional_context = {
@@ -145,8 +148,8 @@ class TestAgentPipelineIntegration:
                 metadata={}
             )
 
-            with patch.object(brief_agent, 'execute', return_value=brief_result):
-                brief = await brief_agent.execute(pipeline_dependencies)
+            with patch.object(brief_agent, 'run', return_value=brief_result):
+                brief = await brief_agent.run(pipeline_dependencies)
 
                 # Verify data flow
                 assert brief.key_questions == transformed.supporting_questions
@@ -190,8 +193,8 @@ class TestAgentPipelineIntegration:
             execution_metadata={}
         )
 
-        with patch.object(research_agent, 'execute', return_value=research_result):
-            research = await research_agent.execute(pipeline_dependencies)
+        with patch.object(research_agent, 'run', return_value=research_result):
+            research = await research_agent.run(pipeline_dependencies)
 
             # Pass findings to compression
             pipeline_dependencies.metadata.additional_context = {
@@ -211,8 +214,8 @@ class TestAgentPipelineIntegration:
                 metadata={}
             )
 
-            with patch.object(compression_agent, 'execute', return_value=compression_result):
-                compressed = await compression_agent.execute(pipeline_dependencies)
+            with patch.object(compression_agent, 'run', return_value=compression_result):
+                compressed = await compression_agent.run(pipeline_dependencies)
 
                 # Verify compression
                 assert compressed.compression_ratio > 1.0
@@ -244,8 +247,8 @@ class TestAgentPipelineIntegration:
             metadata={}
         )
 
-        with patch.object(compression_agent, 'execute', return_value=compression_result):
-            compressed = await compression_agent.execute(pipeline_dependencies)
+        with patch.object(compression_agent, 'run', return_value=compression_result):
+            compressed = await compression_agent.run(pipeline_dependencies)
 
             # Pass compressed data to report generation
             pipeline_dependencies.metadata.additional_context = {
@@ -279,8 +282,8 @@ class TestAgentPipelineIntegration:
                 metadata={}
             )
 
-            with patch.object(report_agent, 'execute', return_value=report_result):
-                report = await report_agent.execute(pipeline_dependencies)
+            with patch.object(report_agent, 'run', return_value=report_result):
+                report = await report_agent.run(pipeline_dependencies)
 
                 # Verify report incorporates compressed data
                 assert report.executive_summary == compressed.summary
@@ -301,14 +304,14 @@ class TestAgentPipelineIntegration:
         # Track execution order
         execution_order = []
 
-        async def mock_execute(agent_type):
+        async def mock_run(agent_type):
             execution_order.append(agent_type)
             await asyncio.sleep(0.01)  # Simulate work
             return MagicMock()
 
         # Mock all agent executions
         for agent_type, agent in agents.items():
-            with patch.object(agent, 'execute', side_effect=lambda deps, at=agent_type: mock_execute(at)):
+            with patch.object(agent, 'run', side_effect=lambda deps, at=agent_type: mock_run(at)):
                 pass
 
         # Execute pipeline
@@ -320,7 +323,7 @@ class TestAgentPipelineIntegration:
             AgentType.COMPRESSION,
             AgentType.REPORT_GENERATOR
         ]:
-            await agents[agent_type].execute(pipeline_dependencies)
+            await agents[agent_type].run(pipeline_dependencies)
 
         # Verify execution order
         assert len(execution_order) == 6
@@ -339,9 +342,9 @@ class TestAgentPipelineIntegration:
         )
 
         # Mock research failure
-        with patch.object(research_agent, 'execute', side_effect=Exception("Research failed")):
+        with patch.object(research_agent, 'run', side_effect=Exception("Research failed")):
             with pytest.raises(Exception, match="Research failed"):
-                await research_agent.execute(pipeline_dependencies)
+                await research_agent.run(pipeline_dependencies)
 
             # Compression should handle missing data gracefully
             compression_result = CompressedContent(
@@ -356,8 +359,8 @@ class TestAgentPipelineIntegration:
                 metadata={"error": "upstream_failure"}
             )
 
-            with patch.object(compression_agent, 'execute', return_value=compression_result):
-                result = await compression_agent.execute(pipeline_dependencies)
+            with patch.object(compression_agent, 'run', return_value=compression_result):
+                result = await compression_agent.run(pipeline_dependencies)
                 assert result.metadata.get("error") == "upstream_failure"
 
     @pytest.mark.asyncio
@@ -380,7 +383,7 @@ class TestAgentPipelineIntegration:
 
         # Mock executions that preserve and add to context
         for i, agent in enumerate(agents):
-            async def mock_execute_with_context(deps, agent_num=i):
+            async def mock_run_with_context(deps, agent_num=i):
                 # Verify initial context is preserved
                 assert deps.metadata.additional_context["user_preference"] == "technical_detail"
                 assert deps.metadata.additional_context["domain"] == "healthcare"
@@ -389,8 +392,8 @@ class TestAgentPipelineIntegration:
                 deps.metadata.additional_context[f"agent_{agent_num}_processed"] = True
                 return MagicMock()
 
-            with patch.object(agent, 'execute', side_effect=mock_execute_with_context):
-                await agent.execute(pipeline_dependencies)
+            with patch.object(agent, 'run', side_effect=mock_run_with_context):
+                await agent.run(pipeline_dependencies)
 
         # Verify all context is preserved
         assert pipeline_dependencies.metadata.additional_context["user_preference"] == "technical_detail"
@@ -411,7 +414,7 @@ class TestAgentPipelineIntegration:
 
         execution_times = []
 
-        async def mock_execute_with_delay(deps):
+        async def mock_run_with_delay(deps):
             start = asyncio.get_event_loop().time()
             await asyncio.sleep(0.1)  # Simulate work
             execution_times.append(asyncio.get_event_loop().time() - start)
@@ -419,11 +422,11 @@ class TestAgentPipelineIntegration:
 
         # Mock all agents
         for agent in agents:
-            agent.execute = mock_execute_with_delay
+            agent.run = mock_run_with_delay
 
         # Execute in parallel
         start = asyncio.get_event_loop().time()
-        results = await asyncio.gather(*[agent.execute(pipeline_dependencies) for agent in agents])
+        results = await asyncio.gather(*[agent.run(pipeline_dependencies) for agent in agents])
         total_time = asyncio.get_event_loop().time() - start
 
         # Verify parallel execution (should be much faster than sequential)

@@ -77,12 +77,17 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
     reports with clear sections, analysis, and recommendations.
     """
 
-    def __init__(self):
-        """Initialize the report generator agent."""
-        config = AgentConfiguration(
-            agent_name="report_generator",
-            agent_type="synthesis",
-        )
+    def __init__(self, config: AgentConfiguration | None = None):
+        """Initialize the report generator agent.
+
+        Args:
+            config: Optional agent configuration. If not provided, uses defaults.
+        """
+        if config is None:
+            config = AgentConfiguration(
+                agent_name="report_generator",
+                agent_type="synthesis",
+            )
         super().__init__(config=config)
 
         # Register dynamic instructions

@@ -467,8 +467,6 @@ class ResearchEventBus:
                     logfire.info(f"Event cleanup completed: removed {events_removed} old events")
 
                 # Clean up inactive users (no events in last hour)
-                import time
-
                 current_time = time.time()
                 cutoff_time = current_time - 3600  # 1 hour ago
                 inactive_users = set()

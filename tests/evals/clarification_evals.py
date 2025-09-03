@@ -19,7 +19,8 @@ from pydantic_ai import Agent
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser
 from src.agents.base import ResearchDependencies
 from src.models.api_models import APIKeys, ResearchMetadata
-from src.models.core import ResearchState
+from src.models.core import ResearchState, ResearchStage
+from src.models.clarification import ClarificationQuestion, ClarificationRequest
 
 
 class ClarificationInput(BaseModel):
@@ -33,14 +34,26 @@ class ClarificationInput(BaseModel):
 
 class ClarificationExpectedOutput(BaseModel):
     """Expected output for clarification evaluation."""
-    need_clarification: bool = Field(description="Whether clarification is needed")
+    needs_clarification: bool = Field(description="Whether clarification is needed")
+    min_questions: Optional[int] = Field(
+        default=None,
+        description="Minimum number of questions expected"
+    )
+    max_questions: Optional[int] = Field(
+        default=None,
+        description="Maximum number of questions expected"
+    )
     dimension_categories: Optional[List[str]] = Field(
         default=None,
         description="Expected dimension categories from 4-framework"
     )
     key_themes: Optional[List[str]] = Field(
         default=None,
-        description="Key themes that should appear in clarification"
+        description="Key themes that should appear in clarification questions"
+    )
+    expected_question_types: Optional[List[str]] = Field(
+        default=None,
+        description="Expected question types (text, choice, multi_choice)"
     )
 
 
@@ -49,12 +62,12 @@ class BinaryAccuracyEvaluator(Evaluator):
 
     def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
         """Evaluate if clarification decision matches expected."""
-        correct = output.need_clarification == expected.need_clarification
+        correct = output.needs_clarification == expected.needs_clarification
         return {
             "score": 1.0 if correct else 0.0,
             "correct": correct,
-            "predicted": output.need_clarification,
-            "expected": expected.need_clarification
+            "predicted": output.needs_clarification,
+            "expected": expected.needs_clarification
         }
 
 
@@ -70,13 +83,14 @@ class DimensionCoverageEvaluator(Evaluator):
 
     def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
         """Evaluate dimension framework coverage."""
-        if not output.need_clarification:
+        if not output.needs_clarification or not output.request:
             # If no clarification needed, this evaluator is not applicable
             return {"score": None, "applicable": False}
 
         # Combine all text for analysis
+        questions_text = " ".join([q.question for q in output.request.questions])
         all_text = " ".join([
-            output.question,
+            questions_text,
             " ".join(output.missing_dimensions),
             output.assessment_reasoning
         ]).lower()
@@ -113,37 +127,58 @@ class QuestionRelevanceEvaluator(Evaluator):
 
     def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
         """Evaluate question relevance and quality."""
-        if not output.need_clarification or not output.question:
+        if not output.needs_clarification or not output.request or not output.request.questions:
             return {"score": None, "applicable": False}
 
         scores = []
+        question_scores = []
 
-        # Check if question is not empty and substantial
-        question_length_score = min(len(output.question) / 100, 1.0)  # Normalize to 0-1
-        scores.append(question_length_score)
+        for question in output.request.questions:
+            q_scores = []
 
-        # Check if question ends with question mark (basic quality)
-        has_question_mark = 1.0 if output.question.strip().endswith("?") else 0.5
-        scores.append(has_question_mark)
+            # Check if question is not empty and substantial
+            question_length_score = min(len(question.question) / 100, 1.0)  # Normalize to 0-1
+            q_scores.append(question_length_score)
 
-        # Check theme coverage if expected themes provided
-        if expected.key_themes:
-            question_lower = output.question.lower()
-            theme_matches = sum(1 for theme in expected.key_themes
-                              if theme.lower() in question_lower)
-            theme_score = theme_matches / len(expected.key_themes) if expected.key_themes else 0
-            scores.append(theme_score)
+            # Check if question ends with question mark (basic quality)
+            has_question_mark = 1.0 if question.question.strip().endswith("?") else 0.5
+            q_scores.append(has_question_mark)
+
+            # Check theme coverage if expected themes provided
+            if expected.key_themes:
+                question_lower = question.question.lower()
+                theme_matches = sum(1 for theme in expected.key_themes
+                                  if theme.lower() in question_lower)
+                theme_score = theme_matches / len(expected.key_themes) if expected.key_themes else 0
+                q_scores.append(theme_score)
+
+            question_scores.append(sum(q_scores) / len(q_scores))
+
+        # Average score across all questions
+        avg_question_score = sum(question_scores) / len(question_scores) if question_scores else 0
+        scores.append(avg_question_score)
 
         # Check if reasoning is provided
         reasoning_score = min(len(output.assessment_reasoning) / 100, 1.0) if output.assessment_reasoning else 0
         scores.append(reasoning_score)
 
+        # Check question count expectations
+        if expected.min_questions or expected.max_questions:
+            count = len(output.request.questions)
+            count_score = 1.0
+            if expected.min_questions and count < expected.min_questions:
+                count_score = count / expected.min_questions
+            elif expected.max_questions and count > expected.max_questions:
+                count_score = expected.max_questions / count
+            scores.append(count_score)
+
         final_score = sum(scores) / len(scores)
 
         return {
             "score": final_score,
-            "question_length": len(output.question),
+            "num_questions": len(output.request.questions),
             "has_reasoning": bool(output.assessment_reasoning),
+            "question_scores": question_scores,
             "theme_coverage": theme_score if expected.key_themes else None
         }
 
@@ -174,10 +209,10 @@ class ConsistencyEvaluator(Evaluator):
                 )
 
                 result = await agent.agent.run(query, deps=deps)
-                results.append(result.data)
+                results.append(result.output)
 
         # Check consistency of binary decision
-        decisions = [r.need_clarification for r in results]
+        decisions = [r.needs_clarification for r in results]
         decision_consistency = all(d == decisions[0] for d in decisions)
 
         # Check consistency of dimensions (if clarification needed)
@@ -198,6 +233,64 @@ class ConsistencyEvaluator(Evaluator):
             "dimension_consistency": dimension_consistency,
             "num_runs": self.num_runs,
             "all_decisions": decisions
+        }
+
+
+class MultiQuestionEvaluator(Evaluator):
+    """Evaluates multi-question clarification capabilities."""
+
+    def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
+        """Evaluate multi-question generation and diversity."""
+        if not output.needs_clarification or not output.request:
+            return {"score": None, "applicable": False}
+
+        questions = output.request.questions
+        scores = []
+
+        # 1. Question count score
+        count = len(questions)
+        count_score = 1.0
+        if expected.min_questions and count < expected.min_questions:
+            count_score = count / expected.min_questions
+        elif expected.max_questions and count > expected.max_questions:
+            count_score = expected.max_questions / count
+        scores.append(count_score)
+
+        # 2. Question type diversity
+        question_types = set(q.question_type for q in questions)
+        expected_types = expected.expected_question_types or ["text", "choice", "multi_choice"]
+        type_coverage = len(question_types.intersection(expected_types)) / len(expected_types)
+        scores.append(type_coverage)
+
+        # 3. Required vs optional balance
+        required_count = sum(1 for q in questions if q.is_required)
+        optional_count = len(questions) - required_count
+        balance_score = 1.0
+        if required_count == 0 or optional_count == 0:
+            balance_score = 0.5  # Penalize if all questions are same type
+        scores.append(balance_score)
+
+        # 4. Question uniqueness (no duplicate questions)
+        unique_questions = len(set(q.question.lower().strip() for q in questions))
+        uniqueness_score = unique_questions / len(questions) if questions else 0
+        scores.append(uniqueness_score)
+
+        # 5. Question ordering
+        ordered_questions = output.request.get_sorted_questions()
+        ordering_score = 1.0 if ordered_questions == sorted(questions, key=lambda q: q.order) else 0.5
+        scores.append(ordering_score)
+
+        final_score = sum(scores) / len(scores)
+
+        return {
+            "score": final_score,
+            "num_questions": count,
+            "question_types": list(question_types),
+            "required_count": required_count,
+            "optional_count": optional_count,
+            "uniqueness_score": uniqueness_score,
+            "type_coverage": type_coverage,
+            "balance_score": balance_score
         }
 
 
@@ -224,14 +317,17 @@ class LLMJudgeEvaluator(Evaluator):
     ) -> Dict[str, Any]:
         """Use LLM to judge clarification quality."""
 
-        if not output.need_clarification:
+        if not output.needs_clarification or not output.request:
             return {"score": None, "applicable": False}
+
+        questions_text = "\n".join([f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
+                                    for q in output.request.questions])
 
         evaluation_prompt = f"""
         Original Query: {query}
 
         Clarification Response:
-        - Question: {output.question}
+        - Questions:\n{questions_text}
         - Missing Dimensions: {', '.join(output.missing_dimensions)}
         - Reasoning: {output.assessment_reasoning}
 
@@ -282,13 +378,13 @@ def create_clarification_dataset() -> Dataset:
         Case(
             name="bitcoin_price",
             inputs=ClarificationInput(query="What is the current Bitcoin price in USD?"),
-            expected_output=ClarificationExpectedOutput(need_clarification=False),
+            expected_output=ClarificationExpectedOutput(needs_clarification=False),
             evaluators=[BinaryAccuracyEvaluator()]
         ),
         Case(
             name="specific_code",
             inputs=ClarificationInput(query="Implement quicksort in Python with O(n log n) complexity"),
-            expected_output=ClarificationExpectedOutput(need_clarification=False),
+            expected_output=ClarificationExpectedOutput(needs_clarification=False),
             evaluators=[BinaryAccuracyEvaluator()]
         ),
 
@@ -297,7 +393,7 @@ def create_clarification_dataset() -> Dataset:
             name="broad_ai",
             inputs=ClarificationInput(query="What is AI?"),
             expected_output=ClarificationExpectedOutput(
-                need_clarification=True,
+                needs_clarification=True,
                 dimension_categories=["audience_level", "scope_focus", "deliverable"],
                 key_themes=["artificial intelligence", "specific", "aspect", "level"]
             ),
@@ -311,7 +407,7 @@ def create_clarification_dataset() -> Dataset:
             name="ambiguous_python",
             inputs=ClarificationInput(query="Tell me about Python"),
             expected_output=ClarificationExpectedOutput(
-                need_clarification=True,
+                needs_clarification=True,
                 dimension_categories=["scope_focus"],
                 key_themes=["programming", "language", "snake"]
             ),
@@ -325,7 +421,7 @@ def create_clarification_dataset() -> Dataset:
             name="vague_research",
             inputs=ClarificationInput(query="Research climate change"),
             expected_output=ClarificationExpectedOutput(
-                need_clarification=True,
+                needs_clarification=True,
                 dimension_categories=["scope_focus", "deliverable", "source_quality"],
                 key_themes=["aspect", "focus", "specific", "purpose"]
             ),
@@ -341,7 +437,7 @@ def create_clarification_dataset() -> Dataset:
             name="minimal_query",
             inputs=ClarificationInput(query="?"),
             expected_output=ClarificationExpectedOutput(
-                need_clarification=True,
+                needs_clarification=True,
                 key_themes=["question", "help", "clarify"]
             ),
             evaluators=[
@@ -373,7 +469,11 @@ async def run_clarification_evaluation():
         async with httpx.AsyncClient() as http_client:
             state = ResearchState(
                 request_id="eval-test",
-                user_query=inputs.query
+                user_id="test-user",
+                session_id="test-session",
+                user_query=inputs.query,
+                current_stage=ResearchStage.CLARIFICATION,
+                metadata=ResearchMetadata()
             )
             deps = ResearchDependencies(
                 http_client=http_client,
@@ -382,7 +482,7 @@ async def run_clarification_evaluation():
             )
 
             result = await agent.agent.run(inputs.query, deps=deps)
-            return result.data
+            return result.output
 
     # Run evaluation
     report = await dataset.evaluate(clarification_task)
@@ -427,13 +527,13 @@ def generate_evaluation_report(report: Report) -> str:
     output.append("-" * 40)
 
     clarification_needed = sum(1 for case in report.cases
-                              if case.output and case.output.need_clarification)
+                              if case.output and case.output.needs_clarification)
     output.append(f"Cases needing clarification: {clarification_needed}/{total_cases}")
 
     # Dimension coverage analysis
     all_dimensions = []
     for case in report.cases:
-        if case.output and case.output.need_clarification:
+        if case.output and case.output.needs_clarification:
             all_dimensions.extend(case.output.missing_dimensions)
 
     if all_dimensions:

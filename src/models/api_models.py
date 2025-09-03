@@ -6,6 +6,7 @@ from typing import Any, Literal, TypedDict
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
 
 from .clarification import (
+    ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
@@ -77,8 +78,6 @@ class APIKeys(BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, str]) -> "APIKeys":
         """Create from dictionary of plain strings."""
-        from pydantic import SecretStr
-
         return cls(
             openai=SecretStr(data["openai"]) if data.get("openai") else None,
             anthropic=SecretStr(data["anthropic"]) if data.get("anthropic") else None,
@@ -192,8 +191,6 @@ class ResearchMetadata(BaseModel):
             question_id: ID of the question being answered
             answer: User's answer text
         """
-        from src.models.clarification import ClarificationAnswer, ClarificationResponse
-
         if not self.clarification_request:
             return
 

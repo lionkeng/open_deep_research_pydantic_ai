@@ -1,5 +1,6 @@
 """Query transformation agent for optimizing research queries."""
 
+import re
 from typing import Any
 
 from pydantic_ai import RunContext
@@ -70,12 +71,17 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
     actionable research questions with clear scope and search strategies.
     """
 
-    def __init__(self):
-        """Initialize the query transformation agent."""
-        config = AgentConfiguration(
-            agent_name="query_transformation",
-            agent_type="transformation",
-        )
+    def __init__(self, config: AgentConfiguration | None = None):
+        """Initialize the query transformation agent.
+
+        Args:
+            config: Optional agent configuration. If not provided, uses defaults.
+        """
+        if config is None:
+            config = AgentConfiguration(
+                agent_name="query_transformation",
+                agent_type="transformation",
+            )
         super().__init__(config=config)
 
         # Register dynamic instructions
@@ -131,7 +137,6 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
             Returns:
                 List of key concepts
             """
-            import re
 
             words = text.split()
             concepts = []

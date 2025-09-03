@@ -1,5 +1,6 @@
 """Pydantic models and enums for Server-Sent Events (SSE) messaging."""
 
+import json
 from enum import Enum
 from typing import Any, Literal
 
@@ -146,8 +147,6 @@ def parse_sse_message(data: str) -> SSEMessage:
     Raises:
         ValidationError: If data doesn't match any message schema
     """
-    import json
-
     # Parse JSON first
     try:
         parsed = json.loads(data)

@@ -74,12 +74,17 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
     and synthesizes insights according to the research brief.
     """
 
-    def __init__(self):
-        """Initialize the research executor agent."""
-        config = AgentConfiguration(
-            agent_name="research_executor",
-            agent_type="execution",
-        )
+    def __init__(self, config: AgentConfiguration | None = None):
+        """Initialize the research executor agent.
+
+        Args:
+            config: Optional agent configuration. If not provided, uses defaults.
+        """
+        if config is None:
+            config = AgentConfiguration(
+                agent_name="research_executor",
+                agent_type="execution",
+            )
         super().__init__(config=config)
 
         # Register dynamic instructions

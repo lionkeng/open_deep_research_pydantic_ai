@@ -1,0 +1,26 @@
+[
+  {
+    "test": "Specific query - no clarification needed",
+    "success": true,
+    "needs_clarification": false,
+    "num_questions": 0
+  },
+  {
+    "test": "Broad ML query - needs multiple clarifications",
+    "success": true,
+    "needs_clarification": true,
+    "num_questions": 10
+  },
+  {
+    "test": "Architecture query - needs detailed clarifications",
+    "success": true,
+    "needs_clarification": true,
+    "num_questions": 10
+  },
+  {
+    "test": "Ambiguous query - could be language or snake",
+    "success": true,
+    "needs_clarification": true,
+    "num_questions": 10
+  }
+]

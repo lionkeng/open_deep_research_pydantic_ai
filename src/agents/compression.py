@@ -1,5 +1,6 @@
 """Compression agent for condensing research content."""
 
+import re
 from typing import Any
 
 from pydantic_ai import RunContext
@@ -74,12 +75,17 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
     maintaining clarity, and providing compression metrics.
     """
 
-    def __init__(self):
-        """Initialize the compression agent."""
-        config = AgentConfiguration(
-            agent_name="compression",
-            agent_type="processing",
-        )
+    def __init__(self, config: AgentConfiguration | None = None):
+        """Initialize the compression agent.
+
+        Args:
+            config: Optional agent configuration. If not provided, uses defaults.
+        """
+        if config is None:
+            config = AgentConfiguration(
+                agent_name="compression",
+                agent_type="processing",
+            )
         super().__init__(config=config)
 
         # Register dynamic instructions
@@ -197,7 +203,6 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
             Returns:
                 Dictionary of key information types
             """
-            import re
 
             key_info = {
                 "numbers": [],

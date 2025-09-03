@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import time
 from datetime import datetime
 from typing import Any
 
@@ -24,11 +25,15 @@ from ..core.events import (
 )
 from ..interfaces.cli_multi_clarification import handle_multi_clarification_cli
 from ..models.api_models import APIKeys, ConversationMessage
+from ..models.brief_generator import ResearchBrief
+from ..models.compression import CompressedContent
 from ..models.core import (
     ResearchMetadata,
     ResearchStage,
     ResearchState,
 )
+from ..models.report_generator import ReportSection, ResearchReport
+from ..models.research_executor import ResearchFinding
 
 
 class ResearchWorkflow:
@@ -70,7 +75,6 @@ class ResearchWorkflow:
 
         Returns True if operation is allowed, False if circuit is open.
         """
-        import time
 
         current_time = time.time()
 
@@ -96,7 +100,6 @@ class ResearchWorkflow:
 
     def _record_error(self, agent_type: str, error: Exception) -> None:
         """Record agent operation error and update circuit breaker."""
-        import time
 
         self._consecutive_errors[agent_type] = self._consecutive_errors.get(agent_type, 0) + 1
         self._last_error_time[agent_type] = time.time()
@@ -233,7 +236,7 @@ class ResearchWorkflow:
                 logfire.info("Stage 4: Research execution (placeholder)", request_id=request_id)
 
                 # Create placeholder findings based on brief
-                from models.research_executor import ResearchFinding
+                # ResearchFinding already imported at top of module
 
                 key_areas = brief_full.get("key_research_areas", ["General research"])
                 mock_findings = []
@@ -278,12 +281,8 @@ class ResearchWorkflow:
                 logfire.info("Stage 6: Report generation (placeholder)", request_id=request_id)
 
                 # Create placeholder report
-                from models.report_generator import (
-                    ReportSection as ResearchSection,
-                )
-                from models.report_generator import (
-                    ResearchReport,
-                )
+                # ResearchReport and ReportSection already imported at top of module
+                ResearchSection = ReportSection  # Alias for backward compatibility
 
                 # Create sections based on research areas
                 sections = []
@@ -633,9 +632,7 @@ class ResearchWorkflow:
                     )
                     if brief_text:
                         # Create minimal ResearchBrief for compatibility
-                        from models.brief_generator import (
-                            ResearchBrief,
-                        )
+                        # ResearchBrief already imported at top of module
 
                         questions = [q.strip() + "?" for q in brief_text.split("?") if q.strip()][
                             :5
@@ -691,22 +688,18 @@ class ResearchWorkflow:
                         and research_state.compressed_findings
                     ):
                         # Reconstruct compressed findings from metadata if available
-                        from agents.compression import (
-                            CompressedFindings,
-                        )
-                        from models.brief_generator import (
-                            ResearchBrief,
-                        )
+                        # CompressedContent already imported at top of module
 
                         if research_state.metadata.compressed_findings_full is not None:
                             # Use the full object stored in metadata
                             compressed = research_state.metadata.compressed_findings_full
                         else:
                             # Fallback to basic reconstruction
-                            compressed = CompressedFindings(
-                                summary=research_state.compressed_findings or "",
-                                key_insights=[],
-                                themes={},
+                            compressed = CompressedContent(
+                                original_content="",
+                                compressed_summary=research_state.compressed_findings or "",
+                                compression_strategy="fallback",
+                                total_compression_ratio=0.5,
                             )
 
                         # Recreate minimal ResearchBrief for report generation

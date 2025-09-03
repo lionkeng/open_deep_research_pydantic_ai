@@ -14,6 +14,7 @@ from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import RunUsage
 
+from ..core.config import config as global_config
 from ..core.events import (
     StreamingUpdateEvent,
     research_event_bus,
@@ -258,7 +259,6 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.status = AgentStatus.IDLE
 
         # Get model configuration
-        from ..core.config import config as global_config
 
         model_config = global_config.get_model_config()
         self.model = self.config.model or model_config["model"]

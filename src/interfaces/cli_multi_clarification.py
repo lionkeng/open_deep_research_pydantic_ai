@@ -151,11 +151,24 @@ def ask_multi_choice_question(question: ClarificationQuestion, console: Console)
     if response == "0" and not question.is_required:
         return None
 
-    # Parse selections
+    # Parse selections with proper input sanitization
     try:
-        selections = [int(x.strip()) for x in response.split(",")]
+        selections = []
+        for x in response.split(","):
+            x = x.strip()
+            if x:  # Skip empty strings from malformed input like "1,,3"
+                try:
+                    selections.append(int(x))
+                except ValueError:
+                    console.print(f"[red]Invalid input '{x}' - please use numbers only[/red]")
+                    return ask_multi_choice_question(question, console)  # Retry
+
+        if not selections:
+            console.print("[red]No selections made - please select at least one option[/red]")
+            return ask_multi_choice_question(question, console)  # Retry
+
         if any(s < 1 or s > len(question.choices) for s in selections):
-            console.print("[red]Invalid selection(s)[/red]")
+            console.print("[red]Invalid selection number(s) - out of range[/red]")
             return ask_multi_choice_question(question, console)  # Retry
 
         selected_choices = [question.choices[s - 1] for s in selections]

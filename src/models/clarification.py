@@ -12,24 +12,30 @@ MAX_CONTEXT_LENGTH: Final[int] = 1000
 MAX_ANSWER_LENGTH: Final[int] = 2000
 MAX_CHOICES: Final[int] = 20
 MAX_CHOICE_LENGTH: Final[int] = 200
+MIN_QUESTION_LENGTH: Final[int] = 5
+MAX_CONCURRENT_QUESTIONS: Final[int] = 10
 
 
 # Custom Exceptions
 class ClarificationError(Exception):
     """Base exception for clarification-related errors."""
+
     pass
 
 
 class ValidationError(ClarificationError):
     """Raised when clarification validation fails."""
+
     pass
 
 
 class InvalidChoiceError(ValidationError):
     """Raised when an invalid choice is provided."""
+
     def __init__(self, invalid_choice: str, valid_choices: list[str]):
         self.invalid_choice = invalid_choice
-        self.valid_choices = valid_choices
+        # Store immutable copy to prevent external modification
+        self.valid_choices = valid_choices.copy()
         super().__init__(
             f"Invalid choice '{invalid_choice}'. Valid choices: {', '.join(valid_choices)}"
         )
@@ -37,6 +43,7 @@ class InvalidChoiceError(ValidationError):
 
 class MissingRequiredAnswerError(ValidationError):
     """Raised when a required question is not answered."""
+
     def __init__(self, question_id: str):
         self.question_id = question_id
         super().__init__(f"Required question '{question_id}' not answered")
@@ -55,7 +62,7 @@ class ClarificationQuestion(BaseModel):
     context: str | None = Field(default=None, max_length=MAX_CONTEXT_LENGTH)
     order: int = 0
 
-    @field_validator('question', 'context')
+    @field_validator("question", "context")
     @classmethod
     def validate_string_fields(cls, v: str | None) -> str | None:
         """Validate and sanitize string fields."""
@@ -66,8 +73,8 @@ class ClarificationQuestion(BaseModel):
         if not v:
             raise ValueError("Field cannot be empty or whitespace-only")
         return v
-    
-    @field_validator('choices')
+
+    @field_validator("choices")
     @classmethod
     def validate_choices(cls, v: list[str] | None) -> list[str] | None:
         """Validate choice options."""
@@ -83,8 +90,8 @@ class ClarificationQuestion(BaseModel):
                 raise ValueError(f"Choice too long (max {MAX_CHOICE_LENGTH} chars)")
             validated_choices.append(choice)
         return validated_choices
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_choices_consistency(self) -> Self:
         """Validate that choices are provided for choice questions."""
         if self.question_type in ("choice", "multi_choice") and not self.choices:
@@ -102,7 +109,7 @@ class ClarificationAnswer(BaseModel):
     skipped: bool = False
     answered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @field_validator('answer')
+    @field_validator("answer")
     @classmethod
     def validate_answer(cls, v: str | None, info) -> str | None:
         """Validate and sanitize answer."""
@@ -113,8 +120,8 @@ class ClarificationAnswer(BaseModel):
         if not v:
             return None  # Will be caught by consistency check
         return v
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_answer_consistency(self) -> Self:
         """Validate that answer and skipped states are consistent."""
         if not self.skipped and (self.answer is None or not self.answer.strip()):
@@ -128,7 +135,12 @@ class ClarificationRequest(BaseModel):
     """Collection of clarification questions to ask the user."""
 
     id: str = Field(default_factory=lambda: str(uuid4()))
-    questions: list[ClarificationQuestion] = Field(..., min_length=1)
+    questions: list[ClarificationQuestion] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_CONCURRENT_QUESTIONS,
+        description="List of clarification questions (max 10)",
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     context: str | None = Field(default=None, max_length=MAX_CONTEXT_LENGTH)
 
@@ -138,7 +150,9 @@ class ClarificationRequest(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Build index after model initialization."""
         super().model_post_init(__context)
-        self._question_index = {q.id: q for q in self.questions}
+        # Only build index if not already built to prevent memory leak
+        if not self._question_index:
+            self._question_index = {q.id: q for q in self.questions}
 
     def get_question_by_id(self, question_id: str) -> ClarificationQuestion | None:
         """Retrieve a question by its ID in O(1) time."""
@@ -152,7 +166,7 @@ class ClarificationRequest(BaseModel):
         """Get questions sorted by order."""
         return sorted(self.questions, key=lambda q: q.order)
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_questions(self) -> Self:
         """Validate that request has at least one question."""
         if not self.questions:
@@ -173,7 +187,9 @@ class ClarificationResponse(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Build index after model initialization."""
         super().model_post_init(__context)
-        self._answer_index = {a.question_id: a for a in self.answers}
+        # Only build index if not already built to prevent memory leak
+        if not self._answer_index:
+            self._answer_index = {a.question_id: a for a in self.answers}
 
     def get_answer_for_question(self, question_id: str) -> ClarificationAnswer | None:
         """Get answer for a specific question ID in O(1) time."""
@@ -195,7 +211,7 @@ class ClarificationResponse(BaseModel):
             if answer.question_id not in valid_ids:
                 errors.append(f"Unknown question ID: {answer.question_id}")
                 continue
-            
+
             # Validate choice answers
             question = request.get_question_by_id(answer.question_id)
             if question and not answer.skipped and answer.answer:
@@ -207,8 +223,10 @@ class ClarificationResponse(BaseModel):
                         )
                 elif question.question_type == "multi_choice" and question.choices:
                     # For multi-choice, answer might be comma-separated values
-                    selected_choices = [c.strip() for c in answer.answer.split(',')]
-                    invalid_choices = [c for c in selected_choices if c not in question.choices]
+                    # Use set for O(1) lookups instead of O(n) list membership checks
+                    choice_set = set(question.choices)
+                    selected_choices = [c.strip() for c in answer.answer.split(",")]
+                    invalid_choices = [c for c in selected_choices if c not in choice_set]
                     if invalid_choices:
                         errors.append(
                             f"Invalid choices {invalid_choices} for question '{question.id}'. "
@@ -217,11 +235,9 @@ class ClarificationResponse(BaseModel):
 
         return errors
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_answers(self) -> Self:
         """Validate that response has at least one answer."""
         if not self.answers:
             raise ValueError("Response must have at least one answer")
         return self
-
-
