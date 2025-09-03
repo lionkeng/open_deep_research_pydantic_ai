@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
 import logfire
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -295,13 +295,13 @@ class ClarificationResponse(BaseModel):
 
 @app.get("/research/{request_id}/clarification")
 async def get_clarification_question(request_id: str):
-    """Get pending clarification question for a research request.
+    """Get pending clarification questions for a research request.
 
     Args:
         request_id: Research request ID
 
     Returns:
-        Clarification question if pending, otherwise 404
+        Clarification request with questions if pending, otherwise 404
     """
     async with _sessions_lock:
         if request_id not in active_sessions:
@@ -312,25 +312,28 @@ async def get_clarification_question(request_id: str):
     if (
         state.metadata
         and state.metadata.awaiting_clarification
-        and state.metadata.clarification_question
+        and state.metadata.clarification_request
     ):
+        # Return the full clarification request
         return {
             "request_id": request_id,
-            "question": state.metadata.clarification_question,
+            "clarification_request": state.metadata.clarification_request.model_dump(),
             "original_query": state.user_query,
             "awaiting_response": True,
+            # Include single question for backward compatibility
+            "question": state.metadata.clarification_question,
         }
     else:
-        raise HTTPException(status_code=404, detail="No pending clarification question")
+        raise HTTPException(status_code=404, detail="No pending clarification questions")
 
 
 @app.post("/research/{request_id}/clarification")
-async def respond_to_clarification(request_id: str, clarification_response: ClarificationResponse):
-    """Respond to a clarification question and resume research.
+async def respond_to_clarification(request_id: str, clarification_data: dict[str, Any]):
+    """Respond to clarification questions and resume research.
 
     Args:
         request_id: Research request ID
-        clarification_response: User's response to clarification
+        clarification_data: Either ClarificationResponse or legacy single response
 
     Returns:
         Updated research state
@@ -344,17 +347,57 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
     if not (state.metadata and state.metadata.awaiting_clarification):
         raise HTTPException(status_code=400, detail="No pending clarification for this request")
 
-    # Update conversation with the clarification response
-    conversation = list(state.metadata.conversation_messages)
-    new_messages: list[ConversationMessage] = [
-        {"role": "assistant", "content": state.metadata.clarification_question or ""},
-        {"role": "user", "content": clarification_response.response},
-    ]
-    conversation.extend(new_messages)
+    # Handle both new multi-question and legacy single-question formats
+    if "answers" in clarification_data:  # New format - ClarificationResponse
+        from src.models.clarification import ClarificationResponse
+
+        # Parse the response
+        clarification_response = ClarificationResponse(**clarification_data)
+
+        # Validate against the original request
+        if state.metadata.clarification_request:
+            errors = clarification_response.validate_against_request(
+                state.metadata.clarification_request
+            )
+            if errors:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"message": "Invalid clarification response", "errors": errors},
+                )
+
+        # Store the response
+        state.metadata.clarification_response = clarification_response
+
+        # Update conversation with Q&A pairs
+        conversation = list(state.metadata.conversation_messages)
+        if state.metadata.clarification_request:
+            for answer in clarification_response.answers:
+                if not answer.skipped and answer.answer:
+                    question = state.metadata.clarification_request.get_question_by_id(
+                        answer.question_id
+                    )
+                    if question:
+                        new_messages: list[ConversationMessage] = [
+                            {"role": "assistant", "content": question.question},
+                            {"role": "user", "content": answer.answer},
+                        ]
+                        conversation.extend(new_messages)
+
+        state.metadata.conversation_messages = conversation
+
+    else:  # Legacy format - single response string
+        # Handle backward compatibility
+        response_text = clarification_data.get("response", "")
+        conversation = list(state.metadata.conversation_messages)
+        new_messages: list[ConversationMessage] = [
+            {"role": "assistant", "content": state.metadata.clarification_question or ""},
+            {"role": "user", "content": response_text},
+        ]
+        conversation.extend(new_messages)
+        state.metadata.conversation_messages = conversation
 
     # Update metadata to clear the pending clarification
     state.metadata.awaiting_clarification = False
-    state.metadata.conversation_messages = conversation
     state.metadata.clarification_question = None
 
     # Resume research workflow

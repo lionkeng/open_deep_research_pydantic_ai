@@ -1,6 +1,7 @@
 """Main workflow orchestrator with integrated three-phase clarification system."""
 
 import asyncio
+import sys
 from datetime import datetime
 from typing import Any
 
@@ -21,6 +22,7 @@ from ..core.events import (
     emit_research_started,
     emit_stage_completed,
 )
+from ..interfaces.cli_multi_clarification import handle_multi_clarification_cli
 from ..models.api_models import APIKeys, ConversationMessage
 from ..models.core import (
     ResearchMetadata,
@@ -380,54 +382,62 @@ class ResearchWorkflow:
             if not research_state.metadata:
                 research_state.metadata = ResearchMetadata()
 
+            # Store the full ClarificationRequest if available
+            if clarification_result.needs_clarification and clarification_result.request:
+                research_state.metadata.clarification_request = clarification_result.request
+
+            # Also store assessment details for backward compatibility
             research_state.metadata.clarification_assessment = {
-                "need_clarification": clarification_result.need_clarification,
-                "question": clarification_result.question,
-                "verification": clarification_result.verification,
-                "missing_dimensions": getattr(clarification_result, "missing_dimensions", []),
-                "assessment_reasoning": getattr(clarification_result, "assessment_reasoning", ""),
-                "suggested_clarifications": getattr(
-                    clarification_result, "suggested_clarifications", []
-                ),
+                "needs_clarification": clarification_result.needs_clarification,
+                "reasoning": clarification_result.reasoning,
+                "missing_dimensions": clarification_result.missing_dimensions,
+                "assessment_reasoning": clarification_result.assessment_reasoning,
             }
 
-            # Handle clarification if needed (simplified for non-interactive)
-            clarification_responses = {}
-            if clarification_result.need_clarification and clarification_result.question:
-                import sys
-
+            # Handle clarification if needed
+            if clarification_result.needs_clarification and clarification_result.request:
                 if sys.stdin.isatty():  # Interactive mode (CLI)
                     try:
-                        from interfaces.cli_clarification import (  # noqa: E501
-                            ask_single_clarification_question,
+                        # Get user responses for all clarification questions
+                        clarification_response = await handle_multi_clarification_cli(
+                            clarification_result.request,
+                            research_state.user_query,
                         )
 
-                        # Get user response for the clarification question
-                        user_response = ask_single_clarification_question(
-                            clarification_result.question
-                        )
-                        if user_response:
-                            clarification_responses[clarification_result.question] = user_response
+                        if clarification_response:
+                            research_state.metadata.clarification_response = clarification_response
 
                             # Add to conversation messages
-                            if not hasattr(research_state.metadata, "conversation_messages"):
+                            if not research_state.metadata.conversation_messages:
                                 research_state.metadata.conversation_messages = []
-                            messages: list[ConversationMessage] = [
-                                {"role": "assistant", "content": clarification_result.question},
-                                {"role": "user", "content": user_response},
-                            ]
-                            research_state.metadata.conversation_messages.extend(messages)
+
+                            # Add each Q&A pair to conversation
+                            for answer in clarification_response.answers:
+                                if not answer.skipped and answer.answer:
+                                    # Use the request from the result, not metadata
+                                    question = clarification_result.request.get_question_by_id(
+                                        answer.question_id
+                                    )
+                                    if question:
+                                        messages: list[ConversationMessage] = [
+                                            {"role": "assistant", "content": question.question},
+                                            {"role": "user", "content": answer.answer},
+                                        ]
+                                        research_state.metadata.conversation_messages.extend(
+                                            messages
+                                        )
 
                     except (KeyboardInterrupt, EOFError):
                         logfire.info("User cancelled clarification")
                 else:
                     # Non-interactive mode - store for HTTP handling
                     research_state.metadata.awaiting_clarification = True
-                    research_state.metadata.clarification_question = clarification_result.question
+                    # Store formatted question for display (backward compatibility)
+                    if clarification_result.request.questions:
+                        research_state.metadata.clarification_question = (
+                            clarification_result.request.get_sorted_questions()[0].question
+                        )
                     return  # Exit early for HTTP handling
-
-            # Store clarification responses in metadata
-            research_state.metadata.clarification_responses = clarification_responses
 
             await emit_stage_completed(
                 research_state.request_id, ResearchStage.CLARIFICATION, True, clarification_result
@@ -447,10 +457,10 @@ class ResearchWorkflow:
                 transformation_prompt = f"""Transform this query for better research specificity:
                 Original Query: {user_query}
                 Clarification Data: {transformation_data["clarification_data"]}
-                Clarification Responses: {clarification_responses}"""
+                Clarification Responses: {research_state.metadata.clarification_response}"""
 
                 transformed_query = await self._run_agent_with_circuit_breaker(
-                    "transformation", transformation_prompt, deps
+                    AgentType.QUERY_TRANSFORMATION, deps, prompt=transformation_prompt
                 )
 
                 # Store comprehensive transformation data in structured format
@@ -504,7 +514,7 @@ class ResearchWorkflow:
 
                 # Run brief generation agent with circuit breaker
                 brief_result = await self._run_agent_with_circuit_breaker(
-                    "brief", brief_prompt, deps
+                    AgentType.BRIEF_GENERATOR, deps, prompt=brief_prompt
                 )
 
                 # Store brief in structured format with all metadata
@@ -533,7 +543,11 @@ class ResearchWorkflow:
                     brief_length=len(brief_result.brief_text),
                     key_areas_count=len(brief_result.key_research_areas),
                     has_transformation=research_state.metadata.transformed_query is not None,
-                    clarification_count=len(clarification_responses),
+                    clarification_count=(
+                        len(research_state.metadata.clarification_response.answers)
+                        if research_state.metadata.clarification_response
+                        else 0
+                    ),
                     estimated_complexity=brief_result.estimated_complexity,
                 )
 

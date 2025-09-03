@@ -5,7 +5,11 @@ from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
 
-from .clarification import ClarificationRequest, ClarificationResponse
+from .clarification import (
+    ClarificationQuestion,
+    ClarificationRequest,
+    ClarificationResponse,
+)
 
 
 class APIKeys(BaseModel):
@@ -116,7 +120,8 @@ class ResearchMetadata(BaseModel):
         default=None, description="User's responses to clarification questions"
     )
     clarification_question: str | None = Field(
-        default=None, description="Current clarification question awaiting response (formatted for display)"
+        default=None,
+        description="Current clarification question awaiting response (formatted for display)",
     )
     awaiting_clarification: bool = Field(
         default=False, description="Whether system is waiting for clarification response"
@@ -158,6 +163,76 @@ class ResearchMetadata(BaseModel):
         default=0.0, ge=0.0, le=1.0, description="Research confidence score"
     )
     tags: list[str] = Field(default_factory=list, description="Research topic tags")
+
+    # Helper methods for clarification handling
+    def get_pending_questions(self) -> list[ClarificationQuestion]:
+        """Get list of unanswered required questions.
+
+        Returns:
+            List of ClarificationQuestion objects that need answers
+        """
+        if not self.clarification_request:
+            return []
+
+        pending = []
+        for question in self.clarification_request.get_required_questions():
+            # Check if we have an answer for this question
+            if self.clarification_response:
+                answer = self.clarification_response.get_answer_for_question(question.id)
+                if answer and not answer.skipped:
+                    continue  # Question has been answered
+            pending.append(question)
+
+        return pending
+
+    def add_clarification_response(self, question_id: str, answer: str) -> None:
+        """Add or update an answer for a specific question.
+
+        Args:
+            question_id: ID of the question being answered
+            answer: User's answer text
+        """
+        from src.models.clarification import ClarificationAnswer, ClarificationResponse
+
+        if not self.clarification_request:
+            return
+
+        # Create the answer
+        new_answer = ClarificationAnswer(question_id=question_id, answer=answer, skipped=False)
+
+        # Create new response if needed or update existing
+        if not self.clarification_response:
+            self.clarification_response = ClarificationResponse(
+                request_id=self.clarification_request.id,
+                answers=[new_answer],  # Start with this answer
+            )
+        else:
+            # Remove existing answer for this question if any
+            self.clarification_response.answers = [
+                a for a in self.clarification_response.answers if a.question_id != question_id
+            ]
+            # Add the new answer
+            self.clarification_response.answers.append(new_answer)
+
+            # Rebuild the index after modifying answers
+            self.clarification_response.model_post_init(None)
+
+    def is_clarification_complete(self) -> bool:
+        """Check if all required questions have been answered.
+
+        Returns:
+            True if all required questions have valid answers
+        """
+        if not self.clarification_request:
+            return True  # No clarification needed
+
+        if not self.clarification_response:
+            return False  # No responses yet
+
+        # Validate response against request
+        errors = self.clarification_response.validate_against_request(self.clarification_request)
+
+        return len(errors) == 0
 
 
 class APIHealthResponse(BaseModel):
