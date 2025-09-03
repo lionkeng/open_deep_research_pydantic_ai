@@ -1,0 +1,274 @@
+# Clarification Agent Evaluation Dataset
+# This file contains test cases for evaluating the ClarificationAgent
+
+dataset:
+  name: clarification_agent_evaluation
+  description: Comprehensive test cases for clarification agent evaluation
+  version: "1.0.0"
+
+# Test cases organized by category
+cases:
+  # Category: Clear, Specific Queries (Should NOT need clarification)
+  clear_queries:
+    - name: bitcoin_price
+      description: Specific financial query with clear intent
+      input:
+        query: "What is the current Bitcoin price in USD?"
+      expected:
+        need_clarification: false
+      tags: ["financial", "specific", "current"]
+
+    - name: technical_comparison
+      description: Specific technical comparison with clear metrics
+      input:
+        query: "Compare ResNet-50 vs VGG-16 for ImageNet classification accuracy"
+      expected:
+        need_clarification: false
+      tags: ["technical", "comparison", "specific"]
+
+    - name: code_implementation
+      description: Clear programming task with specific requirements
+      input:
+        query: "How to implement binary search algorithm in Python with O(log n) complexity"
+      expected:
+        need_clarification: false
+      tags: ["programming", "algorithm", "specific"]
+
+    - name: scientific_fact
+      description: Specific scientific question
+      input:
+        query: "What is the speed of light in meters per second?"
+      expected:
+        need_clarification: false
+      tags: ["science", "fact", "specific"]
+
+    - name: mathematical_calculation
+      description: Clear mathematical calculation
+      input:
+        query: "Calculate 15% of 2500"
+      expected:
+        need_clarification: false
+      tags: ["math", "calculation", "specific"]
+
+  # Category: Ambiguous Queries (SHOULD need clarification)
+  ambiguous_queries:
+    - name: broad_ai
+      description: Very broad topic needing scope clarification
+      input:
+        query: "What is AI?"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - audience_level
+          - scope_focus
+          - deliverable
+        key_themes:
+          - "artificial intelligence"
+          - "specific aspect"
+          - "technical level"
+          - "purpose"
+      tags: ["broad", "technology", "ambiguous"]
+
+    - name: ambiguous_python
+      description: Ambiguous term - could be programming language or animal
+      input:
+        query: "Tell me about Python"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - scope_focus
+        key_themes:
+          - "programming language"
+          - "snake"
+          - "specific aspect"
+      tags: ["ambiguous", "context-dependent"]
+
+    - name: vague_research
+      description: Broad research request needing focus
+      input:
+        query: "Research climate change"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - scope_focus
+          - deliverable
+          - source_quality
+        key_themes:
+          - "specific aspect"
+          - "geographic region"
+          - "time period"
+          - "purpose"
+      tags: ["research", "broad", "vague"]
+
+    - name: incomplete_context
+      description: Missing subject reference
+      input:
+        query: "How does it work?"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - scope_focus
+        key_themes:
+          - "what 'it' refers to"
+          - "context"
+          - "subject"
+      tags: ["incomplete", "missing-context"]
+
+    - name: broad_technology
+      description: Extremely broad technology query
+      input:
+        query: "Explain technology"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - audience_level
+          - scope_focus
+          - deliverable
+        key_themes:
+          - "specific technology"
+          - "aspect"
+          - "purpose"
+      tags: ["broad", "technology"]
+
+    - name: generic_help
+      description: Generic help request
+      input:
+        query: "I need help"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - scope_focus
+        key_themes:
+          - "specific problem"
+          - "area"
+          - "assistance"
+      tags: ["vague", "help"]
+
+  # Category: Edge Cases
+  edge_cases:
+    - name: minimal_query
+      description: Minimal query with no content
+      input:
+        query: "?"
+      expected:
+        need_clarification: true
+        key_themes:
+          - "question"
+          - "help"
+          - "clarify"
+      tags: ["edge-case", "minimal"]
+
+    - name: multiple_questions
+      description: Multiple questions needing prioritization
+      input:
+        query: "What is machine learning and how does it compare to deep learning and can you also explain neural networks?"
+      expected:
+        need_clarification: true
+        dimension_categories:
+          - scope_focus
+          - deliverable
+        key_themes:
+          - "which topic"
+          - "prioritize"
+          - "depth"
+          - "focus"
+      tags: ["multiple", "complex"]
+
+    - name: typo_query
+      description: Query with typos but clear intent
+      input:
+        query: "Wat is teh curent temprature in New York?"
+      expected:
+        need_clarification: false
+      tags: ["typo", "clear-intent"]
+
+    - name: non_english_simple
+      description: Simple non-English query
+      input:
+        query: "Bonjour"
+      expected:
+        need_clarification: true
+        key_themes:
+          - "language"
+          - "help"
+          - "assistance"
+      tags: ["non-english", "greeting"]
+
+  # Category: Context-Dependent Queries
+  context_dependent:
+    - name: with_prior_context
+      description: Query that makes sense with context
+      input:
+        query: "What about the performance?"
+        context:
+          - role: user
+            content: "Tell me about Tesla Model 3"
+          - role: assistant
+            content: "The Tesla Model 3 is an electric sedan..."
+      expected:
+        need_clarification: false
+      tags: ["context", "follow-up"]
+
+    - name: ambiguous_followup
+      description: Ambiguous follow-up question
+      input:
+        query: "What about the other one?"
+        context:
+          - role: user
+            content: "Compare iPhone and Android"
+      expected:
+        need_clarification: true
+        key_themes:
+          - "which"
+          - "specific"
+          - "clarify"
+      tags: ["context", "ambiguous"]
+
+# Evaluation Configuration
+evaluation:
+  evaluators:
+    - name: BinaryAccuracyEvaluator
+      description: Evaluates binary correctness of clarification decision
+      weight: 1.0
+
+    - name: DimensionCoverageEvaluator
+      description: Evaluates coverage of 4-dimension framework
+      weight: 0.8
+      applies_to: ["ambiguous_queries", "edge_cases"]
+
+    - name: QuestionRelevanceEvaluator
+      description: Evaluates relevance and quality of questions
+      weight: 0.9
+      applies_to: ["ambiguous_queries"]
+
+    - name: ConsistencyEvaluator
+      description: Evaluates consistency across multiple runs
+      weight: 0.7
+      config:
+        num_runs: 3
+
+    - name: LLMJudgeEvaluator
+      description: Uses LLM to judge clarification quality
+      weight: 0.6
+      config:
+        model: "gpt-4o-mini"
+      applies_to: ["ambiguous_queries"]
+
+# Metrics to track
+metrics:
+  primary:
+    - accuracy: Binary classification accuracy
+    - f1_score: F1 score for clarification detection
+    - precision: Precision of clarification detection
+    - recall: Recall of clarification detection
+
+  secondary:
+    - dimension_coverage: Average coverage of 4-dimension framework
+    - question_quality: Average quality score of clarification questions
+    - consistency_score: Consistency across multiple runs
+    - response_time: Average response time in milliseconds
+
+  qualitative:
+    - common_failure_patterns: List of common failure cases
+    - dimension_distribution: Distribution of identified dimensions
+    - question_patterns: Common patterns in clarification questions

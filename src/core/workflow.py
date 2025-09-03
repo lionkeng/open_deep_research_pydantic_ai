@@ -23,6 +23,7 @@ from ..core.events import (
 )
 from ..models.api_models import APIKeys, ConversationMessage
 from ..models.core import (
+    ResearchMetadata,
     ResearchStage,
     ResearchState,
 )
@@ -377,7 +378,7 @@ class ResearchWorkflow:
 
             # Store clarification assessment in structured format
             if not research_state.metadata:
-                research_state.metadata = {}
+                research_state.metadata = ResearchMetadata()
 
             research_state.metadata.clarification_assessment = {
                 "need_clarification": clarification_result.need_clarification,

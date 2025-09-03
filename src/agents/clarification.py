@@ -1,9 +1,9 @@
 """Clarification agent for identifying when user queries need additional information."""
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
+
+from src.models.api_models import ConversationMessage
 
 from .base import (
     AgentConfiguration,
@@ -132,21 +132,22 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
                 conversation_context=conversation_context
             )
 
-    def _format_conversation_context(self, conversation: list[Any], query: str) -> str:
+    def _format_conversation_context(
+        self,
+        conversation: list[ConversationMessage],
+        query: str,
+    ) -> str:
         """Format conversation history for the prompt."""
         if not conversation:
             return f"Initial Query: {query}\n(No prior conversation)"
 
         # Format conversation messages
-        formatted = []
+        formatted: list[str] = []
         for msg in conversation:
-            if isinstance(msg, dict):
-                # With TypedDict, we know these fields exist
-                role = msg["role"]
-                content = msg["content"]
-                formatted.append(f"{role.capitalize()}: {content}")
-            else:
-                formatted.append(str(msg))
+            # With TypedDict, we know these fields exist
+            role = msg["role"]
+            content = msg["content"]
+            formatted.append(f"{role.capitalize()}: {content}")
 
         context = "\n".join(formatted[-4:])  # Last 4 messages for context
         return f"Recent Conversation:\n{context}\nCurrent Query: {query}"
