@@ -1,9 +1,12 @@
 """Clarification agent for identifying when user queries need additional information."""
 
-from pydantic import BaseModel, Field
+from typing import Self
+
+from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import RunContext
 
 from src.models.api_models import ConversationMessage
+from src.models.clarification import ClarificationQuestion, ClarificationRequest
 
 from .base import (
     AgentConfiguration,
@@ -55,35 +58,39 @@ Analyze the query using these four critical dimensions:
   • "Step-by-step tutorial for Docker deployment on AWS" → Clear deliverable
 
 ## PROFESSIONAL QUESTION FORMATION:
-If clarification is needed, craft questions that:
-  • Use bullet points or numbered lists for clarity
-  • Are concise while gathering all necessary information
-  • Don't ask for information already provided
-  • Focus on the missing critical dimensions identified above
-  • Help narrow scope from broad to actionable
+When generating clarification questions:
+  • Create separate questions for different aspects (don't combine unrelated topics)
+  • Mark questions as required if they're critical for accurate research
+  • Mark questions as optional if they would enhance but aren't essential
+  • Use choice questions when there are clear alternatives
+  • Order questions by importance (most critical first)
+  • Provide context for complex or technical questions
+  • Keep each question focused on one specific aspect
 
 ## CONVERSATION CONTEXT:
 {conversation_context}
 
 ## ASSESSMENT INSTRUCTION:
 Based on your systematic analysis above, determine if the query provides sufficient
-information across all four critical dimensions for comprehensive research. Consider
-the pattern examples and conversation history.
+information across all four critical dimensions for comprehensive research. If not,
+generate structured clarification questions as separate ClarificationQuestion objects.
 """
 
 
 class ClarifyWithUser(BaseModel):
-    """Model for user clarification requests with structured assessment framework."""
+    """Agent output for clarification needs with multi-question support."""
 
-    need_clarification: bool = Field(
-        description="Whether the user needs to be asked a clarifying question."
+    needs_clarification: bool = Field(
+        description="Whether clarification is needed from the user"
     )
-    question: str = Field(
-        default="", description="A question to ask the user to clarify the report scope"
+    request: ClarificationRequest | None = Field(
+        default=None,
+        description="Structured clarification request with one or more questions"
     )
-    verification: str = Field(
-        default="", description="Verification message that we will start research"
+    reasoning: str = Field(
+        description="Explanation of why clarification is or isn't needed"
     )
+
     # Structured qualitative assessment fields
     missing_dimensions: list[str] = Field(
         default_factory=list,
@@ -92,10 +99,25 @@ class ClarifyWithUser(BaseModel):
     assessment_reasoning: str = Field(
         default="", description="Detailed reasoning behind the clarification decision"
     )
-    suggested_clarifications: list[str] = Field(
-        default_factory=list,
-        description="Suggested clarification topics to address missing dimensions",
-    )
+
+    @model_validator(mode='after')
+    def validate_request_consistency(self) -> Self:
+        """Ensure request presence matches needs_clarification."""
+        if self.needs_clarification and not self.request:
+            # If clarification is needed but no request provided, create a minimal one
+            # This shouldn't happen if the agent works correctly, but provides fallback
+            self.request = ClarificationRequest(
+                questions=[
+                    ClarificationQuestion(
+                        question="Could you provide more details about your research needs?",
+                        is_required=True
+                    )
+                ]
+            )
+        if not self.needs_clarification and self.request:
+            # If no clarification needed, clear any request
+            self.request = None
+        return self
 
 
 class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser]):
@@ -106,6 +128,8 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
     - Scope & Focus Areas evaluation
     - Source & Quality Requirements assessment
     - Deliverable Specifications identification
+
+    Now supports multiple questions with UUID-based tracking.
     """
 
     def __init__(self):
@@ -161,7 +185,17 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
         return """You are a research clarification specialist who determines whether user
 queries require additional information before comprehensive research can begin. You analyze
 queries across multiple dimensions to assess if they provide sufficient context for
-high-quality research."""
+high-quality research.
+
+When clarification is needed, you generate structured questions as separate ClarificationQuestion
+objects within a ClarificationRequest. Each question should:
+- Have a unique purpose and focus on one aspect
+- Be marked as required or optional appropriately
+- Have an order value indicating priority (0 = highest)
+- Include question_type: "text", "choice", or "multi_choice"
+- Provide choices array for choice questions
+- Include context field when additional explanation helps
+"""
 
     def _register_tools(self) -> None:
         """Register clarification-specific tools.

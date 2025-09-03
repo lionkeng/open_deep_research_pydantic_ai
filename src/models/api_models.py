@@ -5,6 +5,8 @@ from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
 
+from .clarification import ClarificationRequest, ClarificationResponse
+
 
 class APIKeys(BaseModel):
     """API keys for various services with secure handling.
@@ -107,11 +109,14 @@ class ResearchMetadata(BaseModel):
     clarification_assessment: dict[str, Any] | None = Field(
         default=None, description="Clarification agent's assessment results"
     )
-    clarification_responses: dict[str, str] = Field(
-        default_factory=dict, description="User's responses to clarification questions"
+    clarification_request: ClarificationRequest | None = Field(
+        default=None, description="Current clarification request with questions"
+    )
+    clarification_response: ClarificationResponse | None = Field(
+        default=None, description="User's responses to clarification questions"
     )
     clarification_question: str | None = Field(
-        default=None, description="Current clarification question awaiting response"
+        default=None, description="Current clarification question awaiting response (formatted for display)"
     )
     awaiting_clarification: bool = Field(
         default=False, description="Whether system is waiting for clarification response"
