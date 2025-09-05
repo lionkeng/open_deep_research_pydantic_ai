@@ -3,6 +3,7 @@
 import re
 from typing import Any
 
+import logfire
 from pydantic_ai import RunContext
 
 from ..models.compression import CompressedContent
@@ -273,5 +274,26 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
         return CompressedContent
 
 
-# Create module-level instance
-compression_agent = CompressionAgent()
+# Lazy initialization of module-level instance
+_compression_agent_instance = None
+
+
+def get_compression_agent() -> CompressionAgent:
+    """Get or create the compression agent instance."""
+    global _compression_agent_instance
+    if _compression_agent_instance is None:
+        _compression_agent_instance = CompressionAgent()
+        logfire.info("Initialized compression agent")
+    return _compression_agent_instance
+
+
+# For backward compatibility, create a property-like access
+class _LazyAgent:
+    """Lazy proxy for CompressionAgent that delays instantiation."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the actual agent instance."""
+        return getattr(get_compression_agent(), name)
+
+
+compression_agent = _LazyAgent()

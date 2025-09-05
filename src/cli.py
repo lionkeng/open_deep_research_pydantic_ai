@@ -17,6 +17,15 @@ from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
 
+# Try to import interactive selector for better UX
+try:
+    from .interfaces.interactive_selector import interactive_select
+
+    has_interactive_select = True
+except ImportError:
+    interactive_select = None  # type: ignore
+    has_interactive_select = False
+
 # Optional imports for HTTP mode support
 try:
     import httpx
@@ -587,8 +596,20 @@ async def run_research(
         if state.final_report:
             display_report(state.final_report)
 
-            # Save option
-            if Prompt.ask("\nSave full report to file?", choices=["y", "n"], default="n") == "y":
+            # Save option with interactive selection
+            save_choice = None
+            if has_interactive_select and interactive_select:
+                save_choice = interactive_select(
+                    "Save full report to file?",
+                    choices=["Yes", "No"],
+                    default=1,  # Default to "No"
+                    console=console,
+                )
+            else:
+                resp = Prompt.ask("\nSave full report to file?", choices=["y", "n"], default="n")
+                save_choice = "Yes" if resp == "y" else "No"
+
+            if save_choice == "Yes":
                 filename = Prompt.ask("Enter filename", default="research_report.md")
                 save_report(state, filename)
                 console.print(f"[green]Report saved to {filename}[/green]")
@@ -630,11 +651,22 @@ async def run_research(
                 report_data = await client.get_report(request_id)
                 display_http_report(report_data)
 
-                # Save option
-                save_prompt = Prompt.ask(
-                    "\nSave full report to file?", choices=["y", "n"], default="n"
-                )
-                if save_prompt == "y":
+                # Save option with interactive selection
+                save_choice = None
+                if has_interactive_select and interactive_select:
+                    save_choice = interactive_select(
+                        "Save full report to file?",
+                        choices=["Yes", "No"],
+                        default=1,  # Default to "No"
+                        console=console,
+                    )
+                else:
+                    save_prompt = Prompt.ask(
+                        "\nSave full report to file?", choices=["y", "n"], default="n"
+                    )
+                    save_choice = "Yes" if save_prompt == "y" else "No"
+
+                if save_choice == "Yes":
                     filename = Prompt.ask("Enter filename", default="research_report.md")
                     save_http_report(report_data, filename)
                     console.print(f"[green]Report saved to {filename}[/green]")

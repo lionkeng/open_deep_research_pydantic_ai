@@ -1,7 +1,6 @@
 """Configuration management for the research system."""
 
 import os
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -9,15 +8,7 @@ from pydantic_ai.models import KnownModelName
 
 from ..models.api_models import APIKeys
 
-# Load .env file if it exists
-try:
-    from dotenv import load_dotenv
-
-    env_path = Path(__file__).parent.parent.parent.parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-except ImportError:
-    pass  # dotenv not installed
+# Note: .env file is loaded in src/__init__.py before this module is imported
 
 
 def _env_secret(name: str) -> SecretStr | None:
@@ -47,7 +38,7 @@ class APIConfig(BaseModel):
     )
 
     default_model: KnownModelName = Field(
-        default="openai:gpt-5", description="Default LLM model to use"
+        default="openai:gpt-5-mini", description="Default LLM model to use"
     )
 
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum retries for LLM calls")

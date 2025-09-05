@@ -222,10 +222,15 @@ class ClarificationResponse(BaseModel):
                             f"Valid choices: {', '.join(question.choices)}"
                         )
                 elif question.question_type == "multi_choice" and question.choices:
-                    # For multi-choice, answer might be comma-separated values
+                    # For multi-choice, answer uses pipe separator to avoid conflicts with commas
                     # Use set for O(1) lookups instead of O(n) list membership checks
                     choice_set = set(question.choices)
-                    selected_choices = [c.strip() for c in answer.answer.split(",")]
+                    # Support both comma (legacy) and pipe (new) separators for compatibility
+                    if " | " in answer.answer:
+                        selected_choices = [c.strip() for c in answer.answer.split(" | ")]
+                    else:
+                        # Fallback to comma for backward compatibility
+                        selected_choices = [c.strip() for c in answer.answer.split(",")]
                     invalid_choices = [c for c in selected_choices if c not in choice_set]
                     if invalid_choices:
                         errors.append(

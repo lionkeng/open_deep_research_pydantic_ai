@@ -1,7 +1,8 @@
 """Clarification agent for identifying when user queries need additional information."""
 
-from typing import Self
+from typing import Any, Self
 
+import logfire
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import RunContext
 
@@ -207,5 +208,26 @@ objects within a ClarificationRequest. Each question should:
         pass
 
 
-# Create module-level instance
-clarification_agent = ClarificationAgent()
+# Lazy initialization of module-level instance
+_clarification_agent_instance = None
+
+
+def get_clarification_agent() -> ClarificationAgent:
+    """Get or create the clarification agent instance."""
+    global _clarification_agent_instance
+    if _clarification_agent_instance is None:
+        _clarification_agent_instance = ClarificationAgent()
+        logfire.info("Initialized clarification_agent agent")
+    return _clarification_agent_instance
+
+
+# For backward compatibility, create a property-like access
+class _LazyAgent:
+    """Lazy proxy for ClarificationAgent that delays instantiation."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the actual agent instance."""
+        return getattr(get_clarification_agent(), name)
+
+
+clarification_agent = _LazyAgent()

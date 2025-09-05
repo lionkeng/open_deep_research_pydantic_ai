@@ -4,14 +4,20 @@
 import asyncio
 import os
 
-from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
 # Configure environment
-load_dotenv()
+# Note: .env is loaded automatically when importing from src (if src is imported)
+# Since this is a minimal test without src imports, we need to ensure API key is set
 os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
+if not os.getenv("OPENAI_API_KEY"):
+    # Try to load .env manually only if API key is not already set
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
 print(f"API Key present: {bool(os.getenv('OPENAI_API_KEY'))}")
 

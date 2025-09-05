@@ -3,8 +3,10 @@
 import re
 from typing import Any
 
+import logfire
 from pydantic_ai import RunContext
 
+from ..models.clarification import ClarificationRequest, ClarificationResponse
 from ..models.query_transformation import TransformedQuery
 from .base import (
     AgentConfiguration,
@@ -54,6 +56,9 @@ for comprehensive research.
 Original Query: {original_query}
 {conversation_context}
 
+## CLARIFICATION CONTEXT:
+{clarification_context}
+
 ## TRANSFORMATION REQUIREMENTS:
 - Maintain the user's original intent
 - Make the query more specific and actionable
@@ -95,9 +100,18 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)
 
+            # Access and format clarification data directly from metadata
+            clarification_context = "No clarification context available."
+            if metadata and metadata.clarification_response:
+                clarification_context = self._format_clarification_context(
+                    metadata.clarification_request, metadata.clarification_response
+                )
+
             # Use global template with variable substitution
             return QUERY_TRANSFORMATION_SYSTEM_PROMPT_TEMPLATE.format(
-                original_query=query, conversation_context=conversation_context
+                original_query=query,
+                conversation_context=conversation_context,
+                clarification_context=clarification_context,
             )
 
         # Register transformation tools
@@ -152,6 +166,58 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
 
             return list(set(concepts))[:10]
 
+        @self.agent.tool
+        async def get_clarification_responses(
+            ctx: RunContext[ResearchDependencies],
+        ) -> dict[str, str]:
+            """Get clarification questions and responses if available.
+
+            Args:
+                ctx: Run context with dependencies
+
+            Returns:
+                Dictionary mapping questions to responses
+            """
+            metadata = ctx.deps.research_state.metadata
+            if not metadata or not metadata.clarification_response:
+                return {}
+
+            responses = {}
+            if metadata.clarification_request:
+                for question in metadata.clarification_request.questions:
+                    answer = metadata.clarification_response.get_answer_for_question(question.id)
+                    if answer and not answer.skipped:
+                        responses[question.question] = answer.answer
+
+            return responses
+
+    def _format_clarification_context(
+        self, request: ClarificationRequest | None, response: ClarificationResponse | None
+    ) -> str:
+        """Format clarification Q&A pairs for transformation context.
+
+        Args:
+            request: Clarification request with questions
+            response: User's responses to clarification
+
+        Returns:
+            Formatted string with Q&A pairs
+        """
+        if not request or not response:
+            return "No clarification context available."
+
+        formatted = ["Clarification Q&A:"]
+        for question in request.questions:
+            answer = response.get_answer_for_question(question.id)
+            if answer and not answer.skipped:
+                formatted.append(f"Q: {question.question}")
+                formatted.append(f"A: {answer.answer}")
+
+        if len(formatted) == 1:  # Only header, no Q&A pairs
+            return "No clarification responses provided."
+
+        return "\n".join(formatted)
+
     def _format_conversation_context(self, conversation: list[Any]) -> str:
         """Format conversation history for the prompt."""
         if not conversation:
@@ -177,5 +243,26 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
         return TransformedQuery
 
 
-# Create module-level instance
-query_transformation_agent = QueryTransformationAgent()
+# Lazy initialization of module-level instance
+_query_transformation_agent_instance = None
+
+
+def get_query_transformation_agent() -> QueryTransformationAgent:
+    """Get or create the query transformation agent instance."""
+    global _query_transformation_agent_instance
+    if _query_transformation_agent_instance is None:
+        _query_transformation_agent_instance = QueryTransformationAgent()
+        logfire.info("Initialized query_transformation agent")
+    return _query_transformation_agent_instance
+
+
+# For backward compatibility, create a property-like access
+class _LazyAgent:
+    """Lazy proxy for QueryTransformationAgent that delays instantiation."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the actual agent instance."""
+        return getattr(get_query_transformation_agent(), name)
+
+
+query_transformation_agent = _LazyAgent()

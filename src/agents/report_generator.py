@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import logfire
 from pydantic_ai import RunContext
 
 from ..models.report_generator import ResearchReport
@@ -317,5 +318,26 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         return ResearchReport
 
 
-# Create module-level instance
-report_generator_agent = ReportGeneratorAgent()
+# Lazy initialization of module-level instance
+_report_generator_agent_instance = None
+
+
+def get_report_generator_agent() -> ReportGeneratorAgent:
+    """Get or create the report generator agent instance."""
+    global _report_generator_agent_instance
+    if _report_generator_agent_instance is None:
+        _report_generator_agent_instance = ReportGeneratorAgent()
+        logfire.info("Initialized report_generator agent")
+    return _report_generator_agent_instance
+
+
+# For backward compatibility, create a property-like access
+class _LazyAgent:
+    """Lazy proxy for ReportGeneratorAgent that delays instantiation."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the actual agent instance."""
+        return getattr(get_report_generator_agent(), name)
+
+
+report_generator_agent = _LazyAgent()

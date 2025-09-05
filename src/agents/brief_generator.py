@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import logfire
 from pydantic_ai import RunContext
 
 from ..models.brief_generator import ResearchBrief
@@ -208,5 +209,26 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
         return ResearchBrief
 
 
-# Create module-level instance
-brief_generator_agent = BriefGeneratorAgent()
+# Lazy initialization of module-level instance
+_brief_generator_agent_instance = None
+
+
+def get_brief_generator_agent() -> BriefGeneratorAgent:
+    """Get or create the brief generator agent instance."""
+    global _brief_generator_agent_instance
+    if _brief_generator_agent_instance is None:
+        _brief_generator_agent_instance = BriefGeneratorAgent()
+        logfire.info("Initialized brief_generator agent")
+    return _brief_generator_agent_instance
+
+
+# For backward compatibility, create a property-like access
+class _LazyAgent:
+    """Lazy proxy for BriefGeneratorAgent that delays instantiation."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the actual agent instance."""
+        return getattr(get_brief_generator_agent(), name)
+
+
+brief_generator_agent = _LazyAgent()

@@ -37,7 +37,7 @@ cli = [
 ]
 
 [project.scripts]
-deep-research = "cli:cli"
+deep-research = "src.cli:cli"
 test = "pytest:main"
 
 [build-system]
@@ -157,6 +157,10 @@ exclude_lines = [
   "pass",
   "except ImportError:",
 ]
+
+[tool.logfire]
+# Suppress configuration warning until logfire.configure() is called
+ignore_no_config = true
 
 [dependency-groups]
 dev = [

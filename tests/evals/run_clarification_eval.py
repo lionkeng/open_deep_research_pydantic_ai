@@ -20,12 +20,10 @@ from statistics import mean, stdev
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# Load environment variables
-from dotenv import load_dotenv
-load_dotenv()
-
 # Suppress logfire prompts
 os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
+
+# Note: .env is loaded automatically when importing from src
 
 import httpx
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser

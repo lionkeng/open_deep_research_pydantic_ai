@@ -247,7 +247,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         # Initialize mixins
         ToolMixin.__init__(self)
         ConversationMixin.__init__(self)
-        # PerformanceMonitoringMixin.__init__(self)
+        PerformanceMonitoringMixin.__init__(self)
 
         # Set configuration with defaults
         self.config = config or AgentConfiguration(

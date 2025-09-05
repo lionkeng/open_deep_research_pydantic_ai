@@ -4,13 +4,12 @@
 import asyncio
 import os
 
-from dotenv import load_dotenv
 from pydantic_ai import Agent
 
 from src.agents.clarification import ClarifyWithUser
 
 # Configure environment
-load_dotenv()
+# Note: .env is loaded automatically when importing from src
 os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
 

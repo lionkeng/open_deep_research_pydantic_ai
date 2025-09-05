@@ -5,7 +5,6 @@ import asyncio
 import os
 
 import httpx
-from dotenv import load_dotenv
 from pydantic import SecretStr
 
 from src.agents.base import ResearchDependencies
@@ -14,7 +13,7 @@ from src.models.api_models import APIKeys, ResearchMetadata
 from src.models.core import ResearchStage, ResearchState
 
 # Configure environment
-load_dotenv()
+# Note: .env is loaded automatically when importing from src
 os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
 

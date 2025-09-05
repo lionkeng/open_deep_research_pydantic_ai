@@ -23,9 +23,9 @@ from ..core.events import (
     emit_research_started,
     emit_stage_completed,
 )
-from ..interfaces.cli_multi_clarification import handle_multi_clarification_cli
+from ..interfaces.clarification_flow import handle_clarification_with_review
 from ..models.api_models import APIKeys, ConversationMessage
-from ..models.brief_generator import ResearchBrief
+from ..models.brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
 from ..models.compression import CompressedContent
 from ..models.core import (
     ResearchMetadata,
@@ -397,10 +397,16 @@ class ResearchWorkflow:
             if clarification_result.needs_clarification and clarification_result.request:
                 if sys.stdin.isatty():  # Interactive mode (CLI)
                     try:
-                        # Get user responses for all clarification questions
-                        clarification_response = await handle_multi_clarification_cli(
-                            clarification_result.request,
-                            research_state.user_query,
+                        # Get user responses for all clarification questions with review
+                        from rich.console import Console
+
+                        console = Console()
+                        clarification_response = await handle_clarification_with_review(
+                            request=clarification_result.request,
+                            original_query=research_state.user_query,
+                            console=console,
+                            auto_review=True,
+                            allow_skip_review=True,
                         )
 
                         if clarification_response:
@@ -446,20 +452,9 @@ class ResearchWorkflow:
             logfire.info("Phase 2: Query transformation")
 
             try:
-                # Prepare transformation data
-                transformation_data = {
-                    "original_query": user_query,
-                    "clarification_data": research_state.metadata.clarification_assessment or {},
-                }
-
-                # Run transformation agent with circuit breaker
-                transformation_prompt = f"""Transform this query for better research specificity:
-                Original Query: {user_query}
-                Clarification Data: {transformation_data["clarification_data"]}
-                Clarification Responses: {research_state.metadata.clarification_response}"""
-
+                # Query transformation agent accesses clarification data from dependencies
                 transformed_query = await self._run_agent_with_circuit_breaker(
-                    AgentType.QUERY_TRANSFORMATION, deps, prompt=transformation_prompt
+                    AgentType.QUERY_TRANSFORMATION, deps
                 )
 
                 # Store comprehensive transformation data in structured format
@@ -641,11 +636,24 @@ class ResearchWorkflow:
                             questions = ["What are the key aspects of this topic?"]
 
                         minimal_brief = ResearchBrief(
-                            topic=research_state.user_query,
-                            objectives=["Research and understand the topic comprehensively"],
-                            key_questions=questions,
+                            title=f"Research Brief: {research_state.user_query}",
+                            executive_summary=brief_text[:500],
+                            objectives=[
+                                ResearchObjective(
+                                    objective="Research and understand the topic comprehensively",
+                                    priority=5,
+                                    success_criteria="Complete understanding of key aspects",
+                                )
+                            ],
+                            methodology=ResearchMethodology(
+                                approach="Comprehensive research approach",
+                                data_sources=["Academic sources", "Industry reports"],
+                                analysis_methods=["Qualitative analysis"],
+                                quality_checks=["Fact verification"],
+                            ),
                             scope=brief_text[:500],
-                            priority_areas=["General overview", "Key concepts", "Applications"],
+                            constraints=[],
+                            deliverables=["Research findings", "Summary report"],
                         )
 
                         findings = await research_executor_agent.execute_research(
@@ -710,11 +718,24 @@ class ResearchWorkflow:
                             questions = ["What are the key aspects of this topic?"]
 
                         minimal_brief = ResearchBrief(
-                            topic=research_state.user_query,
-                            objectives=["Research and understand the topic comprehensively"],
-                            key_questions=questions,
+                            title=f"Research Brief: {research_state.user_query}",
+                            executive_summary=brief_text[:500],
+                            objectives=[
+                                ResearchObjective(
+                                    objective="Research and understand the topic comprehensively",
+                                    priority=5,
+                                    success_criteria="Complete understanding of key aspects",
+                                )
+                            ],
+                            methodology=ResearchMethodology(
+                                approach="Comprehensive research approach",
+                                data_sources=["Academic sources", "Industry reports"],
+                                analysis_methods=["Qualitative analysis"],
+                                quality_checks=["Fact verification"],
+                            ),
                             scope=brief_text[:500],
-                            priority_areas=["General overview", "Key concepts", "Applications"],
+                            constraints=[],
+                            deliverables=["Research findings", "Summary report"],
                         )
 
                         report = await report_generator_agent.generate_report(

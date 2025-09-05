@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any
 
+import logfire
 from pydantic_ai import RunContext
 
 from ..models.research_executor import ResearchResults
@@ -284,5 +285,26 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         return ResearchResults
 
 
-# Create module-level instance
-research_executor_agent = ResearchExecutorAgent()
+# Lazy initialization of module-level instance
+_research_executor_agent_instance = None
+
+
+def get_research_executor_agent() -> ResearchExecutorAgent:
+    """Get or create the research executor agent instance."""
+    global _research_executor_agent_instance
+    if _research_executor_agent_instance is None:
+        _research_executor_agent_instance = ResearchExecutorAgent()
+        logfire.info("Initialized research_executor agent")
+    return _research_executor_agent_instance
+
+
+# For backward compatibility, create a property-like access
+class _LazyAgent:
+    """Lazy proxy for ResearchExecutorAgent that delays instantiation."""
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the actual agent instance."""
+        return getattr(get_research_executor_agent(), name)
+
+
+research_executor_agent = _LazyAgent()
