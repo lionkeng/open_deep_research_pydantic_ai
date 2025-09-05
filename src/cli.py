@@ -4,7 +4,7 @@ import asyncio
 import os
 import sys
 from types import TracebackType
-from typing import Any, TypedDict, cast
+from typing import Any, Dict, Optional, TypedDict, cast
 from urllib.parse import urlparse
 
 import click
@@ -120,9 +120,21 @@ def validate_server_url(url: str) -> str:
 
 
 class CLIStreamHandler:
-    """Handler for streaming updates to the CLI."""
+    """Enhanced handler for streaming updates to the CLI with rich progress display."""
 
-    def __init__(self):
+    def __init__(self, query: str = ""):
+        """Initialize the enhanced CLI stream handler.
+
+        Args:
+            query: The research query being processed
+        """
+        from .interfaces.enhanced_progress import EnhancedProgressTracker
+
+        self.enhanced_progress = EnhancedProgressTracker(console)
+        self.query = query
+        self._research_started = False
+
+        # Legacy progress for fallback
         self.progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -131,50 +143,187 @@ class CLIStreamHandler:
         self.current_task = None
         self.stage_tasks: dict[ResearchStage, TaskID] = {}
 
-    async def handle_streaming_update(self, event: StreamingUpdateEvent) -> None:
-        """Handle streaming update events."""
-        stage_name = event.stage.value.replace("_", " ").title()
+    def start_research_tracking(self, query: str) -> None:
+        """Start enhanced research tracking.
 
-        if event.stage not in self.stage_tasks:
-            self.stage_tasks[event.stage] = self.progress.add_task(
-                f"[cyan]{stage_name}[/cyan]: {event.content[:50]}...",
-                total=None,
-            )
-        else:
-            self.progress.update(
-                self.stage_tasks[event.stage],
-                description=f"[cyan]{stage_name}[/cyan]: {event.content[:50]}...",
-            )
+        Args:
+            query: The research query being processed
+        """
+        if not self._research_started:
+            self.query = query
+            self.enhanced_progress.start_research(query)
+            self._research_started = True
+
+    async def handle_streaming_update(self, event: StreamingUpdateEvent) -> None:
+        """Handle streaming update events with enhanced progress display."""
+        # Ensure research tracking is started
+        if not self._research_started:
+            self.start_research_tracking(self.query or "Research Query")
+
+        # Start stage if not already active
+        if self.enhanced_progress.current_stage != event.stage:
+            self.enhanced_progress.start_stage(event.stage, event.content)
+
+        # Determine activity type based on content
+        activity_type = self._determine_activity_type(event.content)
+
+        # Extract progress information if available
+        progress = self._extract_progress(event.content)
+        details = self._extract_details(event.content)
+
+        # Update activity
+        self.enhanced_progress.update_activity(
+            description=event.content,
+            activity_type=activity_type,
+            progress=progress,
+            details=details,
+        )
 
     async def handle_stage_completed(self, event: StageCompletedEvent) -> None:
-        """Handle stage completion events."""
-        if event.stage in self.stage_tasks:
-            stage_name = event.stage.value.replace("_", " ").title()
-            status = "✓" if event.success else "✗"
-            color = "green" if event.success else "red"
+        """Handle stage completion events with enhanced display."""
+        if not self._research_started:
+            self.start_research_tracking(self.query or "Research Query")
 
-            self.progress.update(
-                self.stage_tasks[event.stage],
-                description=f"[{color}]{stage_name} {status}[/{color}]",
-                completed=100,
-            )
+        # Complete the stage
+        self.enhanced_progress.complete_stage(event.stage, event.success, event.error_message)
 
     async def handle_error(self, event: ErrorEvent) -> None:
-        """Handle error events."""
-        console.print(
-            Panel(
-                f"[red]Error in {event.stage.value}: {event.error_message}[/red]",
-                title="Error",
-                border_style="red",
+        """Handle error events with enhanced display."""
+        if not self._research_started:
+            self.start_research_tracking(self.query or "Research Query")
+
+        # Update current activity to show error
+        if self.enhanced_progress.current_stage == event.stage:
+            self.enhanced_progress.update_activity(
+                description=f"Error: {event.error_message}", activity_type="error"
             )
+
+        # Complete stage with error
+        self.enhanced_progress.complete_stage(
+            event.stage, success=False, error_message=event.error_message
         )
 
     async def handle_research_completed(self, event: ResearchCompletedEvent) -> None:
-        """Handle research completion."""
-        if event.success:
-            console.print("\n[green]✓ Research completed successfully![/green]")
+        """Handle research completion with enhanced display."""
+        if not self._research_started:
+            self.start_research_tracking(self.query or "Research Query")
+
+        # Complete the entire research process
+        self.enhanced_progress.complete_research(
+            success=event.success, error_message=event.error_message
+        )
+
+        # Keep display active for a moment to show completion
+        import asyncio
+
+        await asyncio.sleep(2)
+
+        # Stop the enhanced progress display
+        self.enhanced_progress.stop()
+
+    def _determine_activity_type(self, content: str) -> str:
+        """Determine activity type based on content.
+
+        Args:
+            content: The activity content
+
+        Returns:
+            Activity type string
+        """
+        content_lower = content.lower()
+
+        if any(word in content_lower for word in ["analyzing", "analyzing", "examining"]):
+            return "analyzing"
+        elif any(word in content_lower for word in ["searching", "finding", "looking"]):
+            return "searching"
+        elif any(word in content_lower for word in ["writing", "generating", "creating"]):
+            return "writing"
+        elif any(word in content_lower for word in ["processing", "compressing", "organizing"]):
+            return "synthesizing"
+        elif any(word in content_lower for word in ["validating", "checking", "verifying"]):
+            return "validating"
+        elif any(word in content_lower for word in ["thinking", "considering", "evaluating"]):
+            return "reasoning"
         else:
-            console.print(f"\n[red]✗ Research failed: {event.error_message}[/red]")
+            return "thinking"
+
+    def _extract_progress(self, content: str) -> Optional[float]:
+        """Extract progress information from content if available.
+
+        Args:
+            content: The activity content
+
+        Returns:
+            Progress value (0.0 to 1.0) or None
+        """
+        import re
+
+        # Look for patterns like "3 of 10", "5/12", etc.
+        patterns = [
+            r"(\d+)\s+of\s+(\d+)",
+            r"(\d+)/(\d+)",
+            r"(\d+)\s+out\s+of\s+(\d+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                current = int(match.group(1))
+                total = int(match.group(2))
+                if total > 0:
+                    return min(current / total, 1.0)
+
+        # Look for percentage patterns
+        percent_match = re.search(r"(\d+)%", content)
+        if percent_match:
+            return int(percent_match.group(1)) / 100.0
+
+        return None
+
+    def _extract_details(self, content: str) -> Dict[str, str]:
+        """Extract additional details from content.
+
+        Args:
+            content: The activity content
+
+        Returns:
+            Dictionary of detail key-value pairs
+        """
+        details = {}
+
+        # Look for common patterns in research updates
+        if "sources" in content.lower():
+            if "processed" in content.lower():
+                import re
+
+                match = re.search(r"(\d+)\s+sources?\s+processed", content, re.IGNORECASE)
+                if match:
+                    details["Sources processed"] = match.group(1)
+
+        if "confidence" in content.lower():
+            import re
+
+            match = re.search(r"confidence[:\s]+(\d+(?:\.\d+)?)", content, re.IGNORECASE)
+            if match:
+                details["Confidence"] = f"{match.group(1)}%"
+
+        if "findings" in content.lower():
+            import re
+
+            match = re.search(r"(\d+)\s+findings?", content, re.IGNORECASE)
+            if match:
+                details["Findings"] = match.group(1)
+
+        return details
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Context manager exit."""
+        if hasattr(self, "enhanced_progress"):
+            self.enhanced_progress.stop()
 
 
 class HTTPResearchClient:
@@ -572,7 +721,7 @@ async def run_research(
         server_url: Server URL for HTTP mode
     """
     # Create stream handler
-    handler = CLIStreamHandler()
+    handler = CLIStreamHandler(query)
 
     if mode == "direct":
         # Current implementation - direct workflow execution
@@ -584,7 +733,7 @@ async def run_research(
         )
 
         # Start progress display
-        with handler.progress:
+        with handler:
             # Execute research
             state = await workflow.execute_research(
                 user_query=query,

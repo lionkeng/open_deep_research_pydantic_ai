@@ -129,33 +129,38 @@ def ask_text_question(question: ClarificationQuestion, console: Console) -> str 
     prompt_text = "[bold cyan]➤[/bold cyan] Your answer"
 
     # Handle the actual input
-    if not question.is_required:
-        response = Prompt.ask(
-            prompt_text,
-            default="",
-            show_default=False,
-        )
-
-        # Check for skip variations
-        if response.lower() in ["skip", "[skip]", ""] or response.strip() == "":
-            console.print("[dim]↳ Skipping this question...[/dim]")
-            return None
-    else:
-        # For required questions, keep asking until we get a non-empty response
-        while True:
+    try:
+        if not question.is_required:
             response = Prompt.ask(
                 prompt_text,
-                default=...,  # type: ignore - No default for required questions
+                default="",
+                show_default=False,
             )
 
-            # Response will be a string when a default of ... is used
-            if isinstance(response, str) and response.strip():
-                break
-            else:
-                error_msg = (
-                    "[red]⚠️  This question requires an answer. Please provide a response.[/red]"
+            # Check for skip variations
+            if response.lower() in ["skip", "[skip]", ""] or response.strip() == "":
+                console.print("[dim]↳ Skipping this question...[/dim]")
+                return None
+        else:
+            # For required questions, keep asking until we get a non-empty response
+            while True:
+                response = Prompt.ask(
+                    prompt_text,
+                    default=...
                 )
-                console.print(error_msg)
+
+                # Response will be a string when a default of ... is used
+                if isinstance(response, str) and response.strip():
+                    break
+                else:
+                    error_msg = (
+                        "[red]⚠️  This question requires an answer. Please provide a response.[/red]"
+                    )
+                    console.print(error_msg)
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Question cancelled by user[/yellow]")
+        # Re-raise to terminate the workflow
+        raise KeyboardInterrupt("User cancelled during text input") from None
 
     # Confirm receipt of answer
     console.print("[dim green]✓ Answer recorded[/dim green]")
@@ -202,15 +207,19 @@ def ask_choice_question(question: ClarificationQuestion, console: Console) -> st
     max_choice = len(question.choices)
     min_choice = 0 if not question.is_required else 1
 
-    choice_num = IntPrompt.ask(
-        "Select option",
-        choices=[str(i) for i in range(min_choice, max_choice + 1)],
-        default=str(min_choice) if not question.is_required else None,
-    )
+    try:
+        choice_num = IntPrompt.ask(
+            "Select option",
+            choices=[str(i) for i in range(min_choice, max_choice + 1)],
+            default=str(min_choice) if not question.is_required else None,
+        )
+    except (KeyboardInterrupt, EOFError):
+        # Re-raise to terminate the workflow
+        raise KeyboardInterrupt("User cancelled during choice selection") from None
 
     if choice_num == 0:
         return None
-    return question.choices[choice_num - 1]
+    return question.choices[int(choice_num) - 1]
 
 
 def ask_multi_choice_question(question: ClarificationQuestion, console: Console) -> str | None:
@@ -255,7 +264,11 @@ def ask_multi_choice_question(question: ClarificationQuestion, console: Console)
         console.print("  0. [Skip this question]")
 
     # Get selections
-    response = Prompt.ask("Select options (e.g., 1,3,4)")
+    try:
+        response = Prompt.ask("Select options (e.g., 1,3,4)")
+    except (KeyboardInterrupt, EOFError):
+        # Re-raise to terminate the workflow
+        raise KeyboardInterrupt("User cancelled during multi-choice selection") from None
 
     if response == "0" and not question.is_required:
         return None
@@ -388,9 +401,13 @@ async def handle_multi_clarification_cli(
                 console.print(f"  - {error}")
 
             # Ask if they want to retry
-            if Confirm.ask("Would you like to answer the missing required questions?"):
-                return await handle_multi_clarification_cli(request, original_query, console)
-            return None
+            try:
+                if Confirm.ask("Would you like to answer the missing required questions?"):
+                    return await handle_multi_clarification_cli(request, original_query, console)
+                return None
+            except (KeyboardInterrupt, EOFError):
+                # Re-raise to terminate the workflow
+                raise KeyboardInterrupt("User cancelled during validation retry") from None
 
         # Display completion
         console.print(
@@ -405,8 +422,11 @@ async def handle_multi_clarification_cli(
 
         return response
 
-    except (KeyboardInterrupt, EOFError):
-        console.print("\n[yellow]Clarification cancelled by user[/yellow]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Clarification interrupted by user[/yellow]")
+        raise  # Re-raise to propagate the interrupt
+    except EOFError:
+        console.print("\n[yellow]Clarification cancelled (EOF)[/yellow]")
         return None
     except Exception as e:
         console.print(f"[red]Error during clarification: {e}[/red]")

@@ -661,6 +661,30 @@ async def emit_research_started(
     )
 
 
+async def emit_streaming_update(
+    request_id: str,
+    content: str,
+    stage: ResearchStage,
+    is_partial: bool = True,
+) -> None:
+    """Emit a streaming update event.
+
+    Args:
+        request_id: Unique identifier for the research request
+        content: Update content/message
+        stage: Current research stage
+        is_partial: Whether this is a partial update (default: True)
+    """
+    await research_event_bus.emit(
+        StreamingUpdateEvent(
+            _request_id=request_id,
+            content=content,
+            stage=stage,
+            is_partial=is_partial,
+        )
+    )
+
+
 async def emit_stage_completed(
     request_id: str,
     stage: ResearchStage,

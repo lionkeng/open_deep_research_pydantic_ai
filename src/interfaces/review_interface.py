@@ -447,8 +447,10 @@ class ReviewInterface:
         Returns:
             True if should continue, False if should exit
         """
-        if key in ("q", "Q", "\x03"):  # Quit
+        if key in ("q", "Q"):  # Quit with 'q'
             return False
+        elif key == "\x03":  # Ctrl+C
+            raise KeyboardInterrupt("User interrupted with Ctrl+C")
         elif key in ("\x1b[A", "k"):  # Up arrow
             self.state.current_index = (self.state.current_index - 1) % total_questions
         elif key in ("\x1b[B", "j"):  # Down arrow
@@ -589,8 +591,11 @@ class ReviewInterface:
 
             return None
 
-        except (KeyboardInterrupt, EOFError):
-            self.console.print("\n[yellow]Review cancelled[/yellow]")
+        except KeyboardInterrupt:
+            self.console.print("\n[yellow]Review interrupted by user[/yellow]")
+            raise  # Re-raise to propagate the interrupt
+        except EOFError:
+            self.console.print("\n[yellow]Review cancelled (EOF)[/yellow]")
             return None
         except Exception as e:
             self.console.print(f"[red]Error during review: {e}[/red]")

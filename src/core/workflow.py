@@ -22,6 +22,7 @@ from ..core.events import (
     emit_error,
     emit_research_started,
     emit_stage_completed,
+    emit_streaming_update,
 )
 from ..interfaces.clarification_flow import handle_clarification_with_review
 from ..models.api_models import APIKeys, ConversationMessage
@@ -235,12 +236,24 @@ class ResearchWorkflow:
                 # For now, we'll create mock findings since we're focusing on the 3-phase system
                 logfire.info("Stage 4: Research execution (placeholder)", request_id=request_id)
 
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "Conducting deep research across multiple authoritative sources...",
+                    ResearchStage.RESEARCH_EXECUTION,
+                )
+
                 # Create placeholder findings based on brief
                 # ResearchFinding already imported at top of module
 
                 key_areas = brief_full.get("key_research_areas", ["General research"])
                 mock_findings = []
-                for area in key_areas[:3]:  # Limit to 3 areas
+                for i, area in enumerate(key_areas[:3], 1):  # Limit to 3 areas
+                    await emit_streaming_update(
+                        research_state.request_id,
+                        f"AI Research Executor analyzing {area} - sources processed: {i * 4}/12",
+                        ResearchStage.RESEARCH_EXECUTION,
+                    )
+
                     mock_findings.append(
                         ResearchFinding(
                             content=f"Research finding related to {area}",
@@ -261,6 +274,21 @@ class ResearchWorkflow:
                 # Stage 5: Compression (if we had compression agent)
                 logfire.info("Stage 5: Compression (placeholder)", request_id=request_id)
 
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "Analyzing and organizing research findings into coherent themes...",
+                    ResearchStage.COMPRESSION,
+                )
+
+                await emit_streaming_update(
+                    research_state.request_id,
+                    (
+                        "AI Information Synthesizer is identifying key insights and removing "
+                        "redundancy..."
+                    ),
+                    ResearchStage.COMPRESSION,
+                )
+
                 # Create placeholder compressed findings
                 research_state.compressed_findings = (
                     f"Compressed findings based on {len(mock_findings)} research findings "
@@ -279,6 +307,18 @@ class ResearchWorkflow:
 
                 # Stage 6: Report Generation (if we had report generator agent)
                 logfire.info("Stage 6: Report generation (placeholder)", request_id=request_id)
+
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "Crafting comprehensive research report from findings...",
+                    ResearchStage.REPORT_GENERATION,
+                )
+
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "AI Report Writer is structuring sections and adding citations...",
+                    ResearchStage.REPORT_GENERATION,
+                )
 
                 # Create placeholder report
                 # ResearchReport and ReportSection already imported at top of module
@@ -368,14 +408,71 @@ class ResearchWorkflow:
         try:
             # Phase 1: Enhanced Clarification Assessment
             logfire.info("Phase 1: Enhanced clarification assessment")
-            await emit_stage_completed(
-                research_state.request_id, ResearchStage.CLARIFICATION, False
+
+            # Emit streaming update for clarification start
+            await emit_streaming_update(
+                research_state.request_id,
+                "Analyzing your query to understand research requirements...",
+                ResearchStage.CLARIFICATION,
             )
 
-            # Run clarification agent with circuit breaker
-            clarification_result = await self._run_agent_with_circuit_breaker(
-                AgentType.CLARIFICATION, deps
-            )
+            # Show clarification progress indicator in CLI mode
+            if sys.stdin.isatty():  # Interactive CLI mode
+                from rich.console import Console
+
+                from ..interfaces.clarification_progress import ClarificationProgressIndicator
+
+                console = Console()
+                progress_indicator = ClarificationProgressIndicator(console)
+
+                clarification_task = None
+                try:
+                    # Run clarification agent with progress indicator
+                    async with progress_indicator.progress_context():
+                        # Create the clarification task
+                        clarification_task = asyncio.create_task(
+                            self._run_agent_with_circuit_breaker(
+                                AgentType.CLARIFICATION, deps
+                            )
+                        )
+
+                        # Emit streaming update
+                        await emit_streaming_update(
+                            research_state.request_id,
+                            (
+                                "AI Clarification Specialist is examining your query "
+                                "for ambiguities..."
+                            ),
+                            ResearchStage.CLARIFICATION,
+                        )
+
+                        # Wait for the clarification to complete
+                        clarification_result = await clarification_task
+                except KeyboardInterrupt:
+                    # Cancel the clarification task if it's still running
+                    if clarification_task is not None:
+                        task_not_done = not clarification_task.done()
+                        if task_not_done:
+                            clarification_task.cancel()
+                            try:
+                                await clarification_task
+                            except asyncio.CancelledError:
+                                pass
+                    # Re-raise to terminate the workflow
+                    logfire.info("User cancelled during clarification analysis")
+                    raise KeyboardInterrupt(
+                        "User cancelled during clarification analysis"
+                    ) from None
+            else:
+                # Non-interactive mode - run without progress indicator
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "AI Clarification Specialist is examining your query for ambiguities...",
+                    ResearchStage.CLARIFICATION,
+                )
+                clarification_result = await self._run_agent_with_circuit_breaker(
+                    AgentType.CLARIFICATION, deps
+                )
 
             # Store clarification assessment in structured format
             if not research_state.metadata:
@@ -433,7 +530,9 @@ class ResearchWorkflow:
                                         )
 
                     except (KeyboardInterrupt, EOFError):
-                        logfire.info("User cancelled clarification")
+                        logfire.info("User cancelled clarification - terminating workflow")
+                        # Re-raise to terminate the entire workflow
+                        raise KeyboardInterrupt("User cancelled during clarification") from None
                 else:
                     # Non-interactive mode - store for HTTP handling
                     research_state.metadata.awaiting_clarification = True
@@ -451,8 +550,20 @@ class ResearchWorkflow:
             # Phase 2: Query Transformation
             logfire.info("Phase 2: Query transformation")
 
+            await emit_streaming_update(
+                research_state.request_id,
+                "Optimizing your query for comprehensive research...",
+                ResearchStage.BRIEF_GENERATION,
+            )
+
             try:
                 # Query transformation agent accesses clarification data from dependencies
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "AI Query Transformation Specialist is refining your research question...",
+                    ResearchStage.BRIEF_GENERATION,
+                )
+
                 transformed_query = await self._run_agent_with_circuit_breaker(
                     AgentType.QUERY_TRANSFORMATION, deps
                 )
@@ -494,6 +605,12 @@ class ResearchWorkflow:
             # Phase 3: Enhanced Brief Generation
             logfire.info("Phase 3: Enhanced brief generation")
 
+            await emit_streaming_update(
+                research_state.request_id,
+                "Creating comprehensive research strategy and plan...",
+                ResearchStage.BRIEF_GENERATION,
+            )
+
             try:
                 # Prepare brief generation data
                 brief_prompt = f"""Generate a comprehensive research brief based on:
@@ -505,6 +622,12 @@ class ResearchWorkflow:
                 }
                 Research Context: Clarification and transformation completed
                 """
+
+                await emit_streaming_update(
+                    research_state.request_id,
+                    "AI Research Planner is designing your research methodology...",
+                    ResearchStage.BRIEF_GENERATION,
+                )
 
                 # Run brief generation agent with circuit breaker
                 brief_result = await self._run_agent_with_circuit_breaker(

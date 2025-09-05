@@ -106,9 +106,13 @@ async def handle_clarification_with_review(
             # Ask if they want to review
             should_review = True
             if allow_skip_review and not validation_errors:
-                should_review = Confirm.ask(
-                    "Would you like to review your answers before proceeding?", default=True
-                )
+                try:
+                    should_review = Confirm.ask(
+                        "Would you like to review your answers before proceeding?", default=True
+                    )
+                except (KeyboardInterrupt, EOFError):
+                    # Re-raise to terminate the workflow
+                    raise KeyboardInterrupt("User cancelled during review confirmation") from None
 
             if should_review:
                 reviewed_response = await handle_review_interface(
@@ -122,10 +126,16 @@ async def handle_clarification_with_review(
                     initial_response = reviewed_response
                 else:
                     # User cancelled review, ask if they want to proceed with initial answers
-                    if Confirm.ask("Review cancelled. Use your initial answers?", default=True):
-                        pass  # Keep initial_response
-                    else:
-                        return None
+                    try:
+                        if Confirm.ask("Review cancelled. Use your initial answers?", default=True):
+                            pass  # Keep initial_response
+                        else:
+                            return None
+                    except (KeyboardInterrupt, EOFError):
+                        # Re-raise to terminate the workflow
+                        raise KeyboardInterrupt(
+                            "User cancelled during final confirmation"
+                        ) from None
 
     # Step 3: Final confirmation and summary
     console.print()
