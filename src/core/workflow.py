@@ -409,70 +409,33 @@ class ResearchWorkflow:
             # Phase 1: Enhanced Clarification Assessment
             logfire.info("Phase 1: Enhanced clarification assessment")
 
-            # Emit streaming update for clarification start
+            # Emit streaming update to trigger progress tracking
             await emit_streaming_update(
                 research_state.request_id,
-                "Analyzing your query to understand research requirements...",
+                "AI Clarification Specialist is examining your query for ambiguities...",
                 ResearchStage.CLARIFICATION,
             )
 
-            # Show clarification progress indicator in CLI mode
-            if sys.stdin.isatty():  # Interactive CLI mode
-                from rich.console import Console
-
-                from ..interfaces.clarification_progress import ClarificationProgressIndicator
-
-                console = Console()
-                progress_indicator = ClarificationProgressIndicator(console)
-
-                clarification_task = None
-                try:
-                    # Run clarification agent with progress indicator
-                    async with progress_indicator.progress_context():
-                        # Create the clarification task
-                        clarification_task = asyncio.create_task(
-                            self._run_agent_with_circuit_breaker(
-                                AgentType.CLARIFICATION, deps
-                            )
-                        )
-
-                        # Emit streaming update
-                        await emit_streaming_update(
-                            research_state.request_id,
-                            (
-                                "AI Clarification Specialist is examining your query "
-                                "for ambiguities..."
-                            ),
-                            ResearchStage.CLARIFICATION,
-                        )
-
-                        # Wait for the clarification to complete
-                        clarification_result = await clarification_task
-                except KeyboardInterrupt:
-                    # Cancel the clarification task if it's still running
-                    if clarification_task is not None:
-                        task_not_done = not clarification_task.done()
-                        if task_not_done:
-                            clarification_task.cancel()
-                            try:
-                                await clarification_task
-                            except asyncio.CancelledError:
-                                pass
-                    # Re-raise to terminate the workflow
-                    logfire.info("User cancelled during clarification analysis")
-                    raise KeyboardInterrupt(
-                        "User cancelled during clarification analysis"
-                    ) from None
-            else:
-                # Non-interactive mode - run without progress indicator
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "AI Clarification Specialist is examining your query for ambiguities...",
-                    ResearchStage.CLARIFICATION,
+            # Run clarification agent
+            clarification_task = None
+            try:
+                clarification_task = asyncio.create_task(
+                    self._run_agent_with_circuit_breaker(AgentType.CLARIFICATION, deps)
                 )
-                clarification_result = await self._run_agent_with_circuit_breaker(
-                    AgentType.CLARIFICATION, deps
-                )
+                clarification_result = await clarification_task
+            except KeyboardInterrupt:
+                # Cancel the clarification task if it's still running
+                if clarification_task is not None:
+                    task_not_done = not clarification_task.done()
+                    if task_not_done:
+                        clarification_task.cancel()
+                        try:
+                            await clarification_task
+                        except asyncio.CancelledError:
+                            pass
+                # Re-raise to terminate the workflow
+                logfire.info("User cancelled during clarification analysis")
+                raise KeyboardInterrupt("User cancelled during clarification analysis") from None
 
             # Store clarification assessment in structured format
             if not research_state.metadata:
@@ -489,6 +452,12 @@ class ResearchWorkflow:
                 "missing_dimensions": clarification_result.missing_dimensions,
                 "assessment_reasoning": clarification_result.assessment_reasoning,
             }
+
+            # Emit stage completed event BEFORE any early returns
+            # This ensures the timer stops when the clarification agent completes
+            await emit_stage_completed(
+                research_state.request_id, ResearchStage.CLARIFICATION, True, clarification_result
+            )
 
             # Handle clarification if needed
             if clarification_result.needs_clarification and clarification_result.request:
@@ -542,10 +511,6 @@ class ResearchWorkflow:
                             clarification_result.request.get_sorted_questions()[0].question
                         )
                     return  # Exit early for HTTP handling
-
-            await emit_stage_completed(
-                research_state.request_id, ResearchStage.CLARIFICATION, True, clarification_result
-            )
 
             # Phase 2: Query Transformation
             logfire.info("Phase 2: Query transformation")

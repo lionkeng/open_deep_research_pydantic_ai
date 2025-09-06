@@ -4,7 +4,7 @@ import asyncio
 import os
 import sys
 from types import TracebackType
-from typing import Any, Dict, Optional, TypedDict, cast
+from typing import Any, TypedDict, cast
 from urllib.parse import urlparse
 
 import click
@@ -13,7 +13,7 @@ from pydantic import SecretStr, ValidationError
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn
+from rich.progress import TaskID
 from rich.prompt import Prompt
 from rich.table import Table
 
@@ -61,7 +61,8 @@ from .models.api_models import APIKeys
 from .models.core import ResearchStage
 from .models.report_generator import ResearchReport
 
-console = Console()
+# Create console with force_terminal to ensure Live displays work correctly
+console = Console(force_terminal=True)
 
 
 # Type definitions for API response data
@@ -128,18 +129,18 @@ class CLIStreamHandler:
         Args:
             query: The research query being processed
         """
-        from .interfaces.enhanced_progress import EnhancedProgressTracker
+        from .interfaces.progress_context import ProgressManager
 
-        self.enhanced_progress = EnhancedProgressTracker(console)
         self.query = query
         self._research_started = False
 
-        # Legacy progress for fallback
-        self.progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        )
+        # Use new TerminalProgress system for all stages
+        self.progress_manager = ProgressManager()
+        self._clarification_active = False
+        self._post_clarification_active = False  # Track non-clarification progress
+
+        # Legacy progress for fallback - removed to prevent duplicate Live instances
+        self.progress = None
         self.current_task = None
         self.stage_tasks: dict[ResearchStage, TaskID] = {}
 
@@ -151,75 +152,96 @@ class CLIStreamHandler:
         """
         if not self._research_started:
             self.query = query
-            self.enhanced_progress.start_research(query)
+            # Research tracking started (no enhanced progress anymore)
             self._research_started = True
 
     async def handle_streaming_update(self, event: StreamingUpdateEvent) -> None:
         """Handle streaming update events with enhanced progress display."""
+        # Handle clarification stage with simple progress tracker
+        if event.stage == ResearchStage.CLARIFICATION:
+            # Start the simple progress tracker on first clarification event
+            if not self._clarification_active:
+                self._clarification_active = True
+                self.progress_manager.start("Analyzing your query for clarity and scope...")
+            # Update message if needed
+            elif event.content:
+                # Only update if it's a meaningful status update
+                if "examining" in event.content.lower() or "analyzing" in event.content.lower():
+                    self.progress_manager.update(event.content)
+            # Don't print text during clarification - let progress bar handle it
+            return
+
+        # For non-clarification stages
+        if self._clarification_active:
+            return  # Don't process while clarification is running
+
         # Ensure research tracking is started
         if not self._research_started:
             self.start_research_tracking(self.query or "Research Query")
 
-        # Start stage if not already active
-        if self.enhanced_progress.current_stage != event.stage:
-            self.enhanced_progress.start_stage(event.stage, event.content)
+        # Start progress tracker ONLY if not already active
+        if not self._post_clarification_active:
+            self.progress_manager.start(f"Processing {event.stage.value}...")
+            self._post_clarification_active = True
+        else:
+            # Just update the message for subsequent events
+            if event.content:
+                self.progress_manager.update(event.content[:80])
 
-        # Determine activity type based on content
-        activity_type = self._determine_activity_type(event.content)
-
-        # Extract progress information if available
-        progress = self._extract_progress(event.content)
-        details = self._extract_details(event.content)
-
-        # Update activity
-        self.enhanced_progress.update_activity(
-            description=event.content,
-            activity_type=activity_type,
-            progress=progress,
-            details=details,
-        )
+        # Update progress message
+        if event.content:
+            self.progress_manager.update(event.content[:80])
 
     async def handle_stage_completed(self, event: StageCompletedEvent) -> None:
         """Handle stage completion events with enhanced display."""
+        # Handle clarification stage completion
+        if event.stage == ResearchStage.CLARIFICATION:
+            if self._clarification_active:
+                # Stop the timer and show elapsed time
+                self.progress_manager.stop_and_complete()
+                self._clarification_active = False
+                # Now it's safe for enhanced progress to start if needed
+                # Add a small gap after completion message
+                console.print()
+            return
+
+        # For non-clarification stages, reset the post-clarification flag
+        self._post_clarification_active = False
+
+        # For non-clarification stages
         if not self._research_started:
             self.start_research_tracking(self.query or "Research Query")
 
-        # Complete the stage
-        self.enhanced_progress.complete_stage(event.stage, event.success, event.error_message)
+        # Stage completed - keep progress running for next stage
 
     async def handle_error(self, event: ErrorEvent) -> None:
         """Handle error events with enhanced display."""
         if not self._research_started:
             self.start_research_tracking(self.query or "Research Query")
 
-        # Update current activity to show error
-        if self.enhanced_progress.current_stage == event.stage:
-            self.enhanced_progress.update_activity(
-                description=f"Error: {event.error_message}", activity_type="error"
-            )
-
-        # Complete stage with error
-        self.enhanced_progress.complete_stage(
-            event.stage, success=False, error_message=event.error_message
-        )
+        # Show error in progress
+        if event.error_message:
+            self.progress_manager.update(f"Error: {event.error_message}")
 
     async def handle_research_completed(self, event: ResearchCompletedEvent) -> None:
         """Handle research completion with enhanced display."""
         if not self._research_started:
             self.start_research_tracking(self.query or "Research Query")
 
-        # Complete the entire research process
-        self.enhanced_progress.complete_research(
-            success=event.success, error_message=event.error_message
-        )
+        # Stop progress on completion
+        if self._clarification_active:
+            self.progress_manager.stop_and_complete()
+            self._clarification_active = False
+
+        # Reset post-clarification flag
+        self._post_clarification_active = False
 
         # Keep display active for a moment to show completion
         import asyncio
 
         await asyncio.sleep(2)
 
-        # Stop the enhanced progress display
-        self.enhanced_progress.stop()
+        # Progress already stopped
 
     def _determine_activity_type(self, content: str) -> str:
         """Determine activity type based on content.
@@ -247,7 +269,7 @@ class CLIStreamHandler:
         else:
             return "thinking"
 
-    def _extract_progress(self, content: str) -> Optional[float]:
+    def _extract_progress(self, content: str) -> float | None:
         """Extract progress information from content if available.
 
         Args:
@@ -280,7 +302,7 @@ class CLIStreamHandler:
 
         return None
 
-    def _extract_details(self, content: str) -> Dict[str, str]:
+    def _extract_details(self, content: str) -> dict[str, str]:
         """Extract additional details from content.
 
         Args:
@@ -322,8 +344,9 @@ class CLIStreamHandler:
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit."""
-        if hasattr(self, "enhanced_progress"):
-            self.enhanced_progress.stop()
+        if self._clarification_active:
+            self.progress_manager.stop()
+            self._clarification_active = False
 
 
 class HTTPResearchClient:

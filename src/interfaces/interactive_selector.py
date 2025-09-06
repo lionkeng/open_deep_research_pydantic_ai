@@ -39,7 +39,7 @@ class InteractiveSelector:
 
         Returns:
             Single key press as string
-            
+
         Raises:
             KeyboardInterrupt: When Ctrl+C is pressed
         """
@@ -143,13 +143,13 @@ class InteractiveSelector:
         # Handle selection
         if allow_skip and current_index == len(choices):
             return None  # Skip was selected
-        
+
         selected_choice = choices[current_index]
-        
+
         # Handle "Other (please specify)" options
         if self._is_other_option(selected_choice):
             return self._handle_other_option(selected_choice, question)
-        
+
         return selected_choice
 
     def select_multiple(
@@ -178,7 +178,6 @@ class InteractiveSelector:
         current_index = 0
         selected_indices = set(default) if default else set()
         done = False
-
 
         while not done:
             # Clear previous display
@@ -232,9 +231,9 @@ class InteractiveSelector:
         # Return selected choices with "Other" option handling
         if not selected_indices and allow_skip:
             return None
-        
+
         selected_choices = [choices[i] for i in sorted(selected_indices)]
-        
+
         # Handle "Other (please specify)" options
         processed_choices = []
         for choice in selected_choices:
@@ -243,62 +242,65 @@ class InteractiveSelector:
                 processed_choices.append(custom_choice)
             else:
                 processed_choices.append(choice)
-        
+
         return processed_choices
 
     def _is_other_option(self, choice: str) -> bool:
         """Check if a choice is an 'Other (please specify)' type option.
-        
+
         Args:
             choice: The choice text to check
-            
+
         Returns:
             True if this is an "other" option requiring text input
         """
         choice_lower = choice.lower()
-        return any(phrase in choice_lower for phrase in [
-            "other (please specify",
-            "other (specify",
-            "other - please specify",
-            "other (please describe",
-            "other:",
-            "something else",
-            "none of the above (please specify"
-        ])
+        return any(
+            phrase in choice_lower
+            for phrase in [
+                "other (please specify",
+                "other (specify",
+                "other - please specify",
+                "other (please describe",
+                "other:",
+                "something else",
+                "none of the above (please specify",
+            ]
+        )
 
     def _handle_other_option(self, selected_choice: str, question: str) -> str:
         """Handle an 'Other' option by prompting for additional input.
-        
+
         Args:
             selected_choice: The selected "Other" choice
             question: The original question for context
-            
+
         Returns:
             The user's custom response
         """
         self.console.print(f"\n[yellow]You selected: {selected_choice}[/yellow]")
         self.console.print("[bold cyan]Please provide your specific answer:[/bold cyan]")
-        
+
         from rich.prompt import Prompt
-        
+
         # Prompt for custom input with validation
         while True:
             custom_input = Prompt.ask("Your answer").strip()
-            
+
             if not custom_input:
                 self.console.print("[red]Please provide a response or press 'q' to cancel[/red]")
                 continue
-                
-            if custom_input.lower() in ['q', 'quit', 'cancel']:
+
+            if custom_input.lower() in ["q", "quit", "cancel"]:
                 return selected_choice  # Return original choice if cancelled
-                
+
             # Confirm the input
             self.console.print(f"\n[dim]Your answer: {custom_input}[/dim]")
             confirm = Prompt.ask("Is this correct?", choices=["y", "n"], default="y")
-            
+
             if confirm.lower() == "y":
                 return f"Other: {custom_input}"
-                
+
             # If not confirmed, loop back to ask again
 
 
@@ -331,4 +333,3 @@ def interactive_select(
         return selector.select_multiple(question, choices, default, allow_skip, context)
     else:
         return selector.select_single(question, choices, default, allow_skip, context)
-

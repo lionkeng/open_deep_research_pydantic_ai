@@ -7,15 +7,15 @@ eliminating deadlock possibilities while maintaining proper coordination.
 
 import asyncio
 import time
-import weakref
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, TypeVar
-from weakref import WeakMethod, WeakSet
 
+# Note: Using strong references for handlers instead of WeakSet
+# because WeakSet doesn't work properly with bound methods
 import logfire
 
 from ..models.core import ResearchStage
@@ -247,8 +247,9 @@ class ResearchEventBus:
     """
 
     def __init__(self):
-        # Use WeakSet for automatic cleanup of handlers
-        self._handlers: dict[type[ResearchEvent], WeakSet[Callable[[Any], Any]]] = {}
+        # Use regular set for handlers - we'll manage cleanup explicitly
+        # WeakSet doesn't work properly with bound methods
+        self._handlers: dict[type[ResearchEvent], set[Callable[[Any], Any]]] = {}
         # Event counts and history are scoped by user for isolation
         self._event_count_by_user: dict[str, int] = defaultdict(int)
         self._background_tasks: set[asyncio.Task] = set()
@@ -269,7 +270,7 @@ class ResearchEventBus:
         self._tasks_lock = asyncio.Lock()  # Protects background tasks set
 
     async def subscribe(self, event_type: type[T], handler: EventHandler[T]) -> None:
-        """Subscribe to events of a specific type with automatic cleanup.
+        """Subscribe to events of a specific type.
 
         Args:
             event_type: The type of event to subscribe to
@@ -277,19 +278,10 @@ class ResearchEventBus:
         """
         async with self._handlers_lock:
             if event_type not in self._handlers:
-                self._handlers[event_type] = WeakSet()
+                self._handlers[event_type] = set()
 
-            # Handle bound methods with WeakMethod for automatic cleanup
-            if hasattr(handler, "__self__"):
-                weak_handler = WeakMethod(handler, self._cleanup_dead_handler)
-                # Store the weak method in a way that WeakSet can track it
-                self._handlers[event_type].add(weak_handler)
-            else:
-                # For functions, use regular weak reference
-                weakref.ref(handler, self._cleanup_dead_handler)
-                # WeakSet doesn't work with weakref.ref directly, so we add the handler directly
-                # and rely on WeakSet's internal weak referencing
-                self._handlers[event_type].add(handler)
+            # Add handler directly - using strong references
+            self._handlers[event_type].add(handler)
 
             logfire.debug(
                 f"Handler subscribed to {event_type.__name__}",
@@ -298,11 +290,21 @@ class ResearchEventBus:
                 handler_type="bound_method" if hasattr(handler, "__self__") else "function",
             )
 
-    def _cleanup_dead_handler(self, weak_ref: weakref.ReferenceType) -> None:
-        """Callback for cleaning up dead weak references."""
-        # This is called automatically when handlers are garbage collected
-        logfire.debug("Cleaned up dead event handler reference")
-        # WeakSet automatically removes dead references, so no manual cleanup needed
+    async def unsubscribe(self, event_type: type[T], handler: EventHandler[T]) -> None:
+        """Unsubscribe from events of a specific type.
+
+        Args:
+            event_type: The type of event to unsubscribe from
+            handler: The handler to remove
+        """
+        async with self._handlers_lock:
+            if event_type in self._handlers:
+                self._handlers[event_type].discard(handler)
+                logfire.debug(
+                    f"Handler unsubscribed from {event_type.__name__}",
+                    handler_name=handler.__name__ if hasattr(handler, "__name__") else str(handler),
+                    remaining_handlers=len(self._handlers[event_type]),
+                )
 
     async def emit(self, event: ResearchEvent) -> None:
         """Emit an event to all registered handlers with automatic cleanup.
@@ -322,21 +324,11 @@ class ResearchEventBus:
         user_scope = context.get_scope_key()
         event_type = type(event)
 
-        # Get live handlers from WeakSet (dead ones are automatically removed)
+        # Get handlers with lock protection
         async with self._handlers_lock:
-            weak_handlers = self._handlers.get(event_type, WeakSet())
-            # Extract live handlers
-            live_handlers = []
-            for handler in list(
-                weak_handlers
-            ):  # Convert to list to avoid modification during iteration
-                if isinstance(handler, WeakMethod):
-                    live_handler = handler()
-                    if live_handler is not None:
-                        live_handlers.append(live_handler)
-                else:
-                    # Regular function/callable
-                    live_handlers.append(handler)
+            handlers = self._handlers.get(event_type, set())
+            # Create a list copy to avoid modification during iteration
+            live_handlers = list(handlers)
 
         # Update history and counts with lock and memory bounds
         async with self._history_lock:
@@ -393,6 +385,11 @@ class ResearchEventBus:
                 self._background_tasks.add(task)
                 # Clean up task when it's done to prevent memory leaks
                 task.add_done_callback(lambda t: asyncio.create_task(self._remove_task(t)))
+
+        # Wait for all handlers to complete before returning
+        # This ensures handlers are executed synchronously from the caller's perspective
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _remove_task(self, task: asyncio.Task) -> None:
         """Remove a task from the background tasks set safely."""
