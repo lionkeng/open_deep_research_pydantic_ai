@@ -1,6 +1,5 @@
 """Complete clarification flow with review step integration."""
 
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -196,10 +195,7 @@ def display_final_summary(
     answered = sum(
         1
         for q in request.questions
-        if (
-            (answer := response.get_answer_for_question(q.id))
-            and not answer.skipped
-        )
+        if ((answer := response.get_answer_for_question(q.id)) and not answer.skipped)
     )
 
     stats_panel = Panel(
@@ -212,4 +208,3 @@ def display_final_summary(
         padding=(1, 2),
     )
     console.print(stats_panel)
-

@@ -22,6 +22,7 @@ from ..core.events import (
     emit_error,
     emit_research_started,
     emit_stage_completed,
+    emit_stage_started,
     emit_streaming_update,
 )
 from ..interfaces.clarification_flow import handle_clarification_with_review
@@ -236,6 +237,13 @@ class ResearchWorkflow:
                 # For now, we'll create mock findings since we're focusing on the 3-phase system
                 logfire.info("Stage 4: Research execution (placeholder)", request_id=request_id)
 
+                # Emit stage started event for research execution
+                await emit_stage_started(
+                    research_state.request_id,
+                    ResearchStage.RESEARCH_EXECUTION,
+                    context={"brief_available": bool(brief_full)},
+                )
+
                 await emit_streaming_update(
                     research_state.request_id,
                     "Conducting deep research across multiple authoritative sources...",
@@ -274,6 +282,13 @@ class ResearchWorkflow:
                 # Stage 5: Compression (if we had compression agent)
                 logfire.info("Stage 5: Compression (placeholder)", request_id=request_id)
 
+                # Emit stage started event for compression
+                await emit_stage_started(
+                    research_state.request_id,
+                    ResearchStage.COMPRESSION,
+                    context={"findings_count": len(mock_findings)},
+                )
+
                 await emit_streaming_update(
                     research_state.request_id,
                     "Analyzing and organizing research findings into coherent themes...",
@@ -307,6 +322,15 @@ class ResearchWorkflow:
 
                 # Stage 6: Report Generation (if we had report generator agent)
                 logfire.info("Stage 6: Report generation (placeholder)", request_id=request_id)
+
+                # Emit stage started event for report generation
+                await emit_stage_started(
+                    research_state.request_id,
+                    ResearchStage.REPORT_GENERATION,
+                    context={
+                        "compressed_findings_available": bool(research_state.compressed_findings)
+                    },
+                )
 
                 await emit_streaming_update(
                     research_state.request_id,
@@ -408,6 +432,13 @@ class ResearchWorkflow:
         try:
             # Phase 1: Enhanced Clarification Assessment
             logfire.info("Phase 1: Enhanced clarification assessment")
+
+            # Emit stage started event
+            await emit_stage_started(
+                research_state.request_id,
+                ResearchStage.CLARIFICATION,
+                context={"user_query": user_query},
+            )
 
             # Emit streaming update to trigger progress tracking
             await emit_streaming_update(
@@ -514,6 +545,13 @@ class ResearchWorkflow:
 
             # Phase 2: Query Transformation
             logfire.info("Phase 2: Query transformation")
+
+            # Emit stage started event for brief generation
+            await emit_stage_started(
+                research_state.request_id,
+                ResearchStage.BRIEF_GENERATION,
+                context={"phase": "query_transformation"},
+            )
 
             await emit_streaming_update(
                 research_state.request_id,

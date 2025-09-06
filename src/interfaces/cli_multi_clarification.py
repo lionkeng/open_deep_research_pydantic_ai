@@ -144,10 +144,7 @@ def ask_text_question(question: ClarificationQuestion, console: Console) -> str 
         else:
             # For required questions, keep asking until we get a non-empty response
             while True:
-                response = Prompt.ask(
-                    prompt_text,
-                    default=...
-                )
+                response = Prompt.ask(prompt_text, default=...)
 
                 # Response will be a string when a default of ... is used
                 if isinstance(response, str) and response.strip():

@@ -37,14 +37,15 @@ except ImportError:
     aconnect_sse = None
     _http_mode_available = False
 
+from .core.bootstrap import BootstrapError, CLIBootstrap
 from .core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
     StageCompletedEvent,
+    StageStartedEvent,
     StreamingUpdateEvent,
     research_event_bus,
 )
-from .core.logging import configure_logging
 from .core.sse_models import (
     CompletedMessage,
     ConnectionMessage,
@@ -191,6 +192,12 @@ class CLIStreamHandler:
         # Update progress message
         if event.content:
             self.progress_manager.update(event.content[:80])
+
+    async def handle_stage_started(self, event: StageStartedEvent) -> None:
+        """Handle stage start events with enhanced display."""
+        # Print to console so user can see it
+        console.print(f"[cyan]{event.stage.value} started[/cyan]")
+        logfire.info(f"Starting {event.stage.value} stage", request_id=event.request_id)
 
     async def handle_stage_completed(self, event: StageCompletedEvent) -> None:
         """Handle stage completion events with enhanced display."""
@@ -743,12 +750,14 @@ async def run_research(
         mode: Execution mode ('direct' or 'http')
         server_url: Server URL for HTTP mode
     """
-    # Create stream handler
+    # Create stream handler for UI updates only
+    # Note: Global event handlers for logging are now set up by CLIBootstrap
     handler = CLIStreamHandler(query)
 
     if mode == "direct":
-        # Current implementation - direct workflow execution
+        # Subscribe to UI-related events only (logging events handled by bootstrap)
         await research_event_bus.subscribe(StreamingUpdateEvent, handler.handle_streaming_update)
+        await research_event_bus.subscribe(StageStartedEvent, handler.handle_stage_started)
         await research_event_bus.subscribe(StageCompletedEvent, handler.handle_stage_completed)
         await research_event_bus.subscribe(ErrorEvent, handler.handle_error)
         await research_event_bus.subscribe(
@@ -965,54 +974,66 @@ def research(query: str, api_key: tuple[str, ...], verbose: bool, mode: str, ser
         # HTTP mode with remote server
         deep-research "What is quantum computing?" --mode http --server-url http://api.example.com:8000
     """
-    # Configure logging
-    configure_logging()
 
-    # Parse API keys from command line
-    parsed_keys: dict[str, str] = {}
-    for key_pair in api_key:
-        if ":" in key_pair:
-            service, key_value = key_pair.split(":", 1)
-            parsed_keys[service] = key_value
+    async def _async_research():
+        """Async wrapper for research execution with bootstrap initialization."""
+        try:
+            # Initialize bootstrap first - this ensures logfire is ready
+            # and event handlers are set up before any research operations
+            await CLIBootstrap.initialize(verbose=verbose)
 
-    # Create APIKeys model with environment fallbacks
-    openai_val = os.getenv("OPENAI_API_KEY")
-    anthropic_val = os.getenv("ANTHROPIC_API_KEY")
-    tavily_val = os.getenv("TAVILY_API_KEY")
+            # Parse API keys from command line
+            parsed_keys: dict[str, str] = {}
+            for key_pair in api_key:
+                if ":" in key_pair:
+                    service, key_value = key_pair.split(":", 1)
+                    parsed_keys[service] = key_value
 
-    api_keys = APIKeys(
-        openai=SecretStr(parsed_keys["openai"])
-        if "openai" in parsed_keys
-        else (SecretStr(openai_val) if openai_val else None),
-        anthropic=SecretStr(parsed_keys["anthropic"])
-        if "anthropic" in parsed_keys
-        else (SecretStr(anthropic_val) if anthropic_val else None),
-        tavily=SecretStr(parsed_keys["tavily"])
-        if "tavily" in parsed_keys
-        else (SecretStr(tavily_val) if tavily_val else None),
-    )
+            # Create APIKeys model with environment fallbacks
+            openai_val = os.getenv("OPENAI_API_KEY")
+            anthropic_val = os.getenv("ANTHROPIC_API_KEY")
+            tavily_val = os.getenv("TAVILY_API_KEY")
 
-    console.print(
-        Panel(
-            f"[bold cyan]Research Query:[/bold cyan] {query}\n"
-            + f"[bold cyan]Mode:[/bold cyan] {mode.upper()}"
-            + (f"\n[bold cyan]Server:[/bold cyan] {server_url}" if mode == "http" else ""),
-            title="Deep Research System",
-            border_style="cyan",
-        )
-    )
+            api_keys = APIKeys(
+                openai=SecretStr(parsed_keys["openai"])
+                if "openai" in parsed_keys
+                else (SecretStr(openai_val) if openai_val else None),
+                anthropic=SecretStr(parsed_keys["anthropic"])
+                if "anthropic" in parsed_keys
+                else (SecretStr(anthropic_val) if anthropic_val else None),
+                tavily=SecretStr(parsed_keys["tavily"])
+                if "tavily" in parsed_keys
+                else (SecretStr(tavily_val) if tavily_val else None),
+            )
 
-    # Run research with selected mode
-    try:
-        asyncio.run(run_research(query, api_keys, mode=mode, server_url=server_url))
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Research interrupted by user[/yellow]")
-        sys.exit(0)
-    except Exception as e:
-        console.print(f"\n[red]Error: {str(e)}[/red]")
-        if verbose:
-            console.print_exception()
-        sys.exit(1)
+            console.print(
+                Panel(
+                    f"[bold cyan]Research Query:[/bold cyan] {query}\n"
+                    + f"[bold cyan]Mode:[/bold cyan] {mode.upper()}"
+                    + (f"\n[bold cyan]Server:[/bold cyan] {server_url}" if mode == "http" else ""),
+                    title="Deep Research System",
+                    border_style="cyan",
+                )
+            )
+
+            # Run research with selected mode
+            await run_research(query, api_keys, mode=mode, server_url=server_url)
+
+        except BootstrapError as e:
+            console.print(f"[red]Failed to initialize CLI: {e}[/red]")
+            sys.exit(1)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Research interrupted by user[/yellow]")
+            sys.exit(0)
+        except Exception as e:
+            console.print(f"[red]Research failed: {e}[/red]")
+            sys.exit(1)
+        finally:
+            # Clean up bootstrap resources
+            await CLIBootstrap.shutdown()
+
+    # Run the async research
+    asyncio.run(_async_research())
 
 
 @cli.command()
@@ -1031,51 +1052,69 @@ def research(query: str, api_key: tuple[str, ...], verbose: bool, mode: str, ser
 )
 def interactive(mode: str, server_url: str):
     """Start an interactive research session."""
-    console.print(
-        Panel(
-            "[bold cyan]Deep Research Interactive Mode[/bold cyan]\n"
-            + f"Mode: {mode.upper()}"
-            + (f" | Server: {server_url}" if mode == "http" else "")
-            + "\n\nEnter your research queries, or type 'help' for commands.",
-            border_style="cyan",
-        )
-    )
 
-    # Load API keys from environment
-    openai_key = os.getenv("OPENAI_API_KEY")
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    tavily_key = os.getenv("TAVILY_API_KEY")
-
-    api_keys = APIKeys(
-        openai=SecretStr(openai_key) if openai_key else None,
-        anthropic=SecretStr(anthropic_key) if anthropic_key else None,
-        tavily=SecretStr(tavily_key) if tavily_key else None,
-    )
-
-    while True:
+    async def _async_interactive():
+        """Async wrapper for interactive session with bootstrap initialization."""
         try:
-            query = Prompt.ask("\n[cyan]Research query[/cyan]")
+            # Initialize bootstrap once for the entire interactive session
+            # This ensures logfire and event handlers are ready from the start
+            await CLIBootstrap.initialize(verbose=False)
 
-            if query.lower() in ["exit", "quit", "q"]:
-                console.print("[yellow]Goodbye![/yellow]")
-                break
-            elif query.lower() == "help":
-                console.print("""
+            console.print(
+                Panel(
+                    "[bold cyan]Deep Research Interactive Mode[/bold cyan]\n"
+                    + f"Mode: {mode.upper()}"
+                    + (f" | Server: {server_url}" if mode == "http" else "")
+                    + "\n\nEnter your research queries, or type 'help' for commands.",
+                    border_style="cyan",
+                )
+            )
+
+            # Load API keys from environment
+            openai_key = os.getenv("OPENAI_API_KEY")
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+            tavily_key = os.getenv("TAVILY_API_KEY")
+
+            api_keys = APIKeys(
+                openai=SecretStr(openai_key) if openai_key else None,
+                anthropic=SecretStr(anthropic_key) if anthropic_key else None,
+                tavily=SecretStr(tavily_key) if tavily_key else None,
+            )
+
+            while True:
+                try:
+                    query = Prompt.ask("\n[cyan]Research query[/cyan]")
+
+                    if query.lower() in ["exit", "quit", "q"]:
+                        console.print("[yellow]Goodbye![/yellow]")
+                        break
+                    elif query.lower() == "help":
+                        console.print("""
 [bold]Available commands:[/bold]
   • Enter any research query to start research
   • 'help' - Show this help message
   • 'clear' - Clear the screen
   • 'exit', 'quit', 'q' - Exit the program
-                """)
-            elif query.lower() == "clear":
-                console.clear()
-            else:
-                asyncio.run(run_research(query, api_keys, mode=mode, server_url=server_url))
+                        """)
+                    elif query.lower() == "clear":
+                        console.clear()
+                    else:
+                        await run_research(query, api_keys, mode=mode, server_url=server_url)
 
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Use 'exit' to quit[/yellow]")
-        except Exception as e:
-            console.print(f"[red]Error: {str(e)}[/red]")
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]Use 'exit' to quit[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]Error: {str(e)}[/red]")
+
+        except BootstrapError as e:
+            console.print(f"[red]Failed to initialize CLI: {e}[/red]")
+            sys.exit(1)
+        finally:
+            # Clean up bootstrap resources when exiting interactive mode
+            await CLIBootstrap.shutdown()
+
+    # Run the async interactive session
+    asyncio.run(_async_interactive())
 
 
 @cli.command()

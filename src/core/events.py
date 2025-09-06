@@ -54,6 +54,19 @@ class ResearchStartedEvent(ResearchEvent):
 
 
 @dataclass(frozen=True)
+class StageStartedEvent(ResearchEvent):
+    """Emitted when a research stage is started."""
+
+    _request_id: str
+    stage: ResearchStage
+    context: Any = None
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+
+@dataclass(frozen=True)
 class StageCompletedEvent(ResearchEvent):
     """Emitted when a research stage is completed."""
 
@@ -362,7 +375,7 @@ class ResearchEventBus:
             )
             return
 
-        logfire.debug(
+        logfire.info(
             f"Emitting {event_type.__name__}",
             request_id=event.request_id,
             handler_count=len(live_handlers),
@@ -678,6 +691,27 @@ async def emit_streaming_update(
             content=content,
             stage=stage,
             is_partial=is_partial,
+        )
+    )
+
+
+async def emit_stage_started(
+    request_id: str,
+    stage: ResearchStage,
+    context: Any = None,
+) -> None:
+    """Emit a stage started event.
+
+    Args:
+        request_id: Unique request identifier
+        stage: The research stage that is starting
+        context: Optional context data for the stage
+    """
+    await research_event_bus.emit(
+        StageStartedEvent(
+            _request_id=request_id,
+            stage=stage,
+            context=context,
         )
     )
 

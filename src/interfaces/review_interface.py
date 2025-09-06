@@ -434,7 +434,7 @@ class ReviewInterface:
         key: str,
         total_questions: int,
         request: ClarificationRequest,
-        response: ClarificationResponse
+        response: ClarificationResponse,
     ) -> bool:
         """Handle navigation input.
 
@@ -621,4 +621,3 @@ async def handle_review_interface(
     """
     review = ReviewInterface(console)
     return await review.review_answers(request, response, original_query)
-
