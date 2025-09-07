@@ -5,7 +5,7 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from models.brief_generator import ResearchBrief
+from src.models.brief_generator import ResearchBrief
 
 from .base import (
     AgentConfiguration,
@@ -103,7 +103,9 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
             metadata = ctx.deps.research_state.metadata
             conversation = metadata.conversation_messages if metadata else []
             transformed_query = (
-                metadata.transformed_query if metadata and metadata.transformed_query else query
+                metadata.query.transformed_query
+                if metadata and metadata.query.transformed_query
+                else query
             )
 
             # Format conversation context
@@ -195,12 +197,10 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
 
         formatted = []
         for msg in conversation[-3:]:  # Last 3 messages for context
-            if isinstance(msg, dict):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
-                formatted.append(f"{role.capitalize()}: {content}")
-            else:
-                formatted.append(str(msg))
+            # ConversationMessage is now a BaseModel with attributes
+            role = msg.role
+            content = msg.content
+            formatted.append(f"{role.capitalize()}: {content}")
 
         return "Recent Conversation:\n" + "\n".join(formatted)
 

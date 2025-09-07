@@ -12,7 +12,8 @@ from src.agents.base import (
     ResearchDependencies,
     AgentConfiguration
 )
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.api_models import APIKeys
+from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 
 
@@ -30,9 +31,9 @@ class TestAgentFactory:
                 user_id="test-user",
                 session_id="test-session",
                 user_query="Test query",
-                current_stage=ResearchStage.CLARIFICATION
+                current_stage=ResearchStage.CLARIFICATION,
+                metadata=ResearchMetadata()
             ),
-            metadata=ResearchMetadata(),
             usage=None
         )
 

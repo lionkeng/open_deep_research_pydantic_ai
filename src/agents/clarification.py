@@ -6,8 +6,8 @@ import logfire
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import RunContext
 
-from models.api_models import ConversationMessage
-from models.clarification import ClarificationQuestion, ClarificationRequest
+from src.models.api_models import ConversationMessage
+from src.models.clarification import ClarificationQuestion, ClarificationRequest
 
 from .base import (
     AgentConfiguration,
@@ -174,9 +174,9 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
         # Format conversation messages
         formatted: list[str] = []
         for msg in conversation:
-            # With TypedDict, we know these fields exist
-            role = msg["role"]
-            content = msg["content"]
+            # ConversationMessage is now a BaseModel with attributes
+            role = msg.role
+            content = msg.content
             formatted.append(f"{role.capitalize()}: {content}")
 
         context = "\n".join(formatted[-4:])  # Last 4 messages for context

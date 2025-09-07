@@ -10,9 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.agents.report_generator import ReportGeneratorAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
 from src.models.report_generator import ResearchReport, ReportSection
-from src.models.api_models import APIKeys, ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-
+from src.models.api_models import APIKeys
 
 class TestReportGeneratorAgent:
     """Test suite for ReportGeneratorAgent."""

@@ -20,8 +20,8 @@ from core.events import (
     research_event_bus,
 )
 from core.logging import configure_logging
-from models.api_models import APIKeys
-from models.core import ResearchState
+from src.models.api_models import APIKeys
+from src.models.core import ResearchState
 
 
 # Enhanced exception system for agent errors
@@ -398,7 +398,11 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
                         f"Agent execution failed: {e}",
                         agent_name=self.name,
                         context={
-                            "user_prompt": self.get_conversation_context()[-1],
+                            "user_prompt": (
+                                self.get_conversation_context()[-1]
+                                if self.get_conversation_context()
+                                else None
+                            ),
                             "error": str(e),
                         },
                     ) from e
@@ -440,7 +444,14 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
             raise AgentExecutionError(
                 f"Unexpected error in {self.name}: {e}",
                 agent_name=self.name,
-                context={"user_prompt": self.get_conversation_context()[-1], "error": str(e)},
+                context={
+                    "user_prompt": (
+                        self.get_conversation_context()[-1]
+                        if self.get_conversation_context()
+                        else None
+                    ),
+                    "error": str(e),
+                },
             ) from e
 
         finally:

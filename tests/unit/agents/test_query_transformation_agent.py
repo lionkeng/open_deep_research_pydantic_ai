@@ -10,9 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.agents.query_transformation import QueryTransformationAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
 from src.models.query_transformation import TransformedQuery
-from src.models.api_models import APIKeys, ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-
+from src.models.api_models import APIKeys
 
 class TestQueryTransformationAgent:
     """Test suite for QueryTransformationAgent."""
@@ -39,6 +37,8 @@ class TestQueryTransformationAgent:
     def transformation_agent(self, agent_dependencies):
         """Create a QueryTransformationAgent instance."""
         config = AgentConfiguration(
+            agent_name="query_transformation",
+            agent_type="transformation",
             max_retries=3,
             timeout_seconds=30.0,
             temperature=0.7

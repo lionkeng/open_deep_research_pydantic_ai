@@ -17,8 +17,9 @@ os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
 import httpx
 from src.agents.clarification import ClarificationAgent
 from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
+from src.models.api_models import APIKeys
 from pydantic import SecretStr
 
 openai_api_key = os.getenv("OPENAI_API_KEY")

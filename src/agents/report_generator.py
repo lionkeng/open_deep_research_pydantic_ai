@@ -5,7 +5,7 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from models.report_generator import ResearchReport
+from src.models.report_generator import ResearchReport
 
 from .base import (
     AgentConfiguration,

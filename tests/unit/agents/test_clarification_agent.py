@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.base import ResearchDependencies
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.api_models import APIKeys
+from src.models.metadata import ResearchMetadata
 from src.models.clarification import ClarificationQuestion, ClarificationRequest
 from src.models.core import ResearchStage, ResearchState
 
@@ -75,9 +76,9 @@ class TestClarificationAgent:
                 order=2
             )
         ]
-        
+
         request = ClarificationRequest(questions=questions)
-        
+
         # Mock agent to return clarification needed
         mock_result = MagicMock()
         mock_result.data = ClarifyWithUser(
@@ -94,18 +95,18 @@ class TestClarificationAgent:
             assert result.data.needs_clarification is True
             assert result.data.request is not None
             assert len(result.data.request.questions) == 3
-            
+
             # Check first question (choice type)
             q1 = result.data.request.questions[0]
             assert q1.is_required is True
             assert q1.question_type == "choice"
             assert len(q1.choices) == 4
-            
+
             # Check second question (optional)
             q2 = result.data.request.questions[1]
             assert q2.is_required is False
             assert q2.context is not None
-            
+
             # Check question ordering
             sorted_questions = result.data.request.get_sorted_questions()
             assert sorted_questions[0].order == 0
@@ -174,7 +175,7 @@ class TestClarificationAgent:
             missing_dimensions=["test"],
             assessment_reasoning="Test"
         )
-        
+
         # Validator should create a fallback request
         assert clarify.request is not None
         assert len(clarify.request.questions) == 1
@@ -185,7 +186,7 @@ class TestClarificationAgent:
         """Test that model validator clears request when not needed."""
         question = ClarificationQuestion(question="Test question")
         request = ClarificationRequest(questions=[question])
-        
+
         # Create ClarifyWithUser with needs_clarification=False but with request
         clarify = ClarifyWithUser(
             needs_clarification=False,
@@ -194,7 +195,7 @@ class TestClarificationAgent:
             missing_dimensions=[],
             assessment_reasoning="Clear query"
         )
-        
+
         # Validator should clear the request
         assert clarify.request is None
 
@@ -203,7 +204,7 @@ class TestClarificationAgent:
         """Test that questions get unique UUIDs."""
         q1 = ClarificationQuestion(question="Question 1")
         q2 = ClarificationQuestion(question="Question 2")
-        
+
         assert q1.id != q2.id
         assert len(q1.id) == 36  # UUID string length
         assert len(q2.id) == 36
@@ -215,11 +216,11 @@ class TestClarificationAgent:
             ClarificationQuestion(question=f"Q{i}") for i in range(10)
         ]
         request = ClarificationRequest(questions=questions)
-        
+
         # Test lookup by ID
         q5 = request.get_question_by_id(questions[5].id)
         assert q5 == questions[5]
-        
+
         # Test non-existent ID
         assert request.get_question_by_id("non-existent") is None
 
@@ -232,7 +233,7 @@ class TestClarificationAgent:
             ClarificationQuestion(question="Q3", is_required=True),
         ]
         request = ClarificationRequest(questions=questions)
-        
+
         required = request.get_required_questions()
         assert len(required) == 2
         assert all(q.is_required for q in required)
@@ -267,7 +268,7 @@ class TestClarificationAgent:
         )
         assert text_q.question_type == "text"
         assert text_q.choices is None
-        
+
         choice_q = ClarificationQuestion(
             question="Select one option",
             question_type="choice",
@@ -275,7 +276,7 @@ class TestClarificationAgent:
         )
         assert choice_q.question_type == "choice"
         assert len(choice_q.choices) == 3
-        
+
         multi_q = ClarificationQuestion(
             question="Select all that apply",
             question_type="multi_choice",

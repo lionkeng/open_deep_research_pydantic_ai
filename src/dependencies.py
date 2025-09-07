@@ -12,8 +12,9 @@ from typing import Any
 import httpx
 import logfire
 
-from .models.api_models import APIKeys, ResearchMetadata
+from .models.api_models import APIKeys
 from .models.core import ResearchState
+from .models.metadata import ResearchMetadata
 
 
 @dataclass
@@ -73,7 +74,7 @@ class ResearchDependencies:
     def add_metadata(self, key: str, value: Any) -> None:
         """Add metadata to research state."""
         if self.research_state.metadata is None:
-            from .models.api_models import ResearchMetadata
+            from .models.metadata import ResearchMetadata
 
             self.research_state.metadata = ResearchMetadata()
         # Use setattr for Pydantic models with extra="allow"

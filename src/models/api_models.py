@@ -1,16 +1,22 @@
 """Pydantic models for API requests, responses, and configuration."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
 
-from .clarification import (
-    ClarificationAnswer,
-    ClarificationQuestion,
-    ClarificationRequest,
-    ClarificationResponse,
-)
+
+class ConversationMessage(BaseModel):
+    """Typed structure for conversation messages between user and assistant.
+
+    Used to track the dialogue history during the research workflow,
+    particularly for clarification exchanges.
+    """
+
+    role: Literal["user", "assistant", "system"]
+    content: str
 
 
 class APIKeys(BaseModel):
@@ -76,7 +82,7 @@ class APIKeys(BaseModel):
         return result
 
     @classmethod
-    def from_dict(cls, data: dict[str, str]) -> "APIKeys":
+    def from_dict(cls, data: dict[str, str]) -> APIKeys:
         """Create from dictionary of plain strings."""
         return cls(
             openai=SecretStr(data["openai"]) if data.get("openai") else None,
@@ -85,153 +91,7 @@ class APIKeys(BaseModel):
         )
 
 
-class ConversationMessage(TypedDict):
-    """Typed structure for conversation messages between user and assistant.
-
-    Used to track the dialogue history during the research workflow,
-    particularly for clarification exchanges.
-    """
-
-    role: Literal["user", "assistant", "system"]
-    content: str
-
-
-class ResearchMetadata(BaseModel):
-    """Strongly typed metadata for research workflow.
-
-    This consolidates all metadata fields used throughout the research workflow,
-    providing type safety and validation for all metadata operations.
-    """
-
-    model_config = ConfigDict(extra="allow", validate_assignment=True)
-
-    # Conversation and clarification fields
-    conversation_messages: list[ConversationMessage] = Field(
-        default_factory=list, description="Conversation history between user and system"
-    )
-    clarification_assessment: dict[str, Any] | None = Field(
-        default=None, description="Clarification agent's assessment results"
-    )
-    clarification_request: ClarificationRequest | None = Field(
-        default=None, description="Current clarification request with questions"
-    )
-    clarification_response: ClarificationResponse | None = Field(
-        default=None, description="User's responses to clarification questions"
-    )
-    clarification_question: str | None = Field(
-        default=None,
-        description="Current clarification question awaiting response (formatted for display)",
-    )
-    awaiting_clarification: bool = Field(
-        default=False, description="Whether system is waiting for clarification response"
-    )
-
-    # Query transformation fields
-    transformed_query: dict[str, Any] | None = Field(
-        default=None, description="Query transformation results"
-    )
-
-    # Research brief fields
-    research_brief_text: str | None = Field(
-        default=None, description="Generated research brief text"
-    )
-    research_brief_full: dict[str, Any] | None = Field(
-        default=None, description="Complete research brief with all metadata"
-    )
-    research_brief_confidence: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Confidence score for research brief"
-    )
-
-    # Compression and findings fields
-    compressed_findings_summary: dict[str, Any] | None = Field(
-        default=None, description="Summary of compressed research findings"
-    )
-    compressed_findings_full: Any | None = Field(
-        default=None, description="Full compressed findings object"
-    )
-
-    # Legacy fields (kept for compatibility)
-    clarifying_questions: list[str] = Field(
-        default_factory=list, description="Questions that need clarification"
-    )
-    search_queries: list[str] = Field(default_factory=list, description="Search queries executed")
-    sources_consulted: int = Field(default=0, description="Number of sources consulted")
-    total_tokens_used: int = Field(default=0, description="Total LLM tokens consumed")
-    processing_time: float = Field(default=0.0, description="Total processing time in seconds")
-    confidence_score: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Research confidence score"
-    )
-    tags: list[str] = Field(default_factory=list, description="Research topic tags")
-
-    # Helper methods for clarification handling
-    def get_pending_questions(self) -> list[ClarificationQuestion]:
-        """Get list of unanswered required questions.
-
-        Returns:
-            List of ClarificationQuestion objects that need answers
-        """
-        if not self.clarification_request:
-            return []
-
-        pending = []
-        for question in self.clarification_request.get_required_questions():
-            # Check if we have an answer for this question
-            if self.clarification_response:
-                answer = self.clarification_response.get_answer_for_question(question.id)
-                if answer and not answer.skipped:
-                    continue  # Question has been answered
-            pending.append(question)
-
-        return pending
-
-    def add_clarification_response(self, question_id: str, answer: str) -> None:
-        """Add or update an answer for a specific question.
-
-        Args:
-            question_id: ID of the question being answered
-            answer: User's answer text
-        """
-        if not self.clarification_request:
-            return
-
-        # Create the answer
-        new_answer = ClarificationAnswer(question_id=question_id, answer=answer, skipped=False)
-
-        # Create new response if needed or update existing
-        if not self.clarification_response:
-            self.clarification_response = ClarificationResponse(
-                request_id=self.clarification_request.id,
-                answers=[new_answer],  # Start with this answer
-            )
-        else:
-            # Remove existing answer for this question if any
-            self.clarification_response.answers = [
-                a for a in self.clarification_response.answers if a.question_id != question_id
-            ]
-            # Add the new answer
-            self.clarification_response.answers.append(new_answer)
-
-            # Rebuild the index after modifying answers
-            self.clarification_response.model_post_init(None)
-
-    def is_clarification_complete(self) -> bool:
-        """Check if all required questions have been answered.
-
-        Returns:
-            True if all required questions have valid answers
-        """
-        if not self.clarification_request:
-            return True  # No clarification needed
-
-        if not self.clarification_response:
-            return False  # No responses yet
-
-        # Validate response against request
-        errors = self.clarification_response.validate_against_request(self.clarification_request)
-
-        return len(errors) == 0
-
-
+# ResearchMetadata has been moved to src/models/metadata.py with composed structure
 class APIHealthResponse(BaseModel):
     """Health check response model."""
 

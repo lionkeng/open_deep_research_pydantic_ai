@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.factory import AgentFactory, AgentType
 from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
+from src.models.api_models import APIKeys
 from src.models.query_transformation import TransformedQuery
 from src.models.brief_generator import ResearchBrief, ResearchObjective
 from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource

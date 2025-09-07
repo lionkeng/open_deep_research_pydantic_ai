@@ -16,7 +16,7 @@ except ImportError:
     interactive_select = None
     has_interactive = False
 
-from models.clarification import (
+from src.models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,

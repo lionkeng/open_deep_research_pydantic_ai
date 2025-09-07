@@ -14,9 +14,9 @@ from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.logging import configure_logging
 from core.workflow import workflow
-from models.api_models import APIKeys, ConversationMessage
-from models.clarification import ClarificationResponse
-from models.core import ResearchStage, ResearchState
+from src.models.api_models import APIKeys, ConversationMessage
+from src.models.clarification import ClarificationResponse
+from src.models.core import ResearchStage, ResearchState
 
 
 @asynccontextmanager
@@ -304,13 +304,13 @@ async def get_clarification_question(request_id: str):
     # Check if there's a pending clarification
     if (
         state.metadata
-        and state.metadata.awaiting_clarification
-        and state.metadata.clarification_request
+        and state.metadata.clarification.awaiting_clarification
+        and state.metadata.clarification.request
     ):
         # Return the full clarification request
         return {
             "request_id": request_id,
-            "clarification_request": state.metadata.clarification_request.model_dump(),
+            "clarification_request": state.metadata.clarification.request.model_dump(),
             "original_query": state.user_query,
             "awaiting_response": True,
         }
@@ -335,13 +335,13 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
         state = active_sessions[request_id]
 
     # Check if there's a pending clarification
-    if not (state.metadata and state.metadata.awaiting_clarification):
+    if not (state.metadata and state.metadata.clarification.awaiting_clarification):
         raise HTTPException(status_code=400, detail="No pending clarification for this request")
 
     # Validate against the original request
-    if state.metadata.clarification_request:
+    if state.metadata.clarification.request:
         errors = clarification_response.validate_against_request(
-            state.metadata.clarification_request
+            state.metadata.clarification.request
         )
         if errors:
             raise HTTPException(
@@ -350,27 +350,27 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
             )
 
     # Store the response
-    state.metadata.clarification_response = clarification_response
+    state.metadata.clarification.response = clarification_response
 
     # Update conversation with Q&A pairs
     conversation = list(state.metadata.conversation_messages)
-    if state.metadata.clarification_request:
+    if state.metadata.clarification.request:
         for answer in clarification_response.answers:
             if not answer.skipped and answer.answer:
-                question = state.metadata.clarification_request.get_question_by_id(
+                question = state.metadata.clarification.request.get_question_by_id(
                     answer.question_id
                 )
                 if question:
                     new_messages: list[ConversationMessage] = [
-                        {"role": "assistant", "content": question.question},
-                        {"role": "user", "content": answer.answer},
+                        ConversationMessage(role="assistant", content=question.question),
+                        ConversationMessage(role="user", content=answer.answer),
                     ]
                     conversation.extend(new_messages)
 
     state.metadata.conversation_messages = conversation
 
     # Update metadata to clear the pending clarification
-    state.metadata.awaiting_clarification = False
+    state.metadata.clarification.awaiting_clarification = False
 
     # Resume research workflow
     try:

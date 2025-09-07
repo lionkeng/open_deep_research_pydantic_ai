@@ -15,9 +15,8 @@ from src.agents.base import (
     AgentExecutionError,
     AgentValidationError
 )
-from src.models.api_models import APIKeys, ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-
+from src.models.metadata import ResearchMetadata
+from src.models.api_models import APIKeys
 
 class TestErrorScenarios:
     """Test various error scenarios and agent resilience."""

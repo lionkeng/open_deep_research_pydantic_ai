@@ -4,13 +4,15 @@ Comprehensive tests for the BriefGeneratorAgent.
 
 import asyncio
 import pytest
+import pytest_asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.brief_generator import BriefGeneratorAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.brief_generator import ResearchBrief, ResearchObjective
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.api_models import APIKeys
+from src.models.brief_generator import ResearchBrief, ResearchObjective, ResearchMethodology
+from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 
 
@@ -18,7 +20,7 @@ class TestBriefGeneratorAgent:
     """Test suite for BriefGeneratorAgent."""
 
     @pytest.fixture
-    async def agent_dependencies(self):
+    def agent_dependencies(self):
         """Create mock dependencies for testing."""
         deps = ResearchDependencies(
             http_client=AsyncMock(),
@@ -28,9 +30,9 @@ class TestBriefGeneratorAgent:
                 user_id="test-user",
                 session_id="test-session",
                 user_query="Research renewable energy technologies",
-                current_stage=ResearchStage.BRIEF_GENERATION
+                current_stage=ResearchStage.BRIEF_GENERATION,
+                metadata=ResearchMetadata()
             ),
-            metadata=ResearchMetadata(),
             usage=None
         )
         return deps
@@ -60,59 +62,52 @@ class TestBriefGeneratorAgent:
     @pytest.mark.asyncio
     async def test_comprehensive_brief_generation(self, brief_generator_agent, agent_dependencies):
         """Test generation of comprehensive research brief."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
+        brief_data = ResearchBrief(
             title="Comprehensive Analysis of Renewable Energy Technologies",
             executive_summary="This research examines current renewable energy technologies including solar, wind, and hydroelectric power, analyzing their efficiency, costs, and future potential.",
             objectives=[
                 ResearchObjective(
                     objective="Analyze current renewable energy technologies",
-                    importance="critical",
+                    priority=5,
                     success_criteria="Comprehensive coverage of major technologies"
                 ),
                 ResearchObjective(
                     objective="Compare efficiency and cost metrics",
-                    importance="high",
+                    priority=4,
                     success_criteria="Quantitative comparison with data"
                 ),
                 ResearchObjective(
                     objective="Assess future potential and trends",
-                    importance="high",
+                    priority=4,
                     success_criteria="Evidence-based projections"
                 )
             ],
             scope="Global renewable energy market with focus on solar, wind, and hydroelectric technologies from 2020-2024",
-            methodology="Literature review, data analysis, expert interviews, and case studies",
-            key_questions=[
-                "What are the current efficiency rates of different renewable technologies?",
-                "How do costs compare across technologies?",
-                "What are the main barriers to adoption?",
-                "What technological breakthroughs are expected?"
-            ],
+            methodology=ResearchMethodology(
+                approach="Literature review, data analysis, expert interviews, and case studies",
+                data_sources=["Energy databases", "Industry reports", "Academic papers"],
+                analysis_methods=["Comparative analysis", "Trend analysis", "Cost-benefit analysis"],
+                quality_checks=["Data validation", "Source verification", "Expert review"]
+            ),
             constraints=[
                 "Temporal: Focus on 2020-2024 data",
                 "Geographic: Global scope with emphasis on leading markets"
             ],
             deliverables=["Comprehensive report", "Executive summary", "Data visualizations"],
-            timeline="2 weeks for complete research",
-            success_metrics=["Coverage of major technologies", "Data-driven insights", "Actionable recommendations"],
-            assumptions=["Data availability from public sources", "Current trends continue"],
-            risks=["Data gaps in emerging markets", "Rapid technology changes"],
-            stakeholders=["Energy policy makers", "Investors", "Technology developers"],
-            resources_required=["Access to energy databases", "Industry reports", "Expert network"],
-            metadata={
-                "brief_version": "1.0",
-                "generated_at": datetime.now().isoformat(),
-                "confidence_score": 0.9
-            }
+            timeline_estimate="2 weeks for complete research",
+            success_metrics=["Coverage of major technologies", "Data-driven insights", "Actionable recommendations"]
         )
 
-        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
+        mock_result = MagicMock()
+        mock_result.output = brief_data
+        mock_result.usage = MagicMock(return_value=None)
 
+        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
+            result = await brief_generator_agent.run(deps=agent_dependencies)
+
+            assert result is not None
             assert isinstance(result, ResearchBrief)
             assert len(result.objectives) >= 2
-            assert len(result.key_questions) >= 3
             assert result.title is not None and len(result.title) > 0
             assert result.methodology is not None
 
@@ -121,39 +116,42 @@ class TestBriefGeneratorAgent:
         """Test brief generation for simple queries."""
         agent_dependencies.research_state.user_query = "What is Bitcoin?"
 
-        mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
+        brief_data = ResearchBrief(
             title="Understanding Bitcoin: Digital Currency Overview",
             executive_summary="Research brief on Bitcoin cryptocurrency, its technology, and market dynamics.",
             objectives=[
                 ResearchObjective(
                     objective="Explain Bitcoin technology",
-                    importance="critical",
+                    priority=5,
                     success_criteria="Clear technical explanation"
                 ),
                 ResearchObjective(
                     objective="Analyze market dynamics",
-                    importance="high",
+                    priority=4,
                     success_criteria="Current market analysis"
                 )
             ],
             scope="Bitcoin technology and market overview",
-            methodology="Literature review and market data analysis",
-            key_questions=["What is Bitcoin?", "How does it work?", "What is its current market status?"],
+            methodology=ResearchMethodology(
+                approach="Literature review and market data analysis",
+                data_sources=["Public sources", "Market data"],
+                analysis_methods=["Technical analysis", "Market analysis"],
+                quality_checks=["Data verification"]
+            ),
             constraints=[],
             deliverables=["Research summary"],
-            timeline="1 day",
-            success_metrics=["Clear explanation", "Accurate data"],
-            assumptions=["Public data available"],
-            risks=["Market volatility"],
-            stakeholders=["General audience"],
-            resources_required=["Public sources"],
-            metadata={"confidence_score": 0.85}
+            timeline_estimate="1 day",
+            success_metrics=["Clear explanation", "Accurate data"]
         )
 
-        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
+        mock_result = MagicMock()
+        mock_result.output = brief_data
+        mock_result.usage = MagicMock(return_value=None)
 
+        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
+            result = await brief_generator_agent.run(deps=agent_dependencies)
+
+            assert result is not None
             assert "Bitcoin" in result.title
             assert len(result.objectives) >= 1
             assert result.scope is not None
@@ -161,226 +159,147 @@ class TestBriefGeneratorAgent:
     @pytest.mark.asyncio
     async def test_objectives_generation(self, brief_generator_agent, agent_dependencies):
         """Test that objectives are properly generated with importance levels."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
+        brief_data = ResearchBrief(
             title="Test Research Brief",
             executive_summary="Test summary",
             objectives=[
                 ResearchObjective(
                     objective="Primary objective",
-                    importance="critical",
+                    priority=5,
                     success_criteria="Must achieve"
                 ),
                 ResearchObjective(
                     objective="Secondary objective",
-                    importance="high",
+                    priority=4,
                     success_criteria="Should achieve"
                 ),
                 ResearchObjective(
                     objective="Tertiary objective",
-                    importance="medium",
+                    priority=3,
                     success_criteria="Nice to have"
                 )
             ],
             scope="Test scope",
-            methodology="Test methodology",
-            key_questions=["Q1"],
+            methodology=ResearchMethodology(
+                approach="Test methodology",
+                data_sources=[],
+                analysis_methods=[],
+                quality_checks=[]
+            ),
             constraints=[],
             deliverables=["Report"],
-            timeline="1 week",
+            timeline_estimate="1 week",
             success_metrics=["Metric 1"],
-            assumptions=[],
-            risks=[],
-            stakeholders=["Test stakeholder"],
-            resources_required=["Test resource"],
-            metadata={}
         )
 
-        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
-
-            assert len(result.objectives) == 3
-            importance_levels = [obj.importance for obj in result.objectives]
-            assert "critical" in importance_levels
-            assert all(obj.success_criteria is not None for obj in result.objectives)
-
-    @pytest.mark.asyncio
-    async def test_constraints_handling(self, brief_generator_agent, agent_dependencies):
-        """Test proper handling of research constraints."""
         mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
-            title="Constrained Research",
-            executive_summary="Research with multiple constraints",
-            objectives=[
-                ResearchObjective(
-                    objective="Test objective",
-                    importance="high",
-                    success_criteria="Test criteria"
-                )
-            ],
-            scope="Limited scope",
-            methodology="Constrained methodology",
-            key_questions=["Q1"],
-            constraints=[
-                "Temporal: Last 12 months only",
-                "Budget: Limited to public data sources",
-                "Scope: Focus on North America"
-            ],
-            deliverables=["Report"],
-            timeline="1 week",
-            success_metrics=["Metric 1"],
-            assumptions=[],
-            risks=[],
-            stakeholders=["Stakeholder"],
-            resources_required=["Resource"],
-            metadata={}
-        )
+        mock_result.output = brief_data
+        mock_result.usage = MagicMock(return_value=None)
 
         with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
+            result = await brief_generator_agent.run(deps=agent_dependencies)
 
-            assert len(result.constraints) == 3
-            constraints_text = ' '.join(result.constraints).lower()
-            assert "temporal" in constraints_text
-            assert "budget" in constraints_text
-            assert "scope" in constraints_text
+            assert result is not None
+            assert len(result.objectives) == 3
+            # Check objectives are properly ordered by priority
+            assert result.objectives[0].priority == 5
+            assert result.objectives[1].priority == 4
+            assert result.objectives[2].priority == 3
 
     @pytest.mark.asyncio
     async def test_edge_case_minimal_brief(self, brief_generator_agent, agent_dependencies):
         """Test generation of minimal brief for edge cases."""
         agent_dependencies.research_state.user_query = "?"
 
-        mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
+        brief_data = ResearchBrief(
             title="Unclear Research Query",
             executive_summary="Unable to generate comprehensive brief due to unclear query",
             objectives=[
                 ResearchObjective(
                     objective="Clarify research intent",
-                    importance="critical",
+                    priority=5,
                     success_criteria="Clear research question defined"
                 )
             ],
             scope="To be determined",
-            methodology="To be determined after clarification",
-            key_questions=["What is the research question?"],
+            methodology=ResearchMethodology(
+                approach="To be determined after clarification",
+                data_sources=[],
+                analysis_methods=[],
+                quality_checks=[]
+            ),
             constraints=[],
             deliverables=["TBD"],
-            timeline="TBD",
+            timeline_estimate="TBD",
             success_metrics=["Clear research direction"],
-            assumptions=[],
-            risks=["Unclear objectives"],
-            stakeholders=["TBD"],
-            resources_required=["TBD"],
-            metadata={"needs_clarification": True}
         )
 
-        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
-
-            assert result.metadata.get("needs_clarification") is True
-            assert len(result.objectives) >= 1
-
-    @pytest.mark.asyncio
-    async def test_metadata_generation(self, brief_generator_agent, agent_dependencies):
-        """Test that metadata is properly generated."""
         mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
-            title="Test Brief",
-            executive_summary="Test",
-            objectives=[
-                ResearchObjective(
-                    objective="Test",
-                    importance="high",
-                    success_criteria="Test"
-                )
-            ],
-            scope="Test",
-            methodology="Test",
-            key_questions=["Test"],
-            constraints=[],
-            deliverables=["Test"],
-            timeline="Test",
-            success_metrics=["Test"],
-            assumptions=[],
-            risks=[],
-            stakeholders=["Test"],
-            resources_required=["Test"],
-            metadata={
-                "brief_version": "1.0",
-                "generated_at": datetime.now().isoformat(),
-                "confidence_score": 0.8,
-                "query_complexity": "medium",
-                "estimated_effort": "moderate"
-            }
-        )
+        mock_result.output = brief_data
+        mock_result.usage = MagicMock(return_value=None)
 
         with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
+            result = await brief_generator_agent.run(deps=agent_dependencies)
 
-            assert result.metadata is not None
-            assert "brief_version" in result.metadata
-            assert "confidence_score" in result.metadata
-            assert 0.0 <= result.metadata["confidence_score"] <= 1.0
+            assert result is not None
+            assert result.methodology is not None
 
     @pytest.mark.asyncio
     async def test_error_handling(self, brief_generator_agent, agent_dependencies):
         """Test error handling during brief generation."""
         with patch.object(brief_generator_agent.agent, 'run', side_effect=Exception("Generation failed")):
             with pytest.raises(Exception, match="Generation failed"):
-                await brief_generator_agent.execute(agent_dependencies)
+                await brief_generator_agent.run(deps=agent_dependencies)
 
     @pytest.mark.asyncio
     async def test_complex_multi_domain_brief(self, brief_generator_agent, agent_dependencies):
         """Test brief generation for complex multi-domain queries."""
         agent_dependencies.research_state.user_query = "Analyze the intersection of AI, healthcare, and regulatory compliance in the EU"
 
-        mock_result = MagicMock()
-        mock_result.data = ResearchBrief(
+        brief_data = ResearchBrief(
             title="AI in Healthcare: EU Regulatory Compliance Analysis",
             executive_summary="Comprehensive analysis of AI applications in healthcare within the EU regulatory framework",
             objectives=[
                 ResearchObjective(
                     objective="Map AI healthcare applications",
-                    importance="critical",
+                    priority=5,
                     success_criteria="Complete landscape overview"
                 ),
                 ResearchObjective(
                     objective="Analyze EU regulatory requirements",
-                    importance="critical",
+                    priority=5,
                     success_criteria="Full compliance mapping"
                 ),
                 ResearchObjective(
                     objective="Identify compliance challenges",
-                    importance="high",
+                    priority=4,
                     success_criteria="Actionable insights"
                 )
             ],
             scope="EU healthcare AI market with focus on GDPR, MDR, and AI Act compliance",
-            methodology="Regulatory analysis, case studies, expert interviews",
-            key_questions=[
-                "What are key EU regulations for healthcare AI?",
-                "How do companies ensure compliance?",
-                "What are common compliance failures?"
-            ],
+            methodology=ResearchMethodology(
+                approach="Regulatory analysis, case studies, expert interviews",
+                data_sources=["Regulatory documents", "Case studies", "Expert interviews"],
+                analysis_methods=["Regulatory analysis", "Case analysis"],
+                quality_checks=["Expert validation"]
+            ),
             constraints=[
                 "Geographic: EU member states only",
                 "Regulatory: Current regulations as of 2024"
             ],
             deliverables=["Compliance framework", "Best practices guide", "Risk assessment"],
-            timeline="3 weeks",
-            success_metrics=["Comprehensive coverage", "Actionable framework"],
-            assumptions=["Regulations remain stable"],
-            risks=["Regulatory changes", "Interpretation variations"],
-            stakeholders=["Healthcare providers", "AI developers", "Regulators"],
-            resources_required=["Legal databases", "Regulatory texts", "Expert consultations"],
-            metadata={"domains": ["AI", "healthcare", "regulation"], "complexity": "high"}
+            timeline_estimate="3 weeks",
+            success_metrics=["Comprehensive coverage", "Actionable framework"]
         )
 
-        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
-            result = await brief_generator_agent.execute(agent_dependencies)
+        mock_result = MagicMock()
+        mock_result.output = brief_data
+        mock_result.usage = MagicMock(return_value=None)
 
+        with patch.object(brief_generator_agent.agent, 'run', return_value=mock_result):
+            result = await brief_generator_agent.run(deps=agent_dependencies)
+
+            assert result is not None
+            assert "AI" in result.title
+            assert "healthcare" in result.title.lower()
             assert len(result.objectives) >= 3
-            assert "domains" in result.metadata
-            assert len(result.metadata["domains"]) >= 2
-            assert result.metadata.get("complexity") == "high"

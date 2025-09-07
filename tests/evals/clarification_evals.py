@@ -18,7 +18,7 @@ from pydantic_ai import Agent
 
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser
 from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 from src.models.clarification import ClarificationQuestion, ClarificationRequest
 

@@ -12,7 +12,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 
-from models.clarification import (
+from src.models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,

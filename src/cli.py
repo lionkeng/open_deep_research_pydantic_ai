@@ -58,9 +58,9 @@ from core.sse_models import (
     parse_sse_message,
 )
 from core.workflow import workflow
-from models.api_models import APIKeys
-from models.core import ResearchStage
-from models.report_generator import ResearchReport
+from src.models.api_models import APIKeys
+from src.models.core import ResearchStage
+from src.models.report_generator import ResearchReport
 
 # Create console with force_terminal to ensure Live displays work correctly
 console = Console(force_terminal=True)

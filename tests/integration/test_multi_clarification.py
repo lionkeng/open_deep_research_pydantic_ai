@@ -10,7 +10,7 @@ from src.interfaces.cli_multi_clarification import (
     ask_text_question,
     handle_multi_clarification_cli,
 )
-from src.models.api_models import ResearchMetadata
+from src.models.metadata import ResearchMetadata
 from src.models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,

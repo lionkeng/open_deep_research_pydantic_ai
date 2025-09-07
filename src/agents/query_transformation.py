@@ -6,8 +6,8 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from models.clarification import ClarificationRequest, ClarificationResponse
-from models.query_transformation import TransformedQuery
+from src.models.clarification import ClarificationRequest, ClarificationResponse
+from src.models.query_transformation import TransformedQuery
 
 from .base import (
     AgentConfiguration,
@@ -108,9 +108,9 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
 
             # Access and format clarification data directly from metadata
             clarification_context = "No clarification context available."
-            if metadata and metadata.clarification_response:
+            if metadata and metadata.clarification.response:
                 clarification_context = self._format_clarification_context(
-                    metadata.clarification_request, metadata.clarification_response
+                    metadata.clarification.request, metadata.clarification.response
                 )
 
             # Use global template with variable substitution
@@ -185,13 +185,13 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
                 Dictionary mapping questions to responses
             """
             metadata = ctx.deps.research_state.metadata
-            if not metadata or not metadata.clarification_response:
+            if not metadata or not metadata.clarification.response:
                 return {}
 
             responses = {}
-            if metadata.clarification_request:
-                for question in metadata.clarification_request.questions:
-                    answer = metadata.clarification_response.get_answer_for_question(question.id)
+            if metadata.clarification.request:
+                for question in metadata.clarification.request.questions:
+                    answer = metadata.clarification.response.get_answer_for_question(question.id)
                     if answer and not answer.skipped:
                         responses[question.question] = answer.answer
 

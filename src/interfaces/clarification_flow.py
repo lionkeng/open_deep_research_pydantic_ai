@@ -4,7 +4,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
 
-from models.clarification import (
+from src.models.clarification import (
     ClarificationRequest,
     ClarificationResponse,
 )

@@ -19,9 +19,9 @@ from typing import Any, TypeVar
 import logfire
 
 from core.context import get_current_context
-from models.core import ResearchStage
-from models.report_generator import ResearchReport
-from models.research_executor import ResearchFinding
+from src.models.core import ResearchStage
+from src.models.report_generator import ResearchReport
+from src.models.research_executor import ResearchFinding
 
 
 class ResearchEvent(ABC):

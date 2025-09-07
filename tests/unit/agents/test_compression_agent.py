@@ -10,9 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.agents.compression import CompressionAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
 from src.models.compression import CompressedContent
-from src.models.api_models import APIKeys, ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-
+from src.models.api_models import APIKeys
 
 class TestCompressionAgent:
     """Test suite for CompressionAgent."""

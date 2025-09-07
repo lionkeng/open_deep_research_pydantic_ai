@@ -25,7 +25,7 @@ except ImportError:
     os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
 
 from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys, ResearchMetadata
+from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 
 

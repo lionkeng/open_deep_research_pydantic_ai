@@ -27,7 +27,7 @@ from core.sse_models import (
     StreamErrorMessage,
     UpdateMessage,
 )
-from models.core import ResearchState
+from src.models.core import ResearchState
 
 
 class SSEHandler:
