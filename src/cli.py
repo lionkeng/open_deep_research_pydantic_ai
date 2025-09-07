@@ -19,7 +19,7 @@ from rich.table import Table
 
 # Try to import interactive selector for better UX
 try:
-    from .interfaces.interactive_selector import interactive_select
+    from interfaces.interactive_selector import interactive_select
 
     has_interactive_select = True
 except ImportError:
@@ -37,8 +37,8 @@ except ImportError:
     aconnect_sse = None
     _http_mode_available = False
 
-from .core.bootstrap import BootstrapError, CLIBootstrap
-from .core.events import (
+from core.bootstrap import BootstrapError, CLIBootstrap
+from core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
     StageCompletedEvent,
@@ -46,7 +46,7 @@ from .core.events import (
     StreamingUpdateEvent,
     research_event_bus,
 )
-from .core.sse_models import (
+from core.sse_models import (
     CompletedMessage,
     ConnectionMessage,
     ErrorMessage,
@@ -57,10 +57,10 @@ from .core.sse_models import (
     UpdateMessage,
     parse_sse_message,
 )
-from .core.workflow import workflow
-from .models.api_models import APIKeys
-from .models.core import ResearchStage
-from .models.report_generator import ResearchReport
+from core.workflow import workflow
+from models.api_models import APIKeys
+from models.core import ResearchStage
+from models.report_generator import ResearchReport
 
 # Create console with force_terminal to ensure Live displays work correctly
 console = Console(force_terminal=True)
@@ -130,7 +130,7 @@ class CLIStreamHandler:
         Args:
             query: The research query being processed
         """
-        from .interfaces.progress_context import ProgressManager
+        from interfaces.progress_context import ProgressManager
 
         self.query = query
         self._research_started = False

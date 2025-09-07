@@ -23,12 +23,15 @@ _configured = False
 _config_lock = threading.Lock()
 
 
-def configure_logging() -> None:
+def configure_logging(enable_console: bool = False) -> None:
     """Configure logfire logging if not already configured.
 
     This function ensures logfire is configured only once during the application's
     lifetime, preventing multiple configuration warnings and ensuring consistent
     logging behavior across CLI and API modes.
+
+    Args:
+        enable_console: Whether to enable console logging output. Defaults to False.
 
     Thread-safe implementation using double-checked locking pattern.
     """
@@ -42,7 +45,11 @@ def configure_logging() -> None:
     with _config_lock:
         if not _configured:
             try:
-                logfire.configure()
+                # Configure with console options if enabled, otherwise disable console
+                if enable_console:
+                    logfire.configure(console=logfire.ConsoleOptions())
+                else:
+                    logfire.configure(console=False)
                 _configured = True
             except Exception as e:
                 # Log to stderr since logfire isn't configured yet

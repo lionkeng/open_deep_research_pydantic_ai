@@ -37,7 +37,8 @@ cli = [
 ]
 
 [project.scripts]
-deep-research = "src.cli:cli"
+deep-research = "cli:cli"
+deep-research-server = "api.main:main"
 test = "pytest:main"
 
 [build-system]
@@ -46,8 +47,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
 
-[tool.hatch.build]
+[tool.hatch.build.targets.sdist]
 include = [
     "src/**/*.py",
     "src/py.typed",

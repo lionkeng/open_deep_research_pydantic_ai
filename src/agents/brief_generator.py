@@ -5,7 +5,8 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from ..models.brief_generator import ResearchBrief
+from models.brief_generator import ResearchBrief
+
 from .base import (
     AgentConfiguration,
     BaseResearchAgent,

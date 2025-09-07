@@ -10,32 +10,32 @@ import httpx
 import logfire
 
 # Import new pydantic-ai compliant agents and dependencies
-from ..agents import (
+from agents import (
     compression_agent,
     report_generator_agent,
     research_executor_agent,
 )
-from ..agents.base import ResearchDependencies
-from ..agents.factory import AgentFactory, AgentType
-from ..core.context import get_current_context
-from ..core.events import (
+from agents.base import ResearchDependencies
+from agents.factory import AgentFactory, AgentType
+from core.context import get_current_context
+from core.events import (
     emit_error,
     emit_research_started,
     emit_stage_completed,
     emit_stage_started,
     emit_streaming_update,
 )
-from ..interfaces.clarification_flow import handle_clarification_with_review
-from ..models.api_models import APIKeys, ConversationMessage
-from ..models.brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
-from ..models.compression import CompressedContent
-from ..models.core import (
+from interfaces.clarification_flow import handle_clarification_with_review
+from models.api_models import APIKeys, ConversationMessage
+from models.brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
+from models.compression import CompressedContent
+from models.core import (
     ResearchMetadata,
     ResearchStage,
     ResearchState,
 )
-from ..models.report_generator import ReportSection, ResearchReport
-from ..models.research_executor import ResearchFinding
+from models.report_generator import ReportSection, ResearchReport
+from models.research_executor import ResearchFinding
 
 
 class ResearchWorkflow:

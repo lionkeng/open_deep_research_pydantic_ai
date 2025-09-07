@@ -6,8 +6,9 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from ..models.clarification import ClarificationRequest, ClarificationResponse
-from ..models.query_transformation import TransformedQuery
+from models.clarification import ClarificationRequest, ClarificationResponse
+from models.query_transformation import TransformedQuery
+
 from .base import (
     AgentConfiguration,
     BaseResearchAgent,

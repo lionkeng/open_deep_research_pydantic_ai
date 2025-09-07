@@ -18,10 +18,10 @@ from typing import Any, TypeVar
 # because WeakSet doesn't work properly with bound methods
 import logfire
 
-from ..models.core import ResearchStage
-from ..models.report_generator import ResearchReport
-from ..models.research_executor import ResearchFinding
-from .context import get_current_context
+from core.context import get_current_context
+from models.core import ResearchStage
+from models.report_generator import ResearchReport
+from models.research_executor import ResearchFinding
 
 
 class ResearchEvent(ABC):

@@ -6,8 +6,8 @@ import logfire
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import RunContext
 
-from src.models.api_models import ConversationMessage
-from src.models.clarification import ClarificationQuestion, ClarificationRequest
+from models.api_models import ConversationMessage
+from models.clarification import ClarificationQuestion, ClarificationRequest
 
 from .base import (
     AgentConfiguration,

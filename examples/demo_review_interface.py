@@ -4,17 +4,16 @@ This demonstrates the complete flow from initial questions to review and confirm
 """
 
 import asyncio
-from datetime import datetime, UTC
 
 from rich.console import Console
 
+from src.interfaces.clarification_flow import handle_clarification_with_review
 from src.models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
 )
-from src.interfaces.clarification_flow import handle_clarification_with_review
 
 
 def create_demo_request() -> ClarificationRequest:
@@ -118,7 +117,7 @@ def create_demo_request() -> ClarificationRequest:
             order=8,
         ),
     ]
-    
+
     return ClarificationRequest(
         questions=questions,
         context="This research will be conducted using AI-powered analysis tools.",
@@ -167,7 +166,7 @@ def create_demo_response(request: ClarificationRequest) -> ClarificationResponse
             skipped=True,  # Optional question skipped
         ),
     ]
-    
+
     return ClarificationResponse(
         request_id=request.id,
         answers=answers,
@@ -177,14 +176,14 @@ def create_demo_response(request: ClarificationRequest) -> ClarificationResponse
 async def demo_full_flow():
     """Demonstrate the full clarification flow with review."""
     console = Console()
-    
+
     console.print("\n[bold cyan]DEMO: Clarification with Review Interface[/bold cyan]\n")
     console.print("This demo shows the complete clarification flow including the review step.\n")
-    
+
     # Create demo request
     request = create_demo_request()
     original_query = "Compare different machine learning frameworks for production use"
-    
+
     # Run the full flow
     final_response = await handle_clarification_with_review(
         request=request,
@@ -193,7 +192,7 @@ async def demo_full_flow():
         auto_review=True,
         allow_skip_review=True,
     )
-    
+
     if final_response:
         console.print("\n[green]✓ Demo completed successfully![/green]")
         console.print(f"Final response contains {len(final_response.answers)} answers.")
@@ -204,38 +203,38 @@ async def demo_full_flow():
 async def demo_review_only():
     """Demonstrate just the review interface with pre-populated answers."""
     console = Console()
-    
+
     console.print("\n[bold cyan]DEMO: Review Interface Only[/bold cyan]\n")
     console.print("This demo shows just the review interface with pre-populated answers.\n")
-    
+
     # Create demo data
     request = create_demo_request()
     response = create_demo_response(request)
     original_query = "Compare different machine learning frameworks for production use"
-    
+
     # Show initial state
     console.print("[dim]Initial answers have been pre-populated for this demo.[/dim]")
     console.print("[dim]You can review and edit them using the interface.[/dim]\n")
-    
+
     input("Press Enter to start the review interface...")
-    
+
     # Run just the review interface
     from src.interfaces.review_interface import handle_review_interface
-    
+
     final_response = await handle_review_interface(
         request=request,
         response=response,
         original_query=original_query,
         console=console,
     )
-    
+
     if final_response:
         console.print("\n[green]✓ Review completed successfully![/green]")
-        
+
         # Show what changed
         original_answers = {a.question_id: a for a in response.answers}
         final_answers = {a.question_id: a for a in final_response.answers}
-        
+
         changes = []
         for qid, final_answer in final_answers.items():
             orig_answer = original_answers.get(qid)
@@ -243,7 +242,7 @@ async def demo_review_only():
                 question = request.get_question_by_id(qid)
                 if question:
                     changes.append(question.question[:50])
-        
+
         if changes:
             console.print(f"\n[blue]You edited {len(changes)} answer(s):[/blue]")
             for change in changes:
@@ -255,15 +254,15 @@ async def demo_review_only():
 async def main():
     """Main demo entry point."""
     console = Console()
-    
+
     console.print("\n[bold]Clarification Review Interface Demo[/bold]\n")
     console.print("Choose a demo mode:\n")
     console.print("1. Full flow (questions + review)")
     console.print("2. Review only (with pre-populated answers)")
     console.print("3. Exit\n")
-    
+
     choice = input("Enter your choice (1-3): ").strip()
-    
+
     if choice == "1":
         await demo_full_flow()
     elif choice == "2":

@@ -12,19 +12,18 @@ from pydantic import BaseModel, Field
 from api.sse_handler import create_sse_response
 from core.context import ResearchContextManager
 from core.events import research_event_bus
+from core.logging import configure_logging
 from core.workflow import workflow
 from models.api_models import APIKeys, ConversationMessage
+from models.clarification import ClarificationResponse
 from models.core import ResearchStage, ResearchState
-from src.models.clarification import ClarificationResponse
-
-from ..core.logging import configure_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     """Manage application lifespan - startup and shutdown."""
     # Startup logic
-    configure_logging()
+    configure_logging(enable_console=True)  # Enable console logging for FastAPI server
     logfire.info("Deep Research API started")
 
     yield  # Application runs here
@@ -397,12 +396,26 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
         raise HTTPException(status_code=500, detail="Failed to resume research") from e
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run the FastAPI server."""
+    import sys
+
     import uvicorn
 
-    uvicorn.run(
-        "open_deep_research_pydantic_ai.api.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-    )
+    try:
+        uvicorn.run(
+            "api.main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=False,  # Disable reload for proper signal handling
+            use_colors=True,
+            log_level="info",
+            access_log=True,
+        )
+    except KeyboardInterrupt:
+        print("\n✓ Server stopped gracefully")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
