@@ -90,17 +90,13 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
 
         # Register dynamic instructions
         @self.agent.instructions
-        async def add_execution_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+        async def add_execution_context(ctx: RunContext[ResearchDependencies]) -> str:
             """Inject research execution context as instructions."""
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata
             conversation = metadata.conversation_messages if metadata else []
             research_brief = metadata.research_brief_text if metadata else ""
-            methodology = (
-                metadata.methodology_suggestions[0]
-                if metadata and metadata.methodology_suggestions
-                else ""
-            )
+            methodology = ""  # Methodology will be extracted from research brief if available
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)
@@ -117,7 +113,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         @self.agent.tool
         async def evaluate_source_credibility(
             ctx: RunContext[ResearchDependencies], source_info: dict[str, Any]
-        ) -> float:  # pyright: ignore
+        ) -> float:
             """Evaluate the credibility of a source.
 
             Args:
@@ -160,7 +156,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         @self.agent.tool
         async def categorize_findings(
             ctx: RunContext[ResearchDependencies], findings: list[str]
-        ) -> dict[str, list[str]]:  # pyright: ignore
+        ) -> dict[str, list[str]]:
             """Categorize research findings by topic.
 
             Args:
@@ -214,7 +210,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         @self.agent.tool
         async def identify_patterns(
             ctx: RunContext[ResearchDependencies], findings: list[str]
-        ) -> list[str]:  # pyright: ignore
+        ) -> list[str]:
             """Identify patterns across research findings.
 
             Args:

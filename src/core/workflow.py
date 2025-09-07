@@ -264,11 +264,10 @@ class ResearchWorkflow:
 
                     mock_findings.append(
                         ResearchFinding(
-                            content=f"Research finding related to {area}",
-                            source="https://example.com",
-                            relevance_score=0.8,
-                            confidence=0.7,
-                            summary=f"Summary of findings for {area}",
+                            finding=f"Research finding related to {area}",
+                            confidence_level=0.7,
+                            supporting_evidence=[f"Evidence for {area}"],
+                            category=area,
                         )
                     )
 
@@ -346,16 +345,14 @@ class ResearchWorkflow:
 
                 # Create placeholder report
                 # ResearchReport and ReportSection already imported at top of module
-                ResearchSection = ReportSection  # Alias for backward compatibility
 
                 # Create sections based on research areas
                 sections = []
-                for i, area in enumerate(key_areas[:3]):
-                    section = ResearchSection(
+                for area in key_areas[:3]:
+                    section = ReportSection(
                         title=area,
                         content=f"Detailed analysis of {area} based on research findings.",
-                        findings=[f for f in mock_findings if area.lower() in f.content.lower()],
-                        order=i,
+                        citations=[f"Citation for {area}"],
                     )
                     sections.append(section)
 
@@ -363,16 +360,16 @@ class ResearchWorkflow:
                     title=f"Research Report: {user_query}",
                     executive_summary=brief_text[:500],
                     introduction=f"This report presents research findings for: {user_query}",
-                    methodology=("Three-phase clarification system with enhanced brief generation"),
                     sections=sections,
-                    conclusion=(
+                    conclusions=(
                         "Research completed successfully using the "
                         "three-phase clarification system."
                     ),
                     recommendations=[
                         f"Further investigation into {area}" for area in key_areas[:2]
                     ],
-                    citations=["https://example.com"] * len(mock_findings),
+                    references=["https://example.com"] * len(mock_findings),
+                    quality_score=0.85,
                 )
 
                 # Store the final report in research state
@@ -448,7 +445,7 @@ class ResearchWorkflow:
             )
 
             # Run clarification agent
-            clarification_task = None
+            clarification_task: asyncio.Task[Any] | None = None
             try:
                 clarification_task = asyncio.create_task(
                     self._run_agent_with_circuit_breaker(AgentType.CLARIFICATION, deps)

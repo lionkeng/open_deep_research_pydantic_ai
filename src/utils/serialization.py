@@ -13,27 +13,27 @@ class ClarificationJSONEncoder(json.JSONEncoder):
     JSON serializable.
     """
 
-    def default(self, obj: Any) -> Any:
+    def default(self, o: Any) -> Any:
         """Convert non-JSON-serializable objects.
 
         Args:
-            obj: Object to encode
+            o: Object to encode
 
         Returns:
             JSON-serializable representation
         """
-        if isinstance(obj, UUID):
-            return str(obj)
-        elif isinstance(obj, datetime):
-            return obj.isoformat()
-        elif hasattr(obj, "model_dump"):
+        if isinstance(o, UUID):
+            return str(o)
+        elif isinstance(o, datetime):
+            return o.isoformat()
+        elif hasattr(o, "model_dump"):
             # Handle Pydantic models
-            return obj.model_dump()
-        elif hasattr(obj, "__dict__"):
+            return o.model_dump()
+        elif hasattr(o, "__dict__"):
             # Handle regular classes
-            return obj.__dict__
+            return o.__dict__
 
-        return super().default(obj)
+        return super().default(o)
 
 
 def serialize_clarification_request(request: Any) -> str:

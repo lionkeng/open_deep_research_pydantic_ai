@@ -23,7 +23,7 @@ try:
 
     has_interactive_select = True
 except ImportError:
-    interactive_select = None  # type: ignore
+    interactive_select = None
     has_interactive_select = False
 
 # Optional imports for HTTP mode support
@@ -412,7 +412,7 @@ class HTTPResearchClient:
                 "stream": True,
             },
         )
-        response.raise_for_status()  # type: ignore[func-returns-value]
+        response.raise_for_status()
         data = response.json()  # httpx Response.json() is synchronous
         return data["request_id"]
 
@@ -536,7 +536,7 @@ class HTTPResearchClient:
             Report data as dictionary
         """
         response = await self.client.get(f"{self.base_url}/research/{request_id}/report")
-        response.raise_for_status()  # type: ignore[func-returns-value]
+        response.raise_for_status()
         return response.json()
 
     async def close(self) -> None:
@@ -733,7 +733,7 @@ def save_http_report(report_data: dict[str, Any], filename: str) -> None:
             content.append(f"- {str(citation)}\n")
 
     with open(filename, "w") as f:
-        f.write("\n".join(content))  # type: ignore[func-returns-value]
+        f.write("\n".join(content))
 
 
 async def run_research(
@@ -805,9 +805,12 @@ async def run_research(
             )
 
             # Show clarifying questions if available
-            if "clarifying_questions" in state.metadata:
+            if (
+                hasattr(state.metadata, "clarifying_questions")
+                and state.metadata.clarifying_questions
+            ):
                 console.print("\n[yellow]Clarifying questions needed:[/yellow]")
-                for q in state.metadata["clarifying_questions"]:
+                for q in state.metadata.clarifying_questions:
                     console.print(f"  • {q}")
 
     else:  # HTTP mode
@@ -819,13 +822,12 @@ async def run_research(
             sys.exit(1)
 
         async with HTTPResearchClient(server_url) as client:
-            with handler.progress:
-                # Start research
-                request_id = await client.start_research(query, api_keys)
-                console.print(f"[cyan]Research started with ID: {request_id}[/cyan]")
+            # Start research
+            request_id = await client.start_research(query, api_keys)
+            console.print(f"[cyan]Research started with ID: {request_id}[/cyan]")
 
-                # Stream events with retry logic
-                await client.stream_events_with_retry(request_id, handler)
+            # Stream events with retry logic
+            await client.stream_events_with_retry(request_id, handler)
 
             # Fetch and display final report
             try:
@@ -908,7 +910,7 @@ def save_report_object(report: ResearchReport, filename: str) -> None:
             content.append(f"- {reference}\n")
 
     with open(filename, "w") as f:
-        f.write("\n".join(content))  # type: ignore[func-returns-value]
+        f.write("\n".join(content))
 
 
 def save_report(state: Any, filename: str) -> None:

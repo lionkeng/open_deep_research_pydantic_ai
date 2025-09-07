@@ -91,7 +91,7 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
 
         # Register dynamic instructions
         @self.agent.instructions
-        async def add_compression_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+        async def add_compression_context(ctx: RunContext[ResearchDependencies]) -> str:
             """Inject compression context as instructions."""
             metadata = ctx.deps.research_state.metadata
             conversation = metadata.conversation_messages if metadata else []
@@ -118,7 +118,7 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
         @self.agent.tool
         async def calculate_compression_metrics(
             ctx: RunContext[ResearchDependencies], original: str, compressed: str
-        ) -> dict[str, Any]:  # pyright: ignore
+        ) -> dict[str, Any]:
             """Calculate compression metrics.
 
             Args:
@@ -148,7 +148,7 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
         @self.agent.tool
         async def identify_redundancies(
             ctx: RunContext[ResearchDependencies], text: str
-        ) -> list[str]:  # pyright: ignore
+        ) -> list[str]:
             """Identify redundancies in text.
 
             Args:
@@ -195,7 +195,7 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
         @self.agent.tool
         async def extract_key_information(
             ctx: RunContext[ResearchDependencies], text: str
-        ) -> dict[str, list[str]]:  # pyright: ignore
+        ) -> dict[str, list[str]]:
             """Extract key information from text.
 
             Args:

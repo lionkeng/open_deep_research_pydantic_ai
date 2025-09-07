@@ -1,26 +1,38 @@
 """Interactive selector with arrow key navigation for CLI choices."""
 
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
-# Check if we can use keyboard input
-try:
+# Initialize flags
+_has_termios = False
+_has_msvcrt = False
+
+if TYPE_CHECKING:
+    import msvcrt
     import termios
     import tty
+else:
+    # Check if we can use keyboard input
+    try:
+        import termios
+        import tty
 
-    HAS_TERMIOS = True
-except ImportError:
-    HAS_TERMIOS = False
+        _has_termios = True
+    except ImportError:
+        termios: Any = None
+        tty: Any = None
+        _has_termios = False
 
-# Try to import msvcrt for Windows
-try:
-    import msvcrt
+    # Try to import msvcrt for Windows
+    try:
+        import msvcrt
 
-    HAS_MSVCRT = True
-except ImportError:
-    HAS_MSVCRT = False
+        _has_msvcrt = True
+    except ImportError:
+        msvcrt: Any = None
+        _has_msvcrt = False
 
 
 class InteractiveSelector:
@@ -44,7 +56,7 @@ class InteractiveSelector:
             KeyboardInterrupt: When Ctrl+C is pressed
         """
         try:
-            if HAS_TERMIOS:
+            if _has_termios and termios is not None:
                 # Unix/Linux/Mac
                 fd = sys.stdin.fileno()
                 old_settings = termios.tcgetattr(fd)
@@ -60,15 +72,19 @@ class InteractiveSelector:
                     return key
                 finally:
                     termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            elif HAS_MSVCRT:
+            elif _has_msvcrt and msvcrt is not None:
                 # Windows
-                key = msvcrt.getch()
-                # Check for Ctrl+C on Windows
-                if key == b"\x03":
-                    raise KeyboardInterrupt("User interrupted with Ctrl+C")
-                if key in (b"\x00", b"\xe0"):  # Special keys (arrows, etc.)
-                    key += msvcrt.getch()
-                return key.decode("utf-8", errors="ignore")
+                getch = getattr(msvcrt, "getch", None)
+                if getch:
+                    key = getch()
+                    # Check for Ctrl+C on Windows
+                    if key == b"\x03":
+                        raise KeyboardInterrupt("User interrupted with Ctrl+C")
+                    if key in (b"\x00", b"\xe0"):  # Special keys (arrows, etc.)
+                        key += getch()
+                    return key.decode("utf-8", errors="ignore")
+                else:
+                    return input()
             else:
                 # Fallback - just read a line
                 return input()

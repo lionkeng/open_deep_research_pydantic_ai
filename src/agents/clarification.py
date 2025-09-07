@@ -143,7 +143,7 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
 
         # Register dynamic instructions for assessment framework
         @self.agent.instructions
-        async def add_assessment_framework(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+        async def add_assessment_framework(ctx: RunContext[ResearchDependencies]) -> str:
             """Inject structured clarification assessment framework as instructions."""
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata

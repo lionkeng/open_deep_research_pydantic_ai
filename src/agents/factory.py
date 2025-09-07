@@ -1,7 +1,7 @@
 """Agent factory for creating individual agent instances."""
 
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import logfire
 
@@ -91,11 +91,8 @@ class AgentFactory:
 
         logfire.debug(f"Creating new {agent_type.value} agent instance")
 
-        # Create agent instance - simple and direct
-        agent = agent_class(config=effective_config)
-
-        # Initialize with dependencies
-        agent._deps = dependencies
+        # Create agent instance with dependencies
+        agent = agent_class(config=effective_config, dependencies=dependencies)
 
         return agent
 
@@ -178,39 +175,55 @@ def create_clarification_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> ClarificationAgent:
     """Create a clarification agent."""
-    return AgentFactory.create_agent(AgentType.CLARIFICATION, dependencies, config)
+    return cast(
+        ClarificationAgent, AgentFactory.create_agent(AgentType.CLARIFICATION, dependencies, config)
+    )
 
 
 def create_query_transformation_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> QueryTransformationAgent:
     """Create a query transformation agent."""
-    return AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, dependencies, config)
+    return cast(
+        QueryTransformationAgent,
+        AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, dependencies, config),
+    )
 
 
 def create_brief_generator_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> BriefGeneratorAgent:
     """Create a brief generator agent."""
-    return AgentFactory.create_agent(AgentType.BRIEF_GENERATOR, dependencies, config)
+    return cast(
+        BriefGeneratorAgent,
+        AgentFactory.create_agent(AgentType.BRIEF_GENERATOR, dependencies, config),
+    )
 
 
 def create_research_executor_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> ResearchExecutorAgent:
     """Create a research executor agent."""
-    return AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, dependencies, config)
+    return cast(
+        ResearchExecutorAgent,
+        AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, dependencies, config),
+    )
 
 
 def create_compression_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> CompressionAgent:
     """Create a compression agent."""
-    return AgentFactory.create_agent(AgentType.COMPRESSION, dependencies, config)
+    return cast(
+        CompressionAgent, AgentFactory.create_agent(AgentType.COMPRESSION, dependencies, config)
+    )
 
 
 def create_report_generator_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> ReportGeneratorAgent:
     """Create a report generator agent."""
-    return AgentFactory.create_agent(AgentType.REPORT_GENERATOR, dependencies, config)
+    return cast(
+        ReportGeneratorAgent,
+        AgentFactory.create_agent(AgentType.REPORT_GENERATOR, dependencies, config),
+    )

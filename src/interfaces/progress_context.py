@@ -5,6 +5,7 @@ Context manager interface for the terminal progress indicator.
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Any
 
 from .terminal_progress import terminal_progress
 
@@ -61,7 +62,7 @@ class ProgressManager:
     def __enter__(self) -> "ProgressManager":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.stop_and_complete()
 
 

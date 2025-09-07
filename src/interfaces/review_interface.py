@@ -42,7 +42,7 @@ class ReviewState:
     """Current state of the review interface."""
 
     current_index: int = 0
-    edited_questions: set[str] = None
+    edited_questions: set[str] | None = None
     confirmed: bool = False
     recursion_depth: int = 0  # Track recursion to prevent infinite loops
 
@@ -158,8 +158,7 @@ class ReviewInterface:
         answered = sum(
             1
             for q in request.questions
-            if response.get_answer_for_question(q.id)
-            and not response.get_answer_for_question(q.id).skipped
+            if (answer := response.get_answer_for_question(q.id)) and not answer.skipped
         )
 
         progress_text = Text()
@@ -207,9 +206,9 @@ class ReviewInterface:
             Panel containing the question and answer
         """
         # Determine status and styling
-        is_edited = question.id in self.state.edited_questions
+        is_edited = self.state.edited_questions and question.id in self.state.edited_questions
         status = self.get_answer_status(question, answer, is_edited)
-        symbol, color = self.STATUS_SYMBOLS[status]
+        _, color = self.STATUS_SYMBOLS[status]
 
         # Build content
         content_parts = []
@@ -296,7 +295,7 @@ class ReviewInterface:
 
         for idx, question in enumerate(request.get_sorted_questions(), 1):
             answer = response.get_answer_for_question(question.id)
-            is_edited = question.id in self.state.edited_questions
+            is_edited = self.state.edited_questions and question.id in self.state.edited_questions
             status = self.get_answer_status(question, answer, is_edited)
             symbol, color = self.STATUS_SYMBOLS[status]
 
@@ -344,15 +343,13 @@ class ReviewInterface:
         required_answered = sum(
             1
             for q in required_questions
-            if response.get_answer_for_question(q.id)
-            and not response.get_answer_for_question(q.id).skipped
+            if (answer := response.get_answer_for_question(q.id)) and not answer.skipped
         )
 
         optional_answered = sum(
             1
             for q in optional_questions
-            if response.get_answer_for_question(q.id)
-            and not response.get_answer_for_question(q.id).skipped
+            if (answer := response.get_answer_for_question(q.id)) and not answer.skipped
         )
 
         content = Group(
@@ -547,7 +544,8 @@ class ReviewInterface:
                             if a.question_id != current_question.id
                         ]
                         working_response.answers.append(new_answer)
-                        self.state.edited_questions.add(current_question.id)
+                        if self.state.edited_questions is not None:
+                            self.state.edited_questions.add(current_question.id)
                         # Rebuild index
                         try:
                             working_response.model_post_init(None)

@@ -13,7 +13,7 @@ import httpx
 import logfire
 
 from .models.api_models import APIKeys, ResearchMetadata
-from .models.research import ResearchState
+from .models.core import ResearchState
 
 
 @dataclass
@@ -73,14 +73,18 @@ class ResearchDependencies:
     def add_metadata(self, key: str, value: Any) -> None:
         """Add metadata to research state."""
         if self.research_state.metadata is None:
-            self.research_state.metadata = {}
-        self.research_state.metadata[key] = value
+            from .models.api_models import ResearchMetadata
+
+            self.research_state.metadata = ResearchMetadata()
+        # Use setattr for Pydantic models with extra="allow"
+        setattr(self.research_state.metadata, key, value)
 
     def get_metadata(self, key: str, default: Any = None) -> Any:
         """Get metadata from research state."""
         if self.research_state.metadata is None:
             return default
-        return self.research_state.metadata.get(key, default)
+        # Use getattr for Pydantic models
+        return getattr(self.research_state.metadata, key, default)
 
 
 @dataclass

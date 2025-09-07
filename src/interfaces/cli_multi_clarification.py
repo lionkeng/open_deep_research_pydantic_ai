@@ -13,7 +13,7 @@ try:
 
     has_interactive = True
 except ImportError:
-    interactive_select = None  # type: ignore
+    interactive_select = None
     has_interactive = False
 
 from src.models.clarification import (

@@ -91,7 +91,7 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
 
         # Register dynamic instructions
         @self.agent.instructions
-        async def add_brief_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+        async def add_brief_context(ctx: RunContext[ResearchDependencies]) -> str:
             """Inject brief generation context as instructions."""
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata
@@ -114,7 +114,7 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
         @self.agent.tool
         async def prioritize_objectives(
             ctx: RunContext[ResearchDependencies], objectives: list[str]
-        ) -> list[dict[str, Any]]:  # pyright: ignore
+        ) -> list[dict[str, Any]]:
             """Prioritize research objectives based on importance.
 
             Args:
@@ -149,7 +149,7 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
         @self.agent.tool
         async def estimate_timeline(
             ctx: RunContext[ResearchDependencies], scope: str, complexity: str
-        ) -> str:  # pyright: ignore
+        ) -> str:
             """Estimate research timeline based on scope and complexity.
 
             Args:

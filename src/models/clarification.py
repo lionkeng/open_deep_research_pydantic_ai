@@ -111,7 +111,7 @@ class ClarificationAnswer(BaseModel):
 
     @field_validator("answer")
     @classmethod
-    def validate_answer(cls, v: str | None, info) -> str | None:
+    def validate_answer(cls, v: str | None, info: Any) -> str | None:
         """Validate and sanitize answer."""
         if v is None:
             return None

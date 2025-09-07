@@ -93,7 +93,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
 
         # Register dynamic instructions
         @self.agent.instructions
-        async def add_report_context(ctx: RunContext[ResearchDependencies]) -> str:  # pyright: ignore
+        async def add_report_context(ctx: RunContext[ResearchDependencies]) -> str:
             """Inject report generation context as instructions."""
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata
@@ -123,7 +123,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         @self.agent.tool
         async def structure_content(
             ctx: RunContext[ResearchDependencies], content: dict[str, Any]
-        ) -> dict[str, list[Any]]:  # pyright: ignore
+        ) -> dict[str, list[Any]]:
             """Structure content into report sections.
 
             Args:
@@ -169,7 +169,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         @self.agent.tool
         async def generate_executive_summary(
             ctx: RunContext[ResearchDependencies], findings: list[str], recommendations: list[str]
-        ) -> str:  # pyright: ignore
+        ) -> str:
             """Generate an executive summary from findings and recommendations.
 
             Args:
@@ -211,7 +211,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         @self.agent.tool
         async def format_citations(
             ctx: RunContext[ResearchDependencies], sources: list[dict[str, Any]]
-        ) -> list[str]:  # pyright: ignore
+        ) -> list[str]:
             """Format citations in a consistent style.
 
             Args:
@@ -250,7 +250,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         @self.agent.tool
         async def assess_report_completeness(
             ctx: RunContext[ResearchDependencies], report_sections: dict[str, Any]
-        ) -> dict[str, Any]:  # pyright: ignore
+        ) -> dict[str, Any]:
             """Assess the completeness of a report.
 
             Args:
@@ -267,7 +267,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 "recommendations",
             ]
 
-            assessment = {
+            assessment: dict[str, Any] = {
                 "complete_sections": [],
                 "missing_sections": [],
                 "weak_sections": [],
