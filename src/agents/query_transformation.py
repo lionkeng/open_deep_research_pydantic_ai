@@ -76,18 +76,23 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
     actionable research questions with clear scope and search strategies.
     """
 
-    def __init__(self, config: AgentConfiguration | None = None):
+    def __init__(
+        self,
+        config: AgentConfiguration | None = None,
+        dependencies: ResearchDependencies | None = None,
+    ):
         """Initialize the query transformation agent.
 
         Args:
             config: Optional agent configuration. If not provided, uses defaults.
+            dependencies: Optional research dependencies.
         """
         if config is None:
             config = AgentConfiguration(
                 agent_name="query_transformation",
                 agent_type="transformation",
             )
-        super().__init__(config=config)
+        super().__init__(config=config, dependencies=dependencies)
 
         # Register dynamic instructions
         @self.agent.instructions

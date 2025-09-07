@@ -128,18 +128,23 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
     Now supports multiple questions with UUID-based tracking.
     """
 
-    def __init__(self, config: AgentConfiguration | None = None):
+    def __init__(
+        self,
+        config: AgentConfiguration | None = None,
+        dependencies: ResearchDependencies | None = None,
+    ):
         """Initialize the clarification agent.
 
         Args:
             config: Optional agent configuration. If not provided, uses defaults.
+            dependencies: Optional research dependencies.
         """
         if config is None:
             config = AgentConfiguration(
                 agent_name="clarification_agent",
                 agent_type="clarification",
             )
-        super().__init__(config=config)
+        super().__init__(config=config, dependencies=dependencies)
 
         # Register dynamic instructions for assessment framework
         @self.agent.instructions

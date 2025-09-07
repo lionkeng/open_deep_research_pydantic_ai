@@ -167,6 +167,8 @@ exclude_lines = [
 [tool.logfire]
 # Suppress configuration warning until logfire.configure() is called
 ignore_no_config = true
+# suppress logging to stderr/stdout by default
+console = false
 
 [dependency-groups]
 dev = [

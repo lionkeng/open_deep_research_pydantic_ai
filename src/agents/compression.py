@@ -76,18 +76,23 @@ class CompressionAgent(BaseResearchAgent[ResearchDependencies, CompressedContent
     maintaining clarity, and providing compression metrics.
     """
 
-    def __init__(self, config: AgentConfiguration | None = None):
+    def __init__(
+        self,
+        config: AgentConfiguration | None = None,
+        dependencies: ResearchDependencies | None = None,
+    ):
         """Initialize the compression agent.
 
         Args:
             config: Optional agent configuration. If not provided, uses defaults.
+            dependencies: Optional research dependencies.
         """
         if config is None:
             config = AgentConfiguration(
                 agent_name="compression",
                 agent_type="processing",
             )
-        super().__init__(config=config)
+        super().__init__(config=config, dependencies=dependencies)
 
         # Register dynamic instructions
         @self.agent.instructions

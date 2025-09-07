@@ -76,18 +76,23 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
     methodologies, and deliverables to guide research execution.
     """
 
-    def __init__(self, config: AgentConfiguration | None = None):
+    def __init__(
+        self,
+        config: AgentConfiguration | None = None,
+        dependencies: ResearchDependencies | None = None,
+    ):
         """Initialize the brief generator agent.
 
         Args:
             config: Optional agent configuration. If not provided, uses defaults.
+            dependencies: Optional research dependencies.
         """
         if config is None:
             config = AgentConfiguration(
                 agent_name="brief_generator",
                 agent_type="planning",
             )
-        super().__init__(config=config)
+        super().__init__(config=config, dependencies=dependencies)
 
         # Register dynamic instructions
         @self.agent.instructions
