@@ -2,7 +2,6 @@
 
 import asyncio
 import sys
-import time
 from datetime import datetime
 from typing import Any
 
@@ -26,6 +25,7 @@ from core.events import (
     emit_streaming_update,
 )
 from interfaces.clarification_flow import handle_clarification_with_review
+from src.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
 from src.models.api_models import APIKeys, ConversationMessage
 from src.models.brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
 from src.models.compression import CompressedContent
@@ -53,10 +53,25 @@ class ResearchWorkflow:
         # Concurrent processing configuration
         self._max_concurrent_tasks = 5
         self._task_timeout = 300.0  # 5 minutes per task
-        self._circuit_breaker_threshold = 3  # Fail after 3 consecutive errors
-        self._circuit_breaker_timeout = 60.0  # Reset circuit after 1 minute
 
-        # Error tracking for circuit breaker
+        # Create circuit breaker with AgentType as key type
+        default_config = CircuitBreakerConfig(
+            failure_threshold=3,
+            success_threshold=2,
+            timeout_seconds=60.0,
+            half_open_max_attempts=2,
+            name="workflow_circuit_breaker",
+        )
+
+        self.circuit_breaker: CircuitBreaker[AgentType] = CircuitBreaker(
+            config=default_config,
+            fallback_factory=self._create_fallback,
+        )
+
+        # Per-agent circuit breaker configurations
+        self.agent_configs = self._create_agent_configs()
+
+        # Legacy attributes for backward compatibility
         self._consecutive_errors: dict[AgentType, int] = {}
         self._last_error_time: dict[AgentType, float] = {}
         self._circuit_open: dict[AgentType, bool] = {}
@@ -72,47 +87,140 @@ class ResearchWorkflow:
                 max_concurrent_tasks=self._max_concurrent_tasks,
             )
 
+    def _create_agent_configs(self) -> dict[AgentType, dict[str, Any]]:
+        """Create agent-specific configurations."""
+        return {
+            # Critical agents - more lenient settings
+            AgentType.RESEARCH_EXECUTOR: {
+                "critical": True,
+                "config": CircuitBreakerConfig(
+                    failure_threshold=5,
+                    success_threshold=2,
+                    timeout_seconds=60.0,
+                    half_open_max_attempts=3,
+                    name="critical_research_executor",
+                ),
+            },
+            # Important agents - balanced settings
+            AgentType.REPORT_GENERATOR: {
+                "critical": False,
+                "config": CircuitBreakerConfig(
+                    failure_threshold=3,
+                    success_threshold=2,
+                    timeout_seconds=45.0,
+                    half_open_max_attempts=2,
+                    name="important_report_generator",
+                ),
+            },
+            AgentType.BRIEF_GENERATOR: {
+                "critical": False,
+                "config": CircuitBreakerConfig(
+                    failure_threshold=3,
+                    success_threshold=2,
+                    timeout_seconds=45.0,
+                    half_open_max_attempts=2,
+                    name="important_brief_generator",
+                ),
+            },
+            # Optional agents - fail fast
+            AgentType.QUERY_TRANSFORMATION: {
+                "critical": False,
+                "config": CircuitBreakerConfig(
+                    failure_threshold=2,
+                    success_threshold=1,
+                    timeout_seconds=30.0,
+                    half_open_max_attempts=1,
+                    name="optional_query_transformation",
+                ),
+            },
+            # Supporting agents
+            AgentType.CLARIFICATION: {
+                "critical": False,
+                "config": CircuitBreakerConfig(
+                    failure_threshold=3,
+                    success_threshold=2,
+                    timeout_seconds=30.0,
+                    half_open_max_attempts=2,
+                    name="support_clarification",
+                ),
+            },
+            AgentType.COMPRESSION: {
+                "critical": False,
+                "config": CircuitBreakerConfig(
+                    failure_threshold=3,
+                    success_threshold=2,
+                    timeout_seconds=30.0,
+                    half_open_max_attempts=2,
+                    name="support_compression",
+                ),
+            },
+        }
+
+    async def _create_fallback(self, agent_type: AgentType) -> Any:
+        """Create fallback response for failed agent."""
+        logfire.info(f"Using fallback for {agent_type.value}")
+
+        fallback_responses = {
+            AgentType.QUERY_TRANSFORMATION: {
+                "transformed_query": "original query (transformation unavailable)",
+                "confidence": 0.0,
+                "fallback": True,
+            },
+            AgentType.RESEARCH_EXECUTOR: {
+                "results": [],
+                "from_cache": True,
+                "fallback": True,
+            },
+            AgentType.REPORT_GENERATOR: {
+                "report": "Report generation is temporarily unavailable. Please try again later.",
+                "fallback": True,
+            },
+            AgentType.CLARIFICATION: {
+                "clarification": None,
+                "proceed": True,
+                "fallback": True,
+            },
+            AgentType.COMPRESSION: {
+                "compressed": False,
+                "data": "uncompressed",
+                "fallback": True,
+            },
+            AgentType.BRIEF_GENERATOR: {
+                "brief": "Brief generation unavailable",
+                "fallback": True,
+            },
+        }
+
+        return fallback_responses.get(
+            agent_type,
+            {"error": f"No fallback for {agent_type.value}", "fallback": True},
+        )
+
     def _check_circuit_breaker(self, agent_type: AgentType) -> bool:
         """Check if circuit breaker allows operation for given agent type.
 
-        Returns True if operation is allowed, False if circuit is open.
+        Maintained for backward compatibility.
         """
-
-        current_time = time.time()
-
-        # Reset circuit if timeout has passed
-        if (
-            agent_type in self._circuit_open
-            and self._circuit_open[agent_type]
-            and current_time - self._last_error_time.get(agent_type, 0)
-            > self._circuit_breaker_timeout
-        ):
-            self._circuit_open[agent_type] = False
-            self._consecutive_errors[agent_type] = 0
-            logfire.info(f"Circuit breaker reset for {agent_type.value}")
-
-        return not self._circuit_open.get(agent_type, False)
+        return not self.circuit_breaker.is_open(agent_type)
 
     def _record_success(self, agent_type: AgentType) -> None:
-        """Record successful agent operation."""
-        self._consecutive_errors[agent_type] = 0
-        if self._circuit_open.get(agent_type):
-            self._circuit_open[agent_type] = False
-            logfire.info(f"Circuit breaker closed for {agent_type.value}")
+        """Record successful agent operation.
+
+        Maintained for backward compatibility.
+        """
+        # The CircuitBreaker handles this internally now
+        pass
 
     def _record_error(self, agent_type: AgentType, error: Exception) -> None:
-        """Record agent operation error and update circuit breaker."""
+        """Record agent operation error and update circuit breaker.
 
-        self._consecutive_errors[agent_type] = self._consecutive_errors.get(agent_type, 0) + 1
-        self._last_error_time[agent_type] = time.time()
-
-        if self._consecutive_errors[agent_type] >= self._circuit_breaker_threshold:
-            self._circuit_open[agent_type] = True
-            logfire.warning(
-                f"Circuit breaker opened for {agent_type.value}",
-                consecutive_errors=self._consecutive_errors[agent_type],
-                error=str(error),
-            )
+        Maintained for backward compatibility.
+        """
+        # The CircuitBreaker handles this internally now
+        logfire.warning(
+            f"Agent error recorded for {agent_type.value}",
+            error=str(error),
+        )
 
     async def _run_agent_with_circuit_breaker(
         self, agent_type: AgentType, deps: ResearchDependencies, **kwargs: Any
@@ -128,30 +236,52 @@ class ResearchWorkflow:
             Agent result
 
         Raises:
-            Exception: If circuit is open or agent fails
+            CircuitBreakerError: If circuit is open for critical agents
+            Exception: If agent fails
         """
-        if not self._check_circuit_breaker(agent_type):
-            raise RuntimeError(f"Circuit breaker open for {agent_type.value}")
+        agent_config = self.agent_configs.get(agent_type, {})
+        is_critical = agent_config.get("critical", False)
 
-        try:
-            # Run agent with timeout
-            # Create agent and execute
-            agent = self.agent_factory.create_agent(agent_type, deps)
-            result = await asyncio.wait_for(
-                agent.run(deps),
-                timeout=self._task_timeout,
+        # Check if circuit is open for critical agents
+        if is_critical and self.circuit_breaker.is_open(agent_type):
+            raise CircuitBreakerError(
+                f"Critical agent {agent_type.value} is unavailable due to circuit breaker"
             )
 
-            self._record_success(agent_type)
+        try:
+            # Create agent instance
+            agent = self.agent_factory.create_agent(agent_type, deps)
+
+            # Execute through circuit breaker with timeout
+            async def agent_execution():
+                return await asyncio.wait_for(
+                    agent.run(deps, **kwargs),
+                    timeout=self._task_timeout,
+                )
+
+            result = await self.circuit_breaker.call(
+                agent_type,
+                agent_execution,
+            )
+
+            logfire.debug(f"Successfully executed {agent_type.value}")
             return result
 
-        except TimeoutError as e:
-            self._record_error(agent_type, e)
+        except CircuitBreakerError as e:
+            # Circuit is open
+            logfire.warning(f"Circuit breaker open for {agent_type.value}: {e}")
+
+            if not is_critical:
+                # Use fallback for non-critical agents
+                return await self._create_fallback(agent_type)
+            raise
+
+        except TimeoutError:
             logfire.error(f"Agent {agent_type.value} timed out", timeout=self._task_timeout)
             raise
+
         except Exception as e:
-            self._record_error(agent_type, e)
-            logfire.error(f"Agent {agent_type.value} failed", error=str(e))
+            logfire.error(f"Error executing {agent_type.value}: {e}")
             raise
 
     async def execute_research(
