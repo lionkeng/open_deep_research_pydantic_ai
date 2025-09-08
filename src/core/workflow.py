@@ -57,9 +57,9 @@ class ResearchWorkflow:
         self._circuit_breaker_timeout = 60.0  # Reset circuit after 1 minute
 
         # Error tracking for circuit breaker
-        self._consecutive_errors: dict[str, int] = {}
-        self._last_error_time: dict[str, float] = {}
-        self._circuit_open: dict[str, bool] = {}
+        self._consecutive_errors: dict[AgentType, int] = {}
+        self._last_error_time: dict[AgentType, float] = {}
+        self._circuit_open: dict[AgentType, bool] = {}
 
     def _ensure_initialized(self) -> None:
         """Ensure all agents are registered."""
@@ -72,7 +72,7 @@ class ResearchWorkflow:
                 max_concurrent_tasks=self._max_concurrent_tasks,
             )
 
-    def _check_circuit_breaker(self, agent_type: str) -> bool:
+    def _check_circuit_breaker(self, agent_type: AgentType) -> bool:
         """Check if circuit breaker allows operation for given agent type.
 
         Returns True if operation is allowed, False if circuit is open.
@@ -89,18 +89,18 @@ class ResearchWorkflow:
         ):
             self._circuit_open[agent_type] = False
             self._consecutive_errors[agent_type] = 0
-            logfire.info(f"Circuit breaker reset for {agent_type}")
+            logfire.info(f"Circuit breaker reset for {agent_type.value}")
 
         return not self._circuit_open.get(agent_type, False)
 
-    def _record_success(self, agent_type: str) -> None:
+    def _record_success(self, agent_type: AgentType) -> None:
         """Record successful agent operation."""
         self._consecutive_errors[agent_type] = 0
         if self._circuit_open.get(agent_type):
             self._circuit_open[agent_type] = False
-            logfire.info(f"Circuit breaker closed for {agent_type}")
+            logfire.info(f"Circuit breaker closed for {agent_type.value}")
 
-    def _record_error(self, agent_type: str, error: Exception) -> None:
+    def _record_error(self, agent_type: AgentType, error: Exception) -> None:
         """Record agent operation error and update circuit breaker."""
 
         self._consecutive_errors[agent_type] = self._consecutive_errors.get(agent_type, 0) + 1
@@ -109,7 +109,7 @@ class ResearchWorkflow:
         if self._consecutive_errors[agent_type] >= self._circuit_breaker_threshold:
             self._circuit_open[agent_type] = True
             logfire.warning(
-                f"Circuit breaker opened for {agent_type}",
+                f"Circuit breaker opened for {agent_type.value}",
                 consecutive_errors=self._consecutive_errors[agent_type],
                 error=str(error),
             )
@@ -131,7 +131,7 @@ class ResearchWorkflow:
             Exception: If circuit is open or agent fails
         """
         if not self._check_circuit_breaker(agent_type):
-            raise RuntimeError(f"Circuit breaker open for {agent_type}")
+            raise RuntimeError(f"Circuit breaker open for {agent_type.value}")
 
         try:
             # Run agent with timeout
@@ -147,11 +147,11 @@ class ResearchWorkflow:
 
         except TimeoutError as e:
             self._record_error(agent_type, e)
-            logfire.error(f"Agent {agent_type} timed out", timeout=self._task_timeout)
+            logfire.error(f"Agent {agent_type.value} timed out", timeout=self._task_timeout)
             raise
         except Exception as e:
             self._record_error(agent_type, e)
-            logfire.error(f"Agent {agent_type} failed", error=str(e))
+            logfire.error(f"Agent {agent_type.value} failed", error=str(e))
             raise
 
     async def execute_research(
