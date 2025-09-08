@@ -190,20 +190,6 @@ class BriefGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchBrief]
             # Default estimate
             return "1-2 weeks"
 
-    def _format_conversation_context(self, conversation: list[Any]) -> str:
-        """Format conversation history for the prompt."""
-        if not conversation:
-            return "No prior conversation context."
-
-        formatted = []
-        for msg in conversation[-3:]:  # Last 3 messages for context
-            # ConversationMessage is now a BaseModel with attributes
-            role = msg.role
-            content = msg.content
-            formatted.append(f"{role.capitalize()}: {content}")
-
-        return "Recent Conversation:\n" + "\n".join(formatted)
-
     def _get_default_system_prompt(self) -> str:
         """Get the base system prompt for this agent."""
         return (

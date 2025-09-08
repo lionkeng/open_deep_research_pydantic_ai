@@ -299,22 +299,6 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
 
             return assessment
 
-    def _format_conversation_context(self, conversation: list[Any]) -> str:
-        """Format conversation history for the prompt."""
-        if not conversation:
-            return "No prior conversation context."
-
-        formatted = []
-        for msg in conversation[-3:]:  # Last 3 messages for context
-            if isinstance(msg, dict):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
-                formatted.append(f"{role.capitalize()}: {content}")
-            else:
-                formatted.append(str(msg))
-
-        return "Recent Conversation:\n" + "\n".join(formatted)
-
     def _get_default_system_prompt(self) -> str:
         """Get the base system prompt for this agent."""
         return "You are a Research Report Specialist focused on creating comprehensive reports."

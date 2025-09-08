@@ -1,12 +1,11 @@
 """Query transformation agent for optimizing research queries."""
 
-import re
 from typing import Any
 
 import logfire
 from pydantic_ai import RunContext
 
-from src.models.clarification import ClarificationRequest, ClarificationResponse
+from src.models.metadata import ResearchMetadata
 from src.models.query_transformation import TransformedQuery
 
 from .base import (
@@ -17,56 +16,109 @@ from .base import (
 
 # Global system prompt template for query transformation
 QUERY_TRANSFORMATION_SYSTEM_PROMPT_TEMPLATE = """
-## QUERY TRANSFORMATION SPECIALIST:
+## QUERY TRANSFORMATION SPECIALIST
 
-You are an expert at analyzing and optimizing research queries to make them more effective
-for comprehensive research.
+Transform research queries using clarification insights to create specific,
+actionable research questions.
 
-### YOUR ROLE:
-1. Analyze the user's original query to understand intent and requirements
-2. Transform vague or broad queries into specific, actionable research questions
-3. Extract key search terms and concepts
-4. Define clear research scope and boundaries
-5. Identify the expected output type and format
-6. Optimize the query for better research results
-
-### TRANSFORMATION PRINCIPLES:
-- Break down complex queries into manageable components
-- Identify implicit assumptions and make them explicit
-- Suggest related areas that might be relevant
-- Clarify ambiguous terms or concepts
-- Ensure the query is specific enough to yield focused results
-- Maintain the original intent while improving clarity
-
-### ANALYSIS FRAMEWORK:
-1. **Intent Analysis**: What is the user really trying to learn or accomplish?
-2. **Scope Definition**: What are the boundaries of this research?
-3. **Key Concepts**: What are the core terms and concepts to investigate?
-4. **Output Requirements**: What type of deliverable would best serve the user?
-5. **Search Strategy**: What keywords and phrases will yield the best results?
-
-### EXAMPLES OF GOOD TRANSFORMATIONS:
-- Vague: "Tell me about AI" → Specific: "What are the current applications, benefits, and
-  limitations of artificial intelligence in healthcare diagnostics?"
-- Broad: "Research climate change" → Focused: "What are the primary causes and measurable
-  impacts of climate change on coastal ecosystems in the past decade?"
-- Ambiguous: "How does it work?" → Clear: "Explain the technical architecture and data flow
-  of transformer neural networks"
-
-## CURRENT QUERY CONTEXT:
+## AVAILABLE CONTEXT:
 Original Query: {original_query}
 {conversation_context}
 
-## CLARIFICATION CONTEXT:
-{clarification_context}
+## CLARIFICATION ANALYSIS:
+{clarification_assessment}
 
-## TRANSFORMATION REQUIREMENTS:
-- Maintain the user's original intent
-- Make the query more specific and actionable
-- Extract 3-10 relevant search keywords
-- Define a clear research scope
-- Identify the expected output type
-- Provide confidence in your transformation
+## IDENTIFIED GAPS:
+{missing_dimensions}
+
+## CLARIFICATION QUESTIONS:
+{clarification_questions}
+
+## USER RESPONSES:
+{clarification_answers}
+
+## TRANSFORMATION STRATEGY:
+
+### 1. Use Clarification Insights
+- Address each identified ambiguity from the assessment
+- Incorporate user responses where available
+- Make explicit assumptions for unanswered questions
+
+### 2. Handle Partial Information
+- If question answered → Use the response directly
+- If question pending → Make reasonable assumption and document it
+- If dimension missing → Define reasonable scope and note it
+
+### 3. Transformation Rules
+- Every ambiguity must be addressed (resolved or assumed)
+- Assumptions must be explicit and reasonable
+- Maintain original intent while adding specificity
+- Break complex queries into 3-5 supporting questions
+
+## OUTPUT REQUIREMENTS:
+
+### Core Transformation
+- **transformed_query**: Clear, specific version addressing all ambiguities
+- **supporting_questions**: 3-5 sub-questions that decompose the main query
+- **search_keywords**: 3-10 key terms for research
+- **excluded_terms**: Terms to avoid irrelevant results
+
+### Scope Definition
+- **research_scope**: Clear boundaries of the research
+- **temporal_scope**: Time period (if relevant)
+- **geographic_scope**: Location boundaries (if relevant)
+- **domain_scope**: Specific field/industry (if relevant)
+
+### Clarification Tracking
+- **assumptions_made**: List each assumption for unresolved ambiguities
+- **ambiguities_resolved**: List what was clarified
+- **ambiguities_remaining**: List what still needs clarification
+- **clarification_coverage**: % of questions answered (0.0-1.0)
+
+### Quality Metrics
+- **specificity_score**: How specific is the result (0=vague, 1=very specific)
+- **confidence_score**: Confidence in transformation quality
+- **transformation_strategy**: Approach used (decomposition/specification/scoping/assumption-based)
+- **transformation_rationale**: Explain the transformation approach
+
+## EXAMPLES WITH CLARIFICATION:
+
+### Example 1: Partial Clarification
+Original: "How does AI work?"
+Assessment: "Too broad - needs domain, application, technical depth"
+Missing: ["Specific AI type", "Application domain", "Technical level"]
+Questions Asked: ["Which AI field?", "What application?", "Technical depth?"]
+User Response: Only answered "Healthcare" for application
+
+Transformation:
+- transformed_query: "How do ML algorithms work in healthcare diagnostics,
+  focusing on neural networks at an intermediate technical level?"
+- assumptions_made: ["AI type: Machine learning/neural networks", "Technical level: Intermediate"]
+- ambiguities_resolved: ["Application domain: Healthcare"]
+- ambiguities_remaining: []
+- supporting_questions: [
+  "What are the key ML algorithms used in healthcare?",
+  "How do neural networks process medical data?",
+  "What are the accuracy rates and limitations?"
+]
+
+### Example 2: No Clarification Responses
+Original: "Best practices for data"
+Assessment: "Vague - needs data type, context, purpose"
+Missing: ["Data type", "Industry/domain", "Specific operation"]
+Questions: All pending
+
+Transformation:
+- transformed_query: "What are best practices for structured data management
+  in software development, focusing on storage, processing, and security?"
+- assumptions_made: [
+  "Data type: Structured/database data",
+  "Domain: Software development",
+  "Focus: Storage, processing, security"
+]
+- ambiguities_resolved: []
+- ambiguities_remaining: ["Specific data format", "Scale requirements"]
+- confidence_score: 0.6 (lower due to assumptions)
 """
 
 
@@ -98,7 +150,7 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
         # Register dynamic instructions
         @self.agent.instructions
         async def add_transformation_context(ctx: RunContext[ResearchDependencies]) -> str:
-            """Inject query transformation context as instructions."""
+            """Inject comprehensive query transformation context as instructions."""
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata
             conversation = metadata.conversation_messages if metadata else []
@@ -106,139 +158,89 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)
 
-            # Access and format clarification data directly from metadata
-            clarification_context = "No clarification context available."
-            if metadata and metadata.clarification.response:
-                clarification_context = self._format_clarification_context(
-                    metadata.clarification.request, metadata.clarification.response
-                )
+            # Build comprehensive clarification context
+            context_parts = self._build_clarification_context(metadata)
 
-            # Use global template with variable substitution
+            # Use enhanced template with all context components
             return QUERY_TRANSFORMATION_SYSTEM_PROMPT_TEMPLATE.format(
                 original_query=query,
                 conversation_context=conversation_context,
-                clarification_context=clarification_context,
+                clarification_assessment=context_parts["assessment"],
+                missing_dimensions=context_parts["missing_dimensions"],
+                clarification_questions=context_parts["questions"],
+                clarification_answers=context_parts["answers"],
             )
 
-        # Register transformation tools
-        @self.agent.tool
-        async def analyze_query_complexity(
-            ctx: RunContext[ResearchDependencies], query: str
-        ) -> dict[str, Any]:
-            """Analyze the complexity of a query.
-
-            Args:
-                query: The query to analyze
-
-            Returns:
-                Dictionary with complexity metrics
-            """
-            words = query.split()
-            return {
-                "word_count": len(words),
-                "estimated_complexity": "high"
-                if len(words) > 50
-                else "medium"
-                if len(words) > 20
-                else "low",
-                "has_multiple_questions": "?" in query and query.count("?") > 1,
-                "has_technical_terms": any(len(word) > 10 for word in words),
-            }
-
-        @self.agent.tool
-        async def extract_key_concepts(
-            ctx: RunContext[ResearchDependencies], text: str
-        ) -> list[str]:
-            """Extract key concepts from text.
-
-            Args:
-                text: The text to analyze
-
-            Returns:
-                List of key concepts
-            """
-
-            words = text.split()
-            concepts = []
-
-            # Look for capitalized words (potential proper nouns)
-            for word in words:
-                if word and word[0].isupper() and word.lower() not in ["the", "a", "an"]:
-                    concepts.append(word)
-
-            # Look for quoted terms
-            quoted = re.findall(r'"([^"]*)"', text)
-            concepts.extend(quoted)
-
-            return list(set(concepts))[:10]
-
-        @self.agent.tool
-        async def get_clarification_responses(
-            ctx: RunContext[ResearchDependencies],
-        ) -> dict[str, str]:
-            """Get clarification questions and responses if available.
-
-            Args:
-                ctx: Run context with dependencies
-
-            Returns:
-                Dictionary mapping questions to responses
-            """
-            metadata = ctx.deps.research_state.metadata
-            if not metadata or not metadata.clarification.response:
-                return {}
-
-            responses = {}
-            if metadata.clarification.request:
-                for question in metadata.clarification.request.questions:
-                    answer = metadata.clarification.response.get_answer_for_question(question.id)
-                    if answer and not answer.skipped:
-                        responses[question.question] = answer.answer
-
-            return responses
-
-    def _format_clarification_context(
-        self, request: ClarificationRequest | None, response: ClarificationResponse | None
-    ) -> str:
-        """Format clarification Q&A pairs for transformation context.
+    def _build_clarification_context(self, metadata: ResearchMetadata | None) -> dict[str, str]:
+        """Build comprehensive clarification context from metadata.
 
         Args:
-            request: Clarification request with questions
-            response: User's responses to clarification
+            metadata: Research metadata containing clarification data
 
         Returns:
-            Formatted string with Q&A pairs
+            Dictionary with formatted context components
         """
-        if not request or not response:
-            return "No clarification context available."
+        default_context = {
+            "assessment": "No clarification assessment available.",
+            "missing_dimensions": "No missing dimensions identified.",
+            "questions": "No clarification questions asked.",
+            "answers": "No user responses provided.",
+        }
 
-        formatted = ["Clarification Q&A:"]
-        for question in request.questions:
-            answer = response.get_answer_for_question(question.id)
-            if answer and not answer.skipped:
-                formatted.append(f"Q: {question.question}")
-                formatted.append(f"A: {answer.answer}")
+        if not metadata or not metadata.clarification:
+            return default_context
 
-        if len(formatted) == 1:  # Only header, no Q&A pairs
-            return "No clarification responses provided."
+        clarification = metadata.clarification
+        context = {}
 
-        return "\n".join(formatted)
+        # Extract assessment and reasoning
+        if clarification.assessment:
+            assessment_text = (
+                clarification.assessment.get("assessment_reasoning") or "Query assessment pending."
+            )
+            context["assessment"] = assessment_text
+        else:
+            context["assessment"] = default_context["assessment"]
 
-    def _format_conversation_context(self, conversation: list[Any]) -> str:
-        """Format conversation history for the prompt."""
-        if not conversation:
-            return "No prior conversation context."
+        # Extract missing dimensions
+        if clarification.assessment and clarification.assessment.get("missing_dimensions"):
+            dimensions = clarification.assessment.get("missing_dimensions", [])
+            context["missing_dimensions"] = "\n".join(f"- {dim}" for dim in dimensions)
+        else:
+            context["missing_dimensions"] = default_context["missing_dimensions"]
 
-        formatted = []
-        for msg in conversation[-3:]:  # Last 3 messages for context
-            if isinstance(msg, dict):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
-                formatted.append(f"{role.capitalize()}: {content}")
+        # Extract questions
+        if clarification.request and clarification.request.questions:
+            questions_text = []
+            for i, q in enumerate(clarification.request.get_sorted_questions(), 1):
+                required = " [REQUIRED]" if q.is_required else " [OPTIONAL]"
+                questions_text.append(f"{i}. {q.question}{required}")
+                if q.context:
+                    questions_text.append(f"   Context: {q.context}")
+                if q.choices:
+                    questions_text.append(f"   Options: {', '.join(q.choices)}")
+            context["questions"] = "\n".join(questions_text)
+        else:
+            context["questions"] = default_context["questions"]
+
+        # Extract answers
+        if clarification.request and clarification.response:
+            answers_text = []
+            for q in clarification.request.get_sorted_questions():
+                answer = clarification.response.get_answer_for_question(q.id)
+                if answer:
+                    if answer.skipped:
+                        answers_text.append(f"Q: {q.question}\nA: [SKIPPED]")
+                    else:
+                        answers_text.append(f"Q: {q.question}\nA: {answer.answer}")
+            if answers_text:
+                context["answers"] = "\n".join(answers_text)
             else:
-                formatted.append(str(msg))
+                context["answers"] = "User provided no responses."
+        else:
+            context["answers"] = default_context["answers"]
 
-        return "Recent Conversation:\n" + "\n".join(formatted)
+        return context
 
     def _get_default_system_prompt(self) -> str:
         """Get the base system prompt for this agent."""

@@ -6,7 +6,6 @@ import logfire
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import RunContext
 
-from src.models.api_models import ConversationMessage
 from src.models.clarification import ClarificationQuestion, ClarificationRequest
 
 from .base import (
@@ -155,32 +154,15 @@ class ClarificationAgent(BaseResearchAgent[ResearchDependencies, ClarifyWithUser
             conversation = metadata.conversation_messages if metadata else []
 
             # Format conversation context for template substitution
-            conversation_context = self._format_conversation_context(conversation, query)
+            # Use base class method with query parameter and 4 messages for clarification
+            conversation_context = self._format_conversation_context(
+                conversation, query, max_messages=4
+            )
 
             # Use global template with variable substitution
             return CLARIFICATION_SYSTEM_PROMPT_TEMPLATE.format(
                 conversation_context=conversation_context
             )
-
-    def _format_conversation_context(
-        self,
-        conversation: list[ConversationMessage],
-        query: str,
-    ) -> str:
-        """Format conversation history for the prompt."""
-        if not conversation:
-            return f"Initial Query: {query}\n(No prior conversation)"
-
-        # Format conversation messages
-        formatted: list[str] = []
-        for msg in conversation:
-            # ConversationMessage is now a BaseModel with attributes
-            role = msg.role
-            content = msg.content
-            formatted.append(f"{role.capitalize()}: {content}")
-
-        context = "\n".join(formatted[-4:])  # Last 4 messages for context
-        return f"Recent Conversation:\n{context}\nCurrent Query: {query}"
 
     def _get_output_type(self) -> type[ClarifyWithUser]:
         """Get the output type for this agent."""

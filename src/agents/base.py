@@ -293,6 +293,49 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
 
         self.status = AgentStatus.IDLE
 
+    def _format_conversation_context(
+        self, conversation: list[Any], query: str | None = None, max_messages: int = 3
+    ) -> str:
+        """Format conversation history for the prompt.
+
+        This consolidated method handles both dict and BaseModel message formats.
+
+        Args:
+            conversation: List of conversation messages (dict or BaseModel)
+            query: Optional current query to append
+            max_messages: Maximum number of recent messages to include
+
+        Returns:
+            Formatted conversation context string
+        """
+        if not conversation:
+            if query:
+                return f"Initial Query: {query}\n(No prior conversation)"
+            return "No prior conversation context."
+
+        formatted = []
+        # Take the last N messages
+        recent_messages = conversation[-max_messages:]
+
+        for msg in recent_messages:
+            # Extract role and content uniformly from any message format
+            try:
+                # Try dict-style access first, fall back to attribute access
+                role = (msg.get("role") if isinstance(msg, dict) else msg.role) or "unknown"
+                content = (msg.get("content") if isinstance(msg, dict) else msg.content) or ""
+                formatted.append(f"{str(role).capitalize()}: {str(content)}")
+            except (AttributeError, TypeError, KeyError):
+                # Fallback for unknown formats
+                formatted.append(str(msg))
+
+        result = "Recent Conversation:\n" + "\n".join(formatted)
+
+        # Append current query if provided (for clarification agent)
+        if query:
+            result += f"\nCurrent Query: {query}"
+
+        return result
+
     @abstractmethod
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for this agent."""

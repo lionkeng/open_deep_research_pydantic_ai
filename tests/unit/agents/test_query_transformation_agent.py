@@ -11,12 +11,18 @@ from src.agents.query_transformation import QueryTransformationAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
 from src.models.query_transformation import TransformedQuery
 from src.models.api_models import APIKeys
+from src.models.core import ResearchState, ResearchStage
+from src.models.metadata import ResearchMetadata, ClarificationMetadata
+from src.models.clarification import (
+    ClarificationRequest, ClarificationResponse,
+    ClarificationQuestion, ClarificationAnswer
+)
 
 class TestQueryTransformationAgent:
     """Test suite for QueryTransformationAgent."""
 
     @pytest.fixture
-    async def agent_dependencies(self):
+    def agent_dependencies(self):
         """Create mock dependencies for testing."""
         deps = ResearchDependencies(
             http_client=AsyncMock(),
@@ -26,9 +32,9 @@ class TestQueryTransformationAgent:
                 user_id="test-user",
                 session_id="test-session",
                 user_query="How does machine learning work?",
-                current_stage=ResearchStage.CLARIFICATION
+                current_stage=ResearchStage.CLARIFICATION,
+                metadata=ResearchMetadata()
             ),
-            metadata=ResearchMetadata(),
             usage=None
         )
         return deps
@@ -43,8 +49,7 @@ class TestQueryTransformationAgent:
             timeout_seconds=30.0,
             temperature=0.7
         )
-        agent = QueryTransformationAgent(config=config)
-        agent._deps = agent_dependencies
+        agent = QueryTransformationAgent(config=config, dependencies=agent_dependencies)
         return agent
 
     @pytest.mark.asyncio
@@ -59,7 +64,7 @@ class TestQueryTransformationAgent:
     async def test_simple_query_transformation(self, transformation_agent, agent_dependencies):
         """Test transformation of simple queries."""
         mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
+        mock_result.output = TransformedQuery(
             original_query="How does machine learning work?",
             transformed_query="Explain the fundamental principles, algorithms, and applications of machine learning",
             supporting_questions=[
@@ -67,214 +72,254 @@ class TestQueryTransformationAgent:
                 "How do neural networks learn from data?",
                 "What are common machine learning algorithms?"
             ],
+            search_keywords=["machine learning", "neural networks", "algorithms"],
+            research_scope="Machine learning fundamentals and applications",
+            expected_output_type="comprehensive explanation",
             transformation_rationale="Expanded query to cover key aspects of machine learning",
             specificity_score=0.8,
-            missing_dimensions=[],
-            clarification_responses={},
-            transformation_metadata={"expansion_type": "comprehensive"}
+            confidence_score=0.85,
+            assumptions_made=[],
+            ambiguities_resolved=[],
+            ambiguities_remaining=[]
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
+            result = await transformation_agent.run(deps=agent_dependencies)
 
             assert isinstance(result, TransformedQuery)
             assert len(result.transformed_query) > len(result.original_query)
-            assert len(result.supporting_questions) > 0
+            assert len(result.supporting_questions) >= 3
             assert result.specificity_score > 0.7
 
     @pytest.mark.asyncio
-    async def test_complex_query_transformation(self, transformation_agent, agent_dependencies):
-        """Test transformation of complex multi-part queries."""
-        agent_dependencies.research_state.user_query = "Compare AI vs ML vs DL in terms of applications, performance, and future potential"
+    async def test_transformation_with_clarification(self, transformation_agent, agent_dependencies):
+        """Test transformation using clarification data."""
+        # Setup clarification in metadata
+        questions = [
+            ClarificationQuestion(
+                question="What aspect of ML interests you?",
+                is_required=True,
+                question_type="choice",
+                choices=["Algorithms", "Applications", "Theory"]
+            )
+        ]
+        request = ClarificationRequest(questions=questions)
+
+        answers = [
+            ClarificationAnswer(
+                question_id=questions[0].id,
+                answer="Applications",
+                skipped=False
+            )
+        ]
+        response = ClarificationResponse(
+            request_id="test-456",
+            answers=answers
+        )
+
+        agent_dependencies.research_state.metadata.clarification = ClarificationMetadata(
+            assessment={
+                "assessment_reasoning": "Query needs focus area specification",
+                "missing_dimensions": ["specific domain", "technical depth"]
+            },
+            request=request,
+            response=response
+        )
 
         mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
-            original_query="Compare AI vs ML vs DL in terms of applications, performance, and future potential",
-            transformed_query="Comprehensive comparison of Artificial Intelligence, Machine Learning, and Deep Learning across applications, performance metrics, and future potential",
+        mock_result.output = TransformedQuery(
+            original_query="How does machine learning work?",
+            transformed_query="How are machine learning applications implemented in real-world scenarios",
             supporting_questions=[
-                "What are the key differences between AI, ML, and DL?",
-                "Which applications are best suited for each approach?",
-                "How do they compare in terms of computational requirements?",
-                "What are the future trends for each technology?"
+                "What are common ML applications in industry?",
+                "How to implement ML models in production?",
+                "What are best practices for ML deployment?"
             ],
-            transformation_rationale="Structured comparison query with clear dimensions",
+            search_keywords=["ML applications", "deployment", "production"],
+            research_scope="Machine learning applications and implementation",
+            expected_output_type="practical guide",
+            transformation_rationale="Focused on applications based on clarification",
             specificity_score=0.9,
-            missing_dimensions=["timeline", "industry focus"],
-            clarification_responses={},
-            transformation_metadata={"query_type": "comparison", "entities": 3}
+            confidence_score=0.95,
+            clarification_coverage=1.0,
+            assumptions_made=[],
+            ambiguities_resolved=["Focus area: Applications"],
+            ambiguities_remaining=[]
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
+            result = await transformation_agent.run(deps=agent_dependencies)
 
-            assert result.specificity_score > 0.85
-            assert len(result.supporting_questions) >= 3
-            assert "comparison" in result.transformation_metadata.get("query_type", "")
+            assert result.clarification_coverage == 1.0
+            assert len(result.ambiguities_resolved) > 0
+            assert result.confidence_score > 0.9
 
     @pytest.mark.asyncio
     async def test_vague_query_transformation(self, transformation_agent, agent_dependencies):
         """Test transformation of vague queries."""
-        agent_dependencies.research_state.user_query = "Tell me about technology"
+        agent_dependencies.research_state.user_query = "Tell me about stuff"
 
         mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
-            original_query="Tell me about technology",
-            transformed_query="Overview of current technology trends including AI, cloud computing, IoT, and emerging technologies",
+        mock_result.output = TransformedQuery(
+            original_query="Tell me about stuff",
+            transformed_query="Provide general information about common topics of interest",
             supporting_questions=[
-                "What are the most impactful technologies today?",
-                "How is technology changing various industries?",
-                "What emerging technologies show the most promise?"
+                "What are popular educational topics?",
+                "What information is commonly requested?",
+                "What are trending subjects?"
             ],
-            transformation_rationale="Query too broad, focused on current trends and impacts",
-            specificity_score=0.4,
-            missing_dimensions=["specific area", "timeframe", "application domain"],
-            clarification_responses={},
-            transformation_metadata={"needs_refinement": True}
+            search_keywords=["general information", "topics"],
+            research_scope="General knowledge overview",
+            expected_output_type="summary",
+            transformation_rationale="Query too vague - made assumptions about general interest",
+            specificity_score=0.3,
+            confidence_score=0.4,
+            assumptions_made=["User wants general educational content", "Focus on popular topics"],
+            ambiguities_resolved=[],
+            ambiguities_remaining=["Specific topic area", "Depth of information needed"]
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
+            result = await transformation_agent.run(deps=agent_dependencies)
 
             assert result.specificity_score < 0.5
-            assert len(result.missing_dimensions) > 0
-            assert result.transformation_metadata.get("needs_refinement") is True
-
-    @pytest.mark.asyncio
-    async def test_query_with_temporal_context(self, transformation_agent, agent_dependencies):
-        """Test transformation of queries with time context."""
-        agent_dependencies.research_state.user_query = "Latest developments in quantum computing 2024"
-
-        mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
-            original_query="Latest developments in quantum computing 2024",
-            transformed_query="Recent breakthroughs and developments in quantum computing technology during 2024",
-            supporting_questions=[
-                "What quantum computing milestones were achieved in 2024?",
-                "Which companies made significant quantum advances?",
-                "What are the practical applications emerging?"
-            ],
-            transformation_rationale="Focused on 2024 timeframe with emphasis on practical developments",
-            specificity_score=0.85,
-            missing_dimensions=[],
-            clarification_responses={},
-            transformation_metadata={"temporal_focus": "2024", "domain": "quantum_computing"}
-        )
-
-        with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
-
-            assert "2024" in result.transformation_metadata.get("temporal_focus", "")
-            assert result.specificity_score > 0.8
+            assert len(result.assumptions_made) > 0
+            assert len(result.ambiguities_remaining) > 0
 
     @pytest.mark.asyncio
     async def test_supporting_questions_generation(self, transformation_agent, agent_dependencies):
-        """Test generation of supporting questions."""
+        """Test that supporting questions are properly generated."""
         mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
-            original_query="How to implement neural networks?",
-            transformed_query="Step-by-step guide to implementing neural networks from scratch",
+        mock_result.output = TransformedQuery(
+            original_query="How to build a web app?",
+            transformed_query="Step-by-step guide to building modern web applications",
             supporting_questions=[
-                "What are the mathematical foundations needed?",
-                "Which programming languages and frameworks to use?",
-                "How to handle data preprocessing?",
-                "How to optimize network architecture?",
-                "How to evaluate model performance?"
+                "What technology stack to choose?",
+                "How to set up the development environment?",
+                "What are best practices for web development?",
+                "How to deploy web applications?"
             ],
-            transformation_rationale="Practical implementation focus",
-            specificity_score=0.75,
-            missing_dimensions=["specific use case"],
-            clarification_responses={},
-            transformation_metadata={"focus": "implementation"}
+            search_keywords=["web development", "deployment", "frameworks"],
+            research_scope="Full-stack web development",
+            expected_output_type="tutorial",
+            transformation_rationale="Expanded to comprehensive web development guide",
+            specificity_score=0.7,
+            confidence_score=0.8,
+            assumptions_made=["Modern web technologies", "Full-stack coverage"],
+            ambiguities_resolved=[],
+            ambiguities_remaining=[]
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
+            result = await transformation_agent.run(deps=agent_dependencies)
 
             assert len(result.supporting_questions) >= 3
-            assert all(isinstance(q, str) and len(q) > 0 for q in result.supporting_questions)
+            assert len(result.supporting_questions) <= 5
+            # Validator should ensure 3-5 questions
+            assert all(isinstance(q, str) for q in result.supporting_questions)
 
     @pytest.mark.asyncio
-    async def test_edge_case_empty_query(self, transformation_agent, agent_dependencies):
-        """Test handling of empty query."""
-        agent_dependencies.research_state.user_query = ""
-
+    async def test_search_keywords_extraction(self, transformation_agent, agent_dependencies):
+        """Test keyword extraction for search."""
         mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
-            original_query="",
-            transformed_query="",
-            supporting_questions=[],
-            transformation_rationale="No query provided",
-            specificity_score=0.0,
-            missing_dimensions=["query"],
-            clarification_responses={},
-            transformation_metadata={"error": "empty_query"}
+        mock_result.output = TransformedQuery(
+            original_query="Python async programming best practices",
+            transformed_query="Comprehensive guide to Python asynchronous programming patterns and best practices",
+            supporting_questions=[
+                "What is asyncio and how does it work?",
+                "Common async patterns in Python?",
+                "Performance considerations for async code?"
+            ],
+            search_keywords=[
+                "python", "asyncio", "async", "await",
+                "coroutines", "event loop", "concurrency"
+            ],
+            research_scope="Python async programming",
+            expected_output_type="technical guide",
+            transformation_rationale="Focused on Python async best practices",
+            specificity_score=0.85,
+            confidence_score=0.9,
+            assumptions_made=[],
+            ambiguities_resolved=[],
+            ambiguities_remaining=[]
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
+            result = await transformation_agent.run(deps=agent_dependencies)
 
-            assert result.specificity_score == 0.0
-            assert result.transformation_metadata.get("error") == "empty_query"
+            assert len(result.search_keywords) >= 3
+            assert len(result.search_keywords) <= 10
+            assert all(isinstance(k, str) for k in result.search_keywords)
+
+    @pytest.mark.asyncio
+    async def test_scope_definition(self, transformation_agent, agent_dependencies):
+        """Test scope fields population."""
+        agent_dependencies.research_state.user_query = "COVID-19 impact on tech industry in 2020"
+
+        mock_result = MagicMock()
+        mock_result.output = TransformedQuery(
+            original_query="COVID-19 impact on tech industry in 2020",
+            transformed_query="Analysis of COVID-19 pandemic effects on technology sector during 2020",
+            supporting_questions=[
+                "How did remote work affect tech companies?",
+                "What was the financial impact on tech stocks?",
+                "Which tech sectors grew during the pandemic?"
+            ],
+            search_keywords=["COVID-19", "technology", "2020", "pandemic", "remote work"],
+            research_scope="Technology industry pandemic impact analysis",
+            temporal_scope="2020",
+            geographic_scope="Global",
+            domain_scope="Technology industry",
+            expected_output_type="analytical report",
+            transformation_rationale="Structured analysis of pandemic impact",
+            specificity_score=0.9,
+            confidence_score=0.95,
+            assumptions_made=[],
+            ambiguities_resolved=[],
+            ambiguities_remaining=[]
+        )
+
+        with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
+            result = await transformation_agent.run(deps=agent_dependencies)
+
+            assert result.temporal_scope == "2020"
+            assert result.geographic_scope == "Global"
+            assert result.domain_scope == "Technology industry"
 
     @pytest.mark.asyncio
     async def test_error_handling(self, transformation_agent, agent_dependencies):
         """Test error handling during transformation."""
         with patch.object(transformation_agent.agent, 'run', side_effect=Exception("Transformation failed")):
             with pytest.raises(Exception, match="Transformation failed"):
-                await transformation_agent.execute(agent_dependencies)
+                await transformation_agent.run(deps=agent_dependencies)
 
     @pytest.mark.asyncio
-    async def test_specificity_score_calculation(self, transformation_agent, agent_dependencies):
-        """Test that specificity scores are properly calculated."""
-        test_cases = [
-            ("What is X?", 0.6),  # Simple what query
-            ("How does X work in Y context during Z timeframe?", 0.9),  # Very specific
-            ("Things", 0.1),  # Extremely vague
-            ("Compare A, B, and C across dimensions D, E, F", 0.85)  # Structured comparison
-        ]
-
-        for query, expected_score_range in test_cases:
-            agent_dependencies.research_state.user_query = query
-
-            mock_result = MagicMock()
-            mock_result.data = TransformedQuery(
-                original_query=query,
-                transformed_query=f"Transformed: {query}",
-                supporting_questions=["Q1", "Q2"],
-                transformation_rationale="Test",
-                specificity_score=expected_score_range,
-                missing_dimensions=[],
-                clarification_responses={},
-                transformation_metadata={}
-            )
-
-            with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-                result = await transformation_agent.execute(agent_dependencies)
-                assert 0.0 <= result.specificity_score <= 1.0
-
-    @pytest.mark.asyncio
-    async def test_clarification_responses_integration(self, transformation_agent, agent_dependencies):
-        """Test integration of clarification responses."""
-        agent_dependencies.research_state.user_query = "Machine learning applications"
-
-        mock_result = MagicMock()
-        mock_result.data = TransformedQuery(
-            original_query="Machine learning applications",
-            transformed_query="Machine learning applications in healthcare for diagnostic imaging",
-            supporting_questions=["What ML models are used?", "What are accuracy rates?"],
-            transformation_rationale="User clarified interest in healthcare diagnostics",
-            specificity_score=0.9,
-            missing_dimensions=[],
-            clarification_responses={
-                "domain": "healthcare",
-                "specific_area": "diagnostic imaging"
-            },
-            transformation_metadata={"clarifications_applied": True}
+    async def test_model_validators(self):
+        """Test TransformedQuery model validators."""
+        # Test supporting questions validator
+        query = TransformedQuery(
+            original_query="test",
+            transformed_query="expanded test",
+            supporting_questions=["Q1", "Q2"],  # Less than 3
+            search_keywords=["test"],
+            research_scope="test scope",
+            expected_output_type="test",
+            transformation_rationale="test",
+            confidence_score=0.5
         )
+        # Validator should pad to 3 questions
+        assert len(query.supporting_questions) == 3
 
-        with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.execute(agent_dependencies)
-
-            assert len(result.clarification_responses) > 0
-            assert result.clarification_responses.get("domain") == "healthcare"
-            assert result.specificity_score > 0.85
+        # Test coherence validator
+        query2 = TransformedQuery(
+            original_query="test",
+            transformed_query="test",  # Same as original
+            supporting_questions=["Q1", "Q2", "Q3"],
+            search_keywords=["test"],
+            research_scope="test scope",
+            expected_output_type="test",
+            transformation_rationale="test",
+            confidence_score=0.9  # High confidence despite no transformation
+        )
+        # Validator should reduce confidence
+        assert query2.confidence_score == 0.5
