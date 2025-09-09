@@ -3,21 +3,20 @@ Integration tests for agent pipeline data flow and interactions.
 """
 
 import asyncio
-import pytest
-import pytest_asyncio
-from typing import Dict, Any, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.agents.factory import AgentFactory, AgentType
+import pytest
+import pytest_asyncio
+
 from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
+from src.agents.factory import AgentFactory, AgentType
 from src.models.api_models import APIKeys
-from src.models.query_transformation import TransformedQuery
-from src.models.research_plan_models import ResearchPlan, ResearchObjective
-from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource
 from src.models.compression import CompressedContent
-from src.models.report_generator import ResearchReport, ReportSection
+from src.models.core import ResearchStage, ResearchState
+from src.models.metadata import ResearchMetadata
+from src.models.report_generator import ReportSection, ResearchReport
+from src.models.research_executor import ResearchFinding, ResearchResults, ResearchSource
+from src.models.research_plan_models import TransformedQuery
 
 
 class TestAgentPipelineIntegration:
@@ -35,9 +34,9 @@ class TestAgentPipelineIntegration:
                 session_id="test-session",
                 user_query="Research the impact of AI on healthcare",
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             ),
-            usage=None
+            usage=None,
         )
 
     @pytest.mark.asyncio
@@ -45,21 +44,21 @@ class TestAgentPipelineIntegration:
         """Test data flow from clarification to query transformation."""
         # Create agents
         clarification_agent = AgentFactory.create_agent(
-            AgentType.CLARIFICATION,
-            pipeline_dependencies
+            AgentType.CLARIFICATION, pipeline_dependencies
         )
         transformation_agent = AgentFactory.create_agent(
-            AgentType.QUERY_TRANSFORMATION,
-            pipeline_dependencies
+            AgentType.QUERY_TRANSFORMATION, pipeline_dependencies
         )
 
         # Mock clarification output
         clarification_result = MagicMock()
         clarification_result.clarification_needed = False
-        clarification_result.transformed_query = "AI applications in healthcare diagnostics and treatment"
+        clarification_result.transformed_query = (
+            "AI applications in healthcare diagnostics and treatment"
+        )
         clarification_result.confidence_score = 0.9
 
-        with patch.object(clarification_agent, 'run') as mock_run:
+        with patch.object(clarification_agent, "run") as mock_run:
             mock_run.return_value = clarification_result
             # Execute clarification
             clarified = await clarification_agent.run(pipeline_dependencies)
@@ -73,15 +72,18 @@ class TestAgentPipelineIntegration:
             transformation_result = TransformedQuery(
                 original_query=clarified.transformed_query,
                 transformed_query="Comprehensive analysis of AI in healthcare focusing on diagnostics and treatment",
-                supporting_questions=["How is AI used in medical imaging?", "What are AI treatment recommendations?"],
+                supporting_questions=[
+                    "How is AI used in medical imaging?",
+                    "What are AI treatment recommendations?",
+                ],
                 transformation_rationale="Expanded query for comprehensive research",
                 specificity_score=0.85,
                 missing_dimensions=[],
                 clarification_responses={},
-                transformation_metadata={}
+                transformation_metadata={},
             )
 
-            with patch.object(transformation_agent, 'run') as mock_transform_run:
+            with patch.object(transformation_agent, "run") as mock_transform_run:
                 mock_transform_run.return_value = transformation_result
                 # Execute transformation
                 transformed = await transformation_agent.run(pipeline_dependencies)
@@ -90,19 +92,14 @@ class TestAgentPipelineIntegration:
                 assert transformed.original_query == clarified.transformed_query
                 assert transformed.specificity_score > 0.8
 
-
     @pytest.mark.asyncio
     async def test_research_to_compression_flow(self, pipeline_dependencies):
         """Test data flow from research execution to compression."""
         # Create agents
         research_agent = AgentFactory.create_agent(
-            AgentType.RESEARCH_EXECUTOR,
-            pipeline_dependencies
+            AgentType.RESEARCH_EXECUTOR, pipeline_dependencies
         )
-        compression_agent = AgentFactory.create_agent(
-            AgentType.COMPRESSION,
-            pipeline_dependencies
-        )
+        compression_agent = AgentFactory.create_agent(AgentType.COMPRESSION, pipeline_dependencies)
 
         # Mock research output
         research_result = ResearchResults(
@@ -116,26 +113,30 @@ class TestAgentPipelineIntegration:
                         url="https://example.com",
                         publish_date="2024-01-01",
                         author="Researchers",
-                        credibility_score=0.95
+                        credibility_score=0.95,
                     ),
                     relevance_score=0.9,
                     key_insights=["Accuracy improvement"],
                     supporting_evidence=["Study data"],
-                    contradictions=[]
+                    contradictions=[],
                 )
-            ] * 10,  # Multiple findings for compression
+            ]
+            * 10,  # Multiple findings for compression
             total_sources_consulted=20,
             search_strategies_used=["academic"],
             confidence_score=0.88,
-            execution_metadata={}
+            execution_metadata={},
         )
 
-        with patch.object(research_agent, 'run', return_value=research_result):
+        with patch.object(research_agent, "run", return_value=research_result):
             research = await research_agent.run(pipeline_dependencies)
 
             # Pass findings to compression
             pipeline_dependencies.metadata.additional_context = {
-                "findings": [f.model_dump() if hasattr(f, 'model_dump') else f.__dict__ for f in research.findings]
+                "findings": [
+                    f.model_dump() if hasattr(f, "model_dump") else f.__dict__
+                    for f in research.findings
+                ]
             }
 
             # Mock compression output
@@ -148,10 +149,10 @@ class TestAgentPipelineIntegration:
                 themes={"diagnostics": ["accuracy", "efficiency"]},
                 preserved_details=["Key statistics"],
                 confidence_score=0.85,
-                metadata={}
+                metadata={},
             )
 
-            with patch.object(compression_agent, 'run', return_value=compression_result):
+            with patch.object(compression_agent, "run", return_value=compression_result):
                 compressed = await compression_agent.run(pipeline_dependencies)
 
                 # Verify compression
@@ -162,14 +163,8 @@ class TestAgentPipelineIntegration:
     async def test_compression_to_report_generation_flow(self, pipeline_dependencies):
         """Test data flow from compression to report generation."""
         # Create agents
-        compression_agent = AgentFactory.create_agent(
-            AgentType.COMPRESSION,
-            pipeline_dependencies
-        )
-        report_agent = AgentFactory.create_agent(
-            AgentType.REPORT_GENERATOR,
-            pipeline_dependencies
-        )
+        compression_agent = AgentFactory.create_agent(AgentType.COMPRESSION, pipeline_dependencies)
+        report_agent = AgentFactory.create_agent(AgentType.REPORT_GENERATOR, pipeline_dependencies)
 
         # Mock compression output
         compression_result = CompressedContent(
@@ -181,17 +176,17 @@ class TestAgentPipelineIntegration:
             themes={"theme1": ["detail1"], "theme2": ["detail2"]},
             preserved_details=["Critical finding"],
             confidence_score=0.85,
-            metadata={}
+            metadata={},
         )
 
-        with patch.object(compression_agent, 'run', return_value=compression_result):
+        with patch.object(compression_agent, "run", return_value=compression_result):
             compressed = await compression_agent.run(pipeline_dependencies)
 
             # Pass compressed data to report generation
             pipeline_dependencies.metadata.additional_context = {
                 "summary": compressed.summary,
                 "key_points": compressed.key_points,
-                "themes": compressed.themes
+                "themes": compressed.themes,
             }
 
             # Mock report generation
@@ -205,7 +200,7 @@ class TestAgentPipelineIntegration:
                         content=f"Analysis of {theme}",
                         subsections=[],
                         key_findings=compressed.key_points[:2],
-                        citations=[]
+                        citations=[],
                     )
                     for theme in compressed.themes.keys()
                 ],
@@ -216,10 +211,10 @@ class TestAgentPipelineIntegration:
                 future_work=["Future research"],
                 appendices=[],
                 citations=[],
-                metadata={}
+                metadata={},
             )
 
-            with patch.object(report_agent, 'run', return_value=report_result):
+            with patch.object(report_agent, "run", return_value=report_result):
                 report = await report_agent.run(pipeline_dependencies)
 
                 # Verify report incorporates compressed data
@@ -230,11 +225,21 @@ class TestAgentPipelineIntegration:
     async def test_full_pipeline_execution(self, pipeline_dependencies):
         """Test complete pipeline from clarification to report."""
         agents = {
-            AgentType.CLARIFICATION: AgentFactory.create_agent(AgentType.CLARIFICATION, pipeline_dependencies),
-            AgentType.QUERY_TRANSFORMATION: AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, pipeline_dependencies),
-            AgentType.RESEARCH_EXECUTOR: AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, pipeline_dependencies),
-            AgentType.COMPRESSION: AgentFactory.create_agent(AgentType.COMPRESSION, pipeline_dependencies),
-            AgentType.REPORT_GENERATOR: AgentFactory.create_agent(AgentType.REPORT_GENERATOR, pipeline_dependencies),
+            AgentType.CLARIFICATION: AgentFactory.create_agent(
+                AgentType.CLARIFICATION, pipeline_dependencies
+            ),
+            AgentType.QUERY_TRANSFORMATION: AgentFactory.create_agent(
+                AgentType.QUERY_TRANSFORMATION, pipeline_dependencies
+            ),
+            AgentType.RESEARCH_EXECUTOR: AgentFactory.create_agent(
+                AgentType.RESEARCH_EXECUTOR, pipeline_dependencies
+            ),
+            AgentType.COMPRESSION: AgentFactory.create_agent(
+                AgentType.COMPRESSION, pipeline_dependencies
+            ),
+            AgentType.REPORT_GENERATOR: AgentFactory.create_agent(
+                AgentType.REPORT_GENERATOR, pipeline_dependencies
+            ),
         }
 
         # Track execution order
@@ -247,7 +252,7 @@ class TestAgentPipelineIntegration:
 
         # Mock all agent executions
         for agent_type, agent in agents.items():
-            with patch.object(agent, 'run', side_effect=lambda deps, at=agent_type: mock_run(at)):
+            with patch.object(agent, "run", side_effect=lambda deps, at=agent_type: mock_run(at)):
                 pass
 
         # Execute pipeline
@@ -256,7 +261,7 @@ class TestAgentPipelineIntegration:
             AgentType.QUERY_TRANSFORMATION,
             AgentType.RESEARCH_EXECUTOR,
             AgentType.COMPRESSION,
-            AgentType.REPORT_GENERATOR
+            AgentType.REPORT_GENERATOR,
         ]:
             await agents[agent_type].run(pipeline_dependencies)
 
@@ -268,16 +273,12 @@ class TestAgentPipelineIntegration:
         """Test error propagation through the pipeline."""
         # Create agents
         research_agent = AgentFactory.create_agent(
-            AgentType.RESEARCH_EXECUTOR,
-            pipeline_dependencies
+            AgentType.RESEARCH_EXECUTOR, pipeline_dependencies
         )
-        compression_agent = AgentFactory.create_agent(
-            AgentType.COMPRESSION,
-            pipeline_dependencies
-        )
+        compression_agent = AgentFactory.create_agent(AgentType.COMPRESSION, pipeline_dependencies)
 
         # Mock research failure
-        with patch.object(research_agent, 'run', side_effect=Exception("Research failed")):
+        with patch.object(research_agent, "run", side_effect=Exception("Research failed")):
             with pytest.raises(Exception, match="Research failed"):
                 await research_agent.run(pipeline_dependencies)
 
@@ -291,10 +292,10 @@ class TestAgentPipelineIntegration:
                 themes={},
                 preserved_details=[],
                 confidence_score=0.0,
-                metadata={"error": "upstream_failure"}
+                metadata={"error": "upstream_failure"},
             )
 
-            with patch.object(compression_agent, 'run', return_value=compression_result):
+            with patch.object(compression_agent, "run", return_value=compression_result):
                 result = await compression_agent.run(pipeline_dependencies)
                 assert result.metadata.get("error") == "upstream_failure"
 
@@ -305,18 +306,19 @@ class TestAgentPipelineIntegration:
         initial_context = {
             "user_preference": "technical_detail",
             "domain": "healthcare",
-            "urgency": "high"
+            "urgency": "high",
         }
         pipeline_dependencies.metadata.additional_context = initial_context.copy()
 
         # Create agents
         agents = [
             AgentFactory.create_agent(AgentType.CLARIFICATION, pipeline_dependencies),
-            AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, pipeline_dependencies)
+            AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, pipeline_dependencies),
         ]
 
         # Mock executions that preserve and add to context
         for i, agent in enumerate(agents):
+
             async def mock_run_with_context(deps, agent_num=i):
                 # Verify initial context is preserved
                 assert deps.metadata.additional_context["user_preference"] == "technical_detail"
@@ -326,11 +328,14 @@ class TestAgentPipelineIntegration:
                 deps.metadata.additional_context[f"agent_{agent_num}_processed"] = True
                 return MagicMock()
 
-            with patch.object(agent, 'run', side_effect=mock_run_with_context):
+            with patch.object(agent, "run", side_effect=mock_run_with_context):
                 await agent.run(pipeline_dependencies)
 
         # Verify all context is preserved
-        assert pipeline_dependencies.metadata.additional_context["user_preference"] == "technical_detail"
+        assert (
+            pipeline_dependencies.metadata.additional_context["user_preference"]
+            == "technical_detail"
+        )
         assert all(
             f"agent_{i}_processed" in pipeline_dependencies.metadata.additional_context
             for i in range(2)
@@ -343,7 +348,7 @@ class TestAgentPipelineIntegration:
         agents = [
             AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, pipeline_dependencies),
             AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, pipeline_dependencies),
-            AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, pipeline_dependencies)
+            AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, pipeline_dependencies),
         ]
 
         execution_times = []
