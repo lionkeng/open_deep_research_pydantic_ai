@@ -6,14 +6,7 @@ from typing import Any
 import httpx
 import logfire
 
-from agents import (
-    compression_agent,
-    query_transformation_agent,
-    report_generator_agent,
-    research_executor_agent,
-)
 from agents.base import ResearchDependencies
-from agents.clarification import clarification_agent
 from agents.factory import AgentFactory, AgentType
 from core.events import (
     emit_error,
@@ -181,70 +174,33 @@ class ResearchWorkflow:
     ) -> Any:
         """Run an agent with circuit breaker protection."""
         agent_config = self.agent_configs.get(agent_type, {})
-        config = agent_config.get("config", self.circuit_breaker.config)
 
         try:
-            # Get the agent instance
-            agent = self.agent_factory.get_agent(agent_type)
+            # Create the agent instance from factory
+            agent = self.agent_factory.create_agent(agent_type, deps, None)
 
             # Run with appropriate method based on agent type
             if agent_type == AgentType.CLARIFICATION:
                 # Run clarification agent
-                result = await clarification_agent.analyze_query(
-                    deps.research_state.user_query, deps
-                )
+                result = await agent.run(deps)
             elif agent_type == AgentType.QUERY_TRANSFORMATION:
                 # Run query transformation to get EnhancedTransformedQuery
-                result = await query_transformation_agent.transform_query(
-                    deps.research_state.user_query,
-                    deps.research_state.metadata.clarification
-                    if deps.research_state.metadata
-                    else None,
-                )
+                result = await agent.run(deps)
             elif agent_type == AgentType.RESEARCH_EXECUTOR:
                 # Extract SearchQueryBatch from transformed query
                 enhanced_query = deps.research_state.metadata.query.enhanced_query
                 if enhanced_query and hasattr(enhanced_query, "search_queries"):
-                    result = await research_executor_agent.execute(
-                        deps.research_state,
-                        enhanced_query.search_queries,  # Pass SearchQueryBatch directly
-                    )
+                    result = await agent.run(deps)
                 else:
                     raise ValueError("No search queries available for research execution")
             elif agent_type == AgentType.COMPRESSION:
                 # Get research plan from transformed query
                 enhanced_query = deps.research_state.metadata.query.enhanced_query
-                if enhanced_query and hasattr(enhanced_query, "research_plan"):
-                    result = await compression_agent.compress_findings(
-                        deps.research_state.findings,
-                        enhanced_query.research_plan,
-                        deps,
-                    )
-                else:
-                    # Fallback compression without plan
-                    result = await compression_agent.compress_findings(
-                        deps.research_state.findings,
-                        None,
-                        deps,
-                    )
+                result = await agent.run(deps)
             elif agent_type == AgentType.REPORT_GENERATOR:
                 # Get research plan from transformed query
                 enhanced_query = deps.research_state.metadata.query.enhanced_query
-                if enhanced_query and hasattr(enhanced_query, "research_plan"):
-                    result = await report_generator_agent.generate_report(
-                        enhanced_query.research_plan,
-                        deps.research_state.findings,
-                        deps.research_state.compressed_findings,
-                        deps,
-                    )
-                else:
-                    # Fallback report generation
-                    result = await report_generator_agent.generate_report(
-                        None,
-                        deps.research_state.findings,
-                        deps.research_state.compressed_findings,
-                        deps,
-                    )
+                result = await agent.run(deps)
             else:
                 raise ValueError(f"Unknown agent type: {agent_type}")
 

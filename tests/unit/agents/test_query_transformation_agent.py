@@ -1,15 +1,12 @@
-"""
-Comprehensive tests for the QueryTransformationAgent.
-"""
+"""Unit tests for QueryTransformationAgent with EnhancedTransformedQuery."""
 
-import asyncio
+import uuid
 import pytest
-from typing import List
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.query_transformation import QueryTransformationAgent
 from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.query_transformation import TransformedQuery
 from src.models.api_models import APIKeys
 from src.models.core import ResearchState, ResearchStage
 from src.models.metadata import ResearchMetadata, ClarificationMetadata
@@ -17,9 +14,22 @@ from src.models.clarification import (
     ClarificationRequest, ClarificationResponse,
     ClarificationQuestion, ClarificationAnswer
 )
+from src.models.research_plan_models import (
+    EnhancedTransformedQuery,
+    ResearchPlan,
+    ResearchObjective,
+    ResearchMethodology
+)
+from src.models.search_query_models import (
+    SearchQuery,
+    SearchQueryBatch,
+    SearchQueryType,
+    ExecutionStrategy
+)
+
 
 class TestQueryTransformationAgent:
-    """Test suite for QueryTransformationAgent."""
+    """Test suite for QueryTransformationAgent with new architecture."""
 
     @pytest.fixture
     def agent_dependencies(self):
@@ -46,8 +56,7 @@ class TestQueryTransformationAgent:
             agent_name="query_transformation",
             agent_type="transformation",
             max_retries=3,
-            timeout_seconds=30.0,
-            temperature=0.7
+            timeout=30.0
         )
         agent = QueryTransformationAgent(config=config, dependencies=agent_dependencies)
         return agent
@@ -61,39 +70,163 @@ class TestQueryTransformationAgent:
         assert agent.config is not None
 
     @pytest.mark.asyncio
-    async def test_simple_query_transformation(self, transformation_agent, agent_dependencies):
-        """Test transformation of simple queries."""
-        mock_result = MagicMock()
-        mock_result.output = TransformedQuery(
-            original_query="How does machine learning work?",
-            transformed_query="Explain the fundamental principles, algorithms, and applications of machine learning",
-            supporting_questions=[
-                "What are the main types of machine learning?",
-                "How do neural networks learn from data?",
-                "What are common machine learning algorithms?"
-            ],
-            search_keywords=["machine learning", "neural networks", "algorithms"],
-            research_scope="Machine learning fundamentals and applications",
-            expected_output_type="comprehensive explanation",
-            transformation_rationale="Expanded query to cover key aspects of machine learning",
-            specificity_score=0.8,
-            confidence_score=0.85,
-            assumptions_made=[],
-            ambiguities_resolved=[],
-            ambiguities_remaining=[]
+    async def test_enhanced_query_generation(self, transformation_agent, agent_dependencies):
+        """Test generation of EnhancedTransformedQuery with SearchQueryBatch and ResearchPlan."""
+        # Create research objectives first
+        objective_id = str(uuid.uuid4())
+        objectives = [
+            ResearchObjective(
+                id=objective_id,
+                objective="Explain fundamental machine learning concepts",
+                priority="PRIMARY",
+                success_criteria="Clear understanding of ML basics"
+            )
+        ]
+
+        # Create search queries linked to objectives
+        queries = [
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="machine learning algorithms overview",
+                query_type=SearchQueryType.FACTUAL,
+                priority=1,
+                max_results=10,
+                rationale="Understand core ML algorithms",
+                objective_id=objective_id  # Link to objective
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="neural networks deep learning",
+                query_type=SearchQueryType.ANALYTICAL,
+                priority=2,
+                max_results=8,
+                rationale="Explore neural network concepts",
+                objective_id=objective_id  # Link to objective
+            )
+        ]
+
+        batch = SearchQueryBatch(
+            queries=queries,
+            execution_strategy=ExecutionStrategy.PARALLEL,
+            max_parallel=5
         )
+
+        # Create research plan
+
+        methodology = ResearchMethodology(
+            approach="Literature review and synthesis",
+            data_sources=["Academic papers", "Technical documentation"],
+            analysis_methods=["Comparative analysis", "Concept mapping"]
+        )
+
+        plan = ResearchPlan(
+            objectives=objectives,
+            methodology=methodology,
+            expected_deliverables=["Comprehensive ML overview"]
+        )
+
+        # Create enhanced query
+        enhanced_query = EnhancedTransformedQuery(
+            original_query="How does machine learning work?",
+            search_queries=batch,
+            research_plan=plan,
+            transformation_rationale="Expanded query to cover ML fundamentals",
+            confidence_score=0.85
+        )
+
+        mock_result = MagicMock()
+        mock_result.output = enhanced_query
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
             result = await transformation_agent.run(deps=agent_dependencies)
 
-            assert isinstance(result, TransformedQuery)
-            assert len(result.transformed_query) > len(result.original_query)
-            assert len(result.supporting_questions) >= 3
-            assert result.specificity_score > 0.7
+            assert isinstance(result, EnhancedTransformedQuery)
+            assert result.search_queries == batch
+            assert result.research_plan == plan
+            assert len(result.search_queries.queries) == 2
+            assert result.confidence_score == 0.85
+
+    @pytest.mark.asyncio
+    async def test_search_query_batch_priorities(self, transformation_agent, agent_dependencies):
+        """Test that SearchQueryBatch properly handles query priorities."""
+        queries = [
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="high priority query",
+                query_type=SearchQueryType.FACTUAL,
+                priority=1,
+                max_results=15,
+                rationale="Critical information"
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="medium priority query",
+                query_type=SearchQueryType.EXPLORATORY,
+                priority=3,
+                max_results=10,
+                rationale="Supporting information"
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="low priority query",
+                query_type=SearchQueryType.COMPARATIVE,
+                priority=5,
+                max_results=5,
+                rationale="Additional context"
+            )
+        ]
+
+        batch = SearchQueryBatch(
+            queries=queries,
+            execution_strategy=ExecutionStrategy.HIERARCHICAL
+        )
+
+        # Verify hierarchical execution sorts by priority
+        assert batch.queries[0].priority <= batch.queries[1].priority
+        assert batch.queries[1].priority <= batch.queries[2].priority
+
+    @pytest.mark.asyncio
+    async def test_research_plan_objectives(self, transformation_agent, agent_dependencies):
+        """Test ResearchPlan with multiple objectives and dependencies."""
+        obj1_id = str(uuid.uuid4())
+        obj2_id = str(uuid.uuid4())
+
+        objectives = [
+            ResearchObjective(
+                id=obj1_id,
+                objective="Understand basic ML concepts",
+                priority="PRIMARY",
+                success_criteria="Can explain supervised vs unsupervised learning"
+            ),
+            ResearchObjective(
+                id=obj2_id,
+                objective="Explore advanced ML techniques",
+                priority="SECONDARY",
+                success_criteria="Understand deep learning architectures",
+                dependencies=[obj1_id]
+            )
+        ]
+
+        methodology = ResearchMethodology(
+            approach="Progressive learning approach",
+            data_sources=["Textbooks", "Research papers"],
+            analysis_methods=["Conceptual analysis"]
+        )
+
+        plan = ResearchPlan(
+            objectives=objectives,
+            methodology=methodology,
+            expected_deliverables=["ML learning guide"]
+        )
+
+        # Test dependency order
+        dependency_order = plan.get_dependency_order()
+        assert dependency_order[0].id == obj1_id
+        assert dependency_order[1].id == obj2_id
 
     @pytest.mark.asyncio
     async def test_transformation_with_clarification(self, transformation_agent, agent_dependencies):
-        """Test transformation using clarification data."""
+        """Test query transformation with clarification metadata."""
         # Setup clarification in metadata
         questions = [
             ClarificationQuestion(
@@ -126,165 +259,212 @@ class TestQueryTransformationAgent:
             response=response
         )
 
+        # Create focused search queries based on clarification
+        queries = [
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="machine learning applications industry",
+                query_type=SearchQueryType.EXPLORATORY,
+                priority=1,
+                max_results=12,
+                rationale="Focus on ML applications per user preference"
+            )
+        ]
+
+        batch = SearchQueryBatch(queries=queries)
+
+        objectives = [
+            ResearchObjective(
+                id=str(uuid.uuid4()),
+                objective="Explore ML applications in industry",
+                priority="PRIMARY",
+                success_criteria="Comprehensive application overview"
+            )
+        ]
+
+        methodology = ResearchMethodology(
+            approach="Application-focused research",
+            data_sources=["Industry reports", "Case studies"],
+            analysis_methods=["Use case analysis"]
+        )
+
+        plan = ResearchPlan(
+            objectives=objectives,
+            methodology=methodology,
+            expected_deliverables=["ML applications report"]
+        )
+
         mock_result = MagicMock()
-        mock_result.output = TransformedQuery(
+        mock_result.output = EnhancedTransformedQuery(
             original_query="How does machine learning work?",
-            transformed_query="How are machine learning applications implemented in real-world scenarios",
-            supporting_questions=[
-                "What are common ML applications in industry?",
-                "How to implement ML models in production?",
-                "What are best practices for ML deployment?"
-            ],
-            search_keywords=["ML applications", "deployment", "production"],
-            research_scope="Machine learning applications and implementation",
-            expected_output_type="practical guide",
+            search_queries=batch,
+            research_plan=plan,
+            clarification_context={"focus": "Applications"},
             transformation_rationale="Focused on applications based on clarification",
-            specificity_score=0.9,
-            confidence_score=0.95,
-            clarification_coverage=1.0,
-            assumptions_made=[],
-            ambiguities_resolved=["Focus area: Applications"],
-            ambiguities_remaining=[]
+            confidence_score=0.95
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
             result = await transformation_agent.run(deps=agent_dependencies)
 
-            assert result.clarification_coverage == 1.0
-            assert len(result.ambiguities_resolved) > 0
-            assert result.confidence_score > 0.9
+            assert result.confidence_score == 0.95
+            assert "Applications" in result.transformation_rationale
+            assert result.clarification_context["focus"] == "Applications"
 
     @pytest.mark.asyncio
-    async def test_vague_query_transformation(self, transformation_agent, agent_dependencies):
-        """Test transformation of vague queries."""
-        agent_dependencies.research_state.user_query = "Tell me about stuff"
+    async def test_execution_strategies(self, transformation_agent, agent_dependencies):
+        """Test different execution strategies in SearchQueryBatch."""
+        # Test PARALLEL strategy
+        parallel_queries = [
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"parallel query {i}",
+                query_type=SearchQueryType.FACTUAL,
+                priority=2,
+                max_results=10,
+                rationale=f"Query {i}"
+            )
+            for i in range(3)
+        ]
 
-        mock_result = MagicMock()
-        mock_result.output = TransformedQuery(
-            original_query="Tell me about stuff",
-            transformed_query="Provide general information about common topics of interest",
-            supporting_questions=[
-                "What are popular educational topics?",
-                "What information is commonly requested?",
-                "What are trending subjects?"
-            ],
-            search_keywords=["general information", "topics"],
-            research_scope="General knowledge overview",
-            expected_output_type="summary",
-            transformation_rationale="Query too vague - made assumptions about general interest",
-            specificity_score=0.3,
-            confidence_score=0.4,
-            assumptions_made=["User wants general educational content", "Focus on popular topics"],
-            ambiguities_resolved=[],
-            ambiguities_remaining=["Specific topic area", "Depth of information needed"]
+        parallel_batch = SearchQueryBatch(
+            queries=parallel_queries,
+            execution_strategy=ExecutionStrategy.PARALLEL
         )
 
-        with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.run(deps=agent_dependencies)
+        groups = parallel_batch.get_execution_groups()
+        assert len(groups) == 1  # All queries in one group for parallel
+        assert len(groups[0]) == 3
 
-            assert result.specificity_score < 0.5
-            assert len(result.assumptions_made) > 0
-            assert len(result.ambiguities_remaining) > 0
+        # Test SEQUENTIAL strategy
+        sequential_batch = SearchQueryBatch(
+            queries=parallel_queries,
+            execution_strategy=ExecutionStrategy.SEQUENTIAL
+        )
+
+        groups = sequential_batch.get_execution_groups()
+        assert len(groups) == 3  # Each query in its own group
+        assert all(len(g) == 1 for g in groups)
+
+        # Test ADAPTIVE strategy
+        adaptive_batch = SearchQueryBatch(
+            queries=parallel_queries,
+            execution_strategy=ExecutionStrategy.ADAPTIVE,
+            max_parallel=2
+        )
+
+        groups = adaptive_batch.get_execution_groups()
+        assert len(groups) == 2  # Should respect max_parallel
 
     @pytest.mark.asyncio
-    async def test_supporting_questions_generation(self, transformation_agent, agent_dependencies):
-        """Test that supporting questions are properly generated."""
+    async def test_complex_multi_domain_query(self, transformation_agent, agent_dependencies):
+        """Test transformation of complex multi-domain queries."""
+        agent_dependencies.research_state.user_query = (
+            "Compare quantum computing and classical computing for cryptography, "
+            "including performance, security, and future implications"
+        )
+
+        # Create comprehensive search queries
+        queries = [
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="quantum computing cryptography algorithms",
+                query_type=SearchQueryType.ANALYTICAL,
+                priority=1,
+                max_results=15,
+                rationale="Quantum cryptography methods"
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="classical computing cryptographic performance",
+                query_type=SearchQueryType.COMPARATIVE,
+                priority=1,
+                max_results=15,
+                rationale="Classical crypto performance"
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="quantum vs classical security comparison",
+                query_type=SearchQueryType.COMPARATIVE,
+                priority=2,
+                max_results=12,
+                rationale="Security comparison"
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="post-quantum cryptography future",
+                query_type=SearchQueryType.TEMPORAL,
+                priority=3,
+                max_results=10,
+                rationale="Future implications"
+            )
+        ]
+
+        batch = SearchQueryBatch(
+            queries=queries,
+            execution_strategy=ExecutionStrategy.ADAPTIVE
+        )
+
+        objectives = [
+            ResearchObjective(
+                id=str(uuid.uuid4()),
+                objective="Compare quantum and classical computing for cryptography",
+                priority="PRIMARY",
+                success_criteria="Clear comparison across all dimensions"
+            ),
+            ResearchObjective(
+                id=str(uuid.uuid4()),
+                objective="Analyze security implications",
+                priority="PRIMARY",
+                success_criteria="Security assessment complete"
+            ),
+            ResearchObjective(
+                id=str(uuid.uuid4()),
+                objective="Project future developments",
+                priority="SECONDARY",
+                success_criteria="Future roadmap identified"
+            )
+        ]
+
+        methodology = ResearchMethodology(
+            approach="Comparative analysis with future projection",
+            data_sources=["Academic research", "Industry reports", "Security bulletins"],
+            analysis_methods=["Comparative analysis", "Trend analysis", "Security assessment"]
+        )
+
+        plan = ResearchPlan(
+            objectives=objectives,
+            methodology=methodology,
+            expected_deliverables=[
+                "Comparative analysis report",
+                "Security assessment",
+                "Future implications analysis"
+            ]
+        )
+
         mock_result = MagicMock()
-        mock_result.output = TransformedQuery(
-            original_query="How to build a web app?",
-            transformed_query="Step-by-step guide to building modern web applications",
-            supporting_questions=[
-                "What technology stack to choose?",
-                "How to set up the development environment?",
-                "What are best practices for web development?",
-                "How to deploy web applications?"
-            ],
-            search_keywords=["web development", "deployment", "frameworks"],
-            research_scope="Full-stack web development",
-            expected_output_type="tutorial",
-            transformation_rationale="Expanded to comprehensive web development guide",
-            specificity_score=0.7,
-            confidence_score=0.8,
-            assumptions_made=["Modern web technologies", "Full-stack coverage"],
-            ambiguities_resolved=[],
-            ambiguities_remaining=[]
+        mock_result.output = EnhancedTransformedQuery(
+            original_query=agent_dependencies.research_state.user_query,
+            search_queries=batch,
+            research_plan=plan,
+            transformation_rationale="Multi-dimensional comparison of quantum vs classical computing",
+            confidence_score=0.9
         )
 
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
             result = await transformation_agent.run(deps=agent_dependencies)
 
-            assert len(result.supporting_questions) >= 3
-            assert len(result.supporting_questions) <= 5
-            # Validator should ensure 3-5 questions
-            assert all(isinstance(q, str) for q in result.supporting_questions)
+            assert len(result.search_queries.queries) == 4
+            assert len(result.research_plan.objectives) == 3
+            assert len(result.research_plan.expected_deliverables) == 3
 
-    @pytest.mark.asyncio
-    async def test_search_keywords_extraction(self, transformation_agent, agent_dependencies):
-        """Test keyword extraction for search."""
-        mock_result = MagicMock()
-        mock_result.output = TransformedQuery(
-            original_query="Python async programming best practices",
-            transformed_query="Comprehensive guide to Python asynchronous programming patterns and best practices",
-            supporting_questions=[
-                "What is asyncio and how does it work?",
-                "Common async patterns in Python?",
-                "Performance considerations for async code?"
-            ],
-            search_keywords=[
-                "python", "asyncio", "async", "await",
-                "coroutines", "event loop", "concurrency"
-            ],
-            research_scope="Python async programming",
-            expected_output_type="technical guide",
-            transformation_rationale="Focused on Python async best practices",
-            specificity_score=0.85,
-            confidence_score=0.9,
-            assumptions_made=[],
-            ambiguities_resolved=[],
-            ambiguities_remaining=[]
-        )
-
-        with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.run(deps=agent_dependencies)
-
-            assert len(result.search_keywords) >= 3
-            assert len(result.search_keywords) <= 10
-            assert all(isinstance(k, str) for k in result.search_keywords)
-
-    @pytest.mark.asyncio
-    async def test_scope_definition(self, transformation_agent, agent_dependencies):
-        """Test scope fields population."""
-        agent_dependencies.research_state.user_query = "COVID-19 impact on tech industry in 2020"
-
-        mock_result = MagicMock()
-        mock_result.output = TransformedQuery(
-            original_query="COVID-19 impact on tech industry in 2020",
-            transformed_query="Analysis of COVID-19 pandemic effects on technology sector during 2020",
-            supporting_questions=[
-                "How did remote work affect tech companies?",
-                "What was the financial impact on tech stocks?",
-                "Which tech sectors grew during the pandemic?"
-            ],
-            search_keywords=["COVID-19", "technology", "2020", "pandemic", "remote work"],
-            research_scope="Technology industry pandemic impact analysis",
-            temporal_scope="2020",
-            geographic_scope="Global",
-            domain_scope="Technology industry",
-            expected_output_type="analytical report",
-            transformation_rationale="Structured analysis of pandemic impact",
-            specificity_score=0.9,
-            confidence_score=0.95,
-            assumptions_made=[],
-            ambiguities_resolved=[],
-            ambiguities_remaining=[]
-        )
-
-        with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
-            result = await transformation_agent.run(deps=agent_dependencies)
-
-            assert result.temporal_scope == "2020"
-            assert result.geographic_scope == "Global"
-            assert result.domain_scope == "Technology industry"
+            # Verify coverage of all aspects
+            query_texts = " ".join([q.query for q in result.search_queries.queries])
+            assert "quantum" in query_texts
+            assert "classical" in query_texts
+            assert "cryptography" in query_texts
+            assert "security" in query_texts
+            assert "future" in query_texts
 
     @pytest.mark.asyncio
     async def test_error_handling(self, transformation_agent, agent_dependencies):
@@ -294,32 +474,60 @@ class TestQueryTransformationAgent:
                 await transformation_agent.run(deps=agent_dependencies)
 
     @pytest.mark.asyncio
-    async def test_model_validators(self):
-        """Test TransformedQuery model validators."""
-        # Test supporting questions validator
-        query = TransformedQuery(
-            original_query="test",
-            transformed_query="expanded test",
-            supporting_questions=["Q1", "Q2"],  # Less than 3
-            search_keywords=["test"],
-            research_scope="test scope",
-            expected_output_type="test",
-            transformation_rationale="test",
-            confidence_score=0.5
-        )
-        # Validator should pad to 3 questions
-        assert len(query.supporting_questions) == 3
+    async def test_execution_summary(self, transformation_agent, agent_dependencies):
+        """Test the execution summary generation."""
+        queries = [
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query="test query",
+                query_type=SearchQueryType.FACTUAL,
+                priority=1,
+                max_results=10,
+                rationale="Test"
+            )
+        ]
 
-        # Test coherence validator
-        query2 = TransformedQuery(
-            original_query="test",
-            transformed_query="test",  # Same as original
-            supporting_questions=["Q1", "Q2", "Q3"],
-            search_keywords=["test"],
-            research_scope="test scope",
-            expected_output_type="test",
-            transformation_rationale="test",
-            confidence_score=0.9  # High confidence despite no transformation
+        batch = SearchQueryBatch(
+            queries=queries,
+            execution_strategy=ExecutionStrategy.PARALLEL
         )
-        # Validator should reduce confidence
-        assert query2.confidence_score == 0.5
+
+        objectives = [
+            ResearchObjective(
+                id=str(uuid.uuid4()),
+                objective="Test objective",
+                priority="PRIMARY",
+                success_criteria="Test success"
+            )
+        ]
+
+        methodology = ResearchMethodology(
+            approach="Test approach",
+            data_sources=["Test source"],
+            analysis_methods=["Test method"]
+        )
+
+        plan = ResearchPlan(
+            objectives=objectives,
+            methodology=methodology,
+            expected_deliverables=["Test deliverable"]
+        )
+
+        enhanced_query = EnhancedTransformedQuery(
+            original_query="test",
+            search_queries=batch,
+            research_plan=plan,
+            confidence_score=0.8,
+            assumptions_made=["Assumption 1"],
+            potential_gaps=["Gap 1"]
+        )
+
+        summary = enhanced_query.get_execution_summary()
+
+        assert summary["total_queries"] == 1
+        assert summary["execution_strategy"] == "PARALLEL"
+        assert summary["primary_objectives"] == 1
+        assert summary["total_objectives"] == 1
+        assert summary["confidence"] == 0.8
+        assert summary["has_assumptions"] is True
+        assert summary["has_gaps"] is True

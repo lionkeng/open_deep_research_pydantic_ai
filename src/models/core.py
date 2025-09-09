@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
@@ -91,53 +91,6 @@ class ClarificationResult(BaseModel):
         return self
 
 
-class TransformedQueryResult(BaseModel):
-    """Enhanced structured output for Query Transformation Agent."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
-
-    original_query: str = Field(description="Original user query")
-    transformed_query: Annotated[
-        str, Field(min_length=10, description="Transformed research question")
-    ]
-    transformation_rationale: Annotated[
-        str, Field(min_length=20, description="Detailed explanation of transformation")
-    ]
-    specificity_score: Annotated[
-        float, Field(ge=0.0, le=1.0, description="Score indicating query specificity improvement")
-    ]
-    supporting_questions: list[str] = Field(
-        default_factory=list, description="Additional supporting research questions"
-    )
-    clarification_responses: dict[str, str] = Field(
-        default_factory=dict, description="Responses that informed the transformation"
-    )
-    domain_indicators: list[str] = Field(
-        default_factory=list, description="Domain or subject area indicators identified"
-    )
-    complexity_assessment: Literal["low", "medium", "high"] = Field(
-        default="medium", description="Assessed complexity of research required"
-    )
-    estimated_scope: Literal["narrow", "moderate", "broad"] = Field(
-        default="moderate", description="Estimated scope of research needed"
-    )
-
-    @model_validator(mode="after")
-    def validate_transformation_quality(self) -> "TransformedQueryResult":
-        """Ensure transformation adds value and maintains quality."""
-        if self.original_query.strip().lower() == self.transformed_query.strip().lower():
-            raise ValueError("Transformed query must meaningfully differ from original")
-
-        if self.specificity_score < 0.1:
-            raise ValueError("Transformation must provide some improvement in specificity")
-
-        # Check for minimum length improvement for very short queries
-        if len(self.original_query.split()) < 5 and len(self.transformed_query.split()) < 8:
-            raise ValueError("Short queries should be expanded significantly during transformation")
-
-        return self
-
-
 class ResearchState(BaseModel):
     """Current state of the research workflow."""
 
@@ -159,7 +112,7 @@ class ResearchState(BaseModel):
     clarified_query: str | None = Field(
         default=None, description="Clarified query after validation"
     )
-    research_plan: dict | None = Field(
+    research_plan: dict[str, Any] | None = Field(
         default=None, description="Research plan from query transformation"
     )
     findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")
@@ -174,7 +127,7 @@ class ResearchState(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def migrate_metadata(cls, values: dict) -> dict:
+    def migrate_metadata(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Create new ResearchMetadata if needed."""
         if "metadata" in values and isinstance(values["metadata"], dict):
             # For now, just create a new ResearchMetadata

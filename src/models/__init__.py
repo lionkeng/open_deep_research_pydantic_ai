@@ -8,9 +8,7 @@ from .core import (
     ResearchPriority,
     ResearchStage,
     ResearchState,
-    TransformedQueryResult,
 )
-from .query_transformation import TransformedQuery
 from .report_generator import ReportMetadata, ReportSection, ResearchReport
 from .research_executor import ResearchFinding, ResearchResults, ResearchSource
 
@@ -19,10 +17,7 @@ __all__ = [
     "ResearchStage",
     "ResearchPriority",
     "ClarificationResult",
-    "TransformedQueryResult",
     "ResearchState",
-    # Query transformation models
-    "TransformedQuery",
     # Research executor models
     "ResearchSource",
     "ResearchFinding",
