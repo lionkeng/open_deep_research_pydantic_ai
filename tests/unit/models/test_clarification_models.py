@@ -311,7 +311,7 @@ class TestClarificationResponse:
         errors = resp.validate_against_request(req)
         assert len(errors) == 1
         assert "Unknown question ID" in errors[0]
-    
+
     def test_validate_invalid_choice(self):
         """Test validation detects invalid choice answers."""
         q = ClarificationQuestion(
@@ -320,17 +320,17 @@ class TestClarificationResponse:
             choices=["Option A", "Option B", "Option C"]
         )
         req = ClarificationRequest(questions=[q])
-        
+
         resp = ClarificationResponse(
             request_id=req.id,
             answers=[ClarificationAnswer(question_id=q.id, answer="Option D")]
         )
-        
+
         errors = resp.validate_against_request(req)
         assert len(errors) == 1
         assert "Invalid choice 'Option D'" in errors[0]
         assert "Valid choices: Option A, Option B, Option C" in errors[0]
-    
+
     def test_validate_invalid_multi_choice(self):
         """Test validation detects invalid multi-choice answers."""
         q = ClarificationQuestion(
@@ -339,17 +339,17 @@ class TestClarificationResponse:
             choices=["A", "B", "C"]
         )
         req = ClarificationRequest(questions=[q])
-        
+
         resp = ClarificationResponse(
             request_id=req.id,
             answers=[ClarificationAnswer(question_id=q.id, answer="A, D, E")]
         )
-        
+
         errors = resp.validate_against_request(req)
         assert len(errors) == 1
         assert "Invalid choices ['D', 'E']" in errors[0]
         assert "Valid choices: A, B, C" in errors[0]
-    
+
     def test_validate_valid_choices(self):
         """Test validation accepts valid choice answers."""
         q1 = ClarificationQuestion(
@@ -363,7 +363,7 @@ class TestClarificationResponse:
             choices=["Red", "Green", "Blue"]
         )
         req = ClarificationRequest(questions=[q1, q2])
-        
+
         resp = ClarificationResponse(
             request_id=req.id,
             answers=[
@@ -371,7 +371,6 @@ class TestClarificationResponse:
                 ClarificationAnswer(question_id=q2.id, answer="Red, Blue")
             ]
         )
-        
+
         errors = resp.validate_against_request(req)
         assert len(errors) == 0
-

@@ -2,6 +2,12 @@
 
 # Core models
 # Phase 2 model imports
+from .clarification import (
+    ClarificationAnswer,
+    ClarificationQuestion,
+    ClarificationRequest,
+    ClarificationResponse,
+)
 from .compression import CompressedContent, CompressedSection
 from .core import (
     ClarificationResult,
@@ -18,6 +24,11 @@ __all__ = [
     "ResearchPriority",
     "ClarificationResult",
     "ResearchState",
+    # Clarification models
+    "ClarificationQuestion",
+    "ClarificationAnswer",
+    "ClarificationRequest",
+    "ClarificationResponse",
     # Research executor models
     "ResearchSource",
     "ResearchFinding",

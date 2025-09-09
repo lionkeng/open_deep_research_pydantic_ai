@@ -26,11 +26,13 @@ os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
 # Note: .env is loaded automatically when importing from src
 
 import httpx
+from pydantic import SecretStr
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser
 from src.agents.base import ResearchDependencies
 from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 from src.models.clarification import ClarificationQuestion, ClarificationRequest
+from src.models.api_models import APIKeys
 
 
 class MultiQuestionClarificationEvaluator:
@@ -67,8 +69,8 @@ class MultiQuestionClarificationEvaluator:
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=APIKeys(
-                    openai=os.getenv("OPENAI_API_KEY"),
-                    anthropic=os.getenv("ANTHROPIC_API_KEY")
+                    openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None,
+                    anthropic=SecretStr(anthropic_key) if (anthropic_key := os.getenv("ANTHROPIC_API_KEY")) else None
                 ),
                 research_state=state
             )
