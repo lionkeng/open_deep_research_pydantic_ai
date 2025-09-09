@@ -242,12 +242,6 @@ class ResearchWorkflow:
         agent_config = self.agent_configs.get(agent_type, {})
         is_critical = agent_config.get("critical", False)
 
-        # Check if circuit is open for critical agents
-        if is_critical and self.circuit_breaker.is_open(agent_type):
-            raise CircuitBreakerError(
-                f"Critical agent {agent_type.value} is unavailable due to circuit breaker"
-            )
-
         try:
             # Create agent instance
             agent = self.agent_factory.create_agent(agent_type, deps)
@@ -274,7 +268,11 @@ class ResearchWorkflow:
             if not is_critical:
                 # Use fallback for non-critical agents
                 return await self._create_fallback(agent_type)
-            raise
+
+            # For critical agents, re-raise with more specific message
+            raise CircuitBreakerError(
+                f"Critical agent {agent_type.value} is unavailable due to circuit breaker"
+            ) from e
 
         except TimeoutError:
             logfire.error(f"Agent {agent_type.value} timed out", timeout=self._task_timeout)

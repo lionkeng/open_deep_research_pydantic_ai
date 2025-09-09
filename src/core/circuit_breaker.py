@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Hashable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 import logfire
 
@@ -122,7 +122,7 @@ class CircuitStateData:
     metrics: CircuitBreakerMetrics = field(default_factory=CircuitBreakerMetrics)
 
 
-class CircuitBreaker(Generic[K]):
+class CircuitBreaker[K]:
     """
     Generic circuit breaker supporting any hashable key type.
 
@@ -236,6 +236,9 @@ class CircuitBreaker(Generic[K]):
             elif new_state == CircuitState.HALF_OPEN:
                 state_data.consecutive_successes = 0
                 state_data.half_open_attempts = 0
+            elif new_state == CircuitState.OPEN:
+                # Reset half_open_attempts when entering OPEN state
+                state_data.half_open_attempts = 0
 
     async def _record_success(self, key: K):
         """Record a successful call and update state."""
@@ -251,7 +254,9 @@ class CircuitBreaker(Generic[K]):
 
             if state_data.state == CircuitState.HALF_OPEN:
                 state_data.consecutive_successes += 1
-                state_data.half_open_attempts -= 1
+                # Note: We don't decrement half_open_attempts here
+                # The counter tracks total attempts made, not concurrent attempts
+                # It gets reset during state transitions
 
                 if state_data.consecutive_successes >= self.config.success_threshold:
                     await self._transition_to(key, state_data, CircuitState.CLOSED)
@@ -299,7 +304,8 @@ class CircuitBreaker(Generic[K]):
                         error=str(exc),
                     )
             elif state_data.state == CircuitState.HALF_OPEN:
-                state_data.half_open_attempts -= 1
+                # Note: We don't decrement half_open_attempts here
+                # The counter gets reset during state transitions
                 await self._transition_to(key, state_data, CircuitState.OPEN)
                 logger.warning(
                     f"Circuit breaker '{self.config.name}' reopened after half-open failure",
@@ -331,20 +337,29 @@ class CircuitBreaker(Generic[K]):
                         if state_data.last_error_time
                         else 0
                     )
-                    raise CircuitBreakerError(
+                    msg = (
                         f"Circuit breaker '{self.config.name}' is OPEN for {key}. "
-                        f"Retry in {time_remaining:.1f} seconds.",
+                        f"Retry in {time_remaining:.1f} seconds."
+                    )
+                    raise CircuitBreakerError(
+                        msg,
                         last_failure_time=state_data.last_error_time,
                     )
 
             elif state_data.state == CircuitState.HALF_OPEN:
-                if state_data.half_open_attempts >= self.config.half_open_max_attempts:
+                # Atomically check and increment to prevent race condition
+                # Store current value before checking to ensure atomicity
+                current_attempts = state_data.half_open_attempts
+                if current_attempts >= self.config.half_open_max_attempts:
                     state_data.metrics.rejected_calls += 1
-                    raise CircuitBreakerError(
+                    msg = (
                         f"Circuit breaker '{self.config.name}' is HALF_OPEN for {key} but "
-                        f"max concurrent attempts ({self.config.half_open_max_attempts}) reached"
+                        f"max concurrent attempts ({self.config.half_open_max_attempts}) "
+                        f"reached"
                     )
-                state_data.half_open_attempts += 1
+                    raise CircuitBreakerError(msg)
+                # Increment only after passing the check - this is atomic within the async lock
+                state_data.half_open_attempts = current_attempts + 1
 
     async def call(
         self, key: K, func: Callable[..., T | Awaitable[T]], *args: Any, **kwargs: Any
