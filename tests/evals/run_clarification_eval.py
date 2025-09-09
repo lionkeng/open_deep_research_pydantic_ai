@@ -436,7 +436,9 @@ class MultiQuestionClarificationEvaluator:
                 break
 
         # Save detailed results
-        output_path = Path(__file__).parent / "evaluation_results_multi.json"
+        results_dir = Path('./eval_results')
+        results_dir.mkdir(exist_ok=True)
+        output_path = results_dir / "evaluation_results_multi.json"
         with open(output_path, 'w') as f:
             json.dump({
                 "summary": {

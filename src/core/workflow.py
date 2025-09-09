@@ -28,7 +28,8 @@ from src.models.core import (
 class ResearchWorkflow:
     """Orchestrator for the streamlined 5-agent research workflow.
 
-    Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION → COMPRESSION → REPORT_GENERATION
+    Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
+              COMPRESSION → REPORT_GENERATION
 
     The Query Transformation Agent now produces both SearchQueryBatch (for search execution)
     and ResearchPlan (for report structure), eliminating the need for a separate Brief Generator.
@@ -374,7 +375,8 @@ class ResearchWorkflow:
     ) -> ResearchState:
         """Execute the complete research workflow.
 
-        Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION → COMPRESSION → REPORT_GENERATION
+        Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
+              COMPRESSION → REPORT_GENERATION
 
         Args:
             user_query: The user's research query

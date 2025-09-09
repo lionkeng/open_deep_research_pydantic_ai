@@ -11,6 +11,7 @@ The evaluation framework provides a hierarchical testing structure from quick sm
 | File | Purpose | Runtime | Use Case |
 |------|---------|---------|----------|
 | `test_eval_quick.py` | Quick smoke test (4 cases) | < 1 min | Pre-commit validation |
+| `test_single_case.py` | Single case debugging | < 30 sec | Debug specific failures |
 | `run_clarification_eval.py` | Standard evaluation (20+ cases) | 5-10 min | Feature development |
 | `clarification_evals.py` | Pydantic Evals framework | 10-15 min | Detailed analysis |
 | `evaluation_runner.py` | Master orchestrator (all suites) | 20-30 min | Release validation |
@@ -136,6 +137,36 @@ For testing performance in specific domains:
 # Run domain-specific test scenarios
 source .env && uv run python tests/evals/domain_specific_evals.py
 ```
+
+### Debugging Single Test Cases
+For debugging specific failing test cases without running the entire suite:
+
+```bash
+# Run a single test case by name
+source .env && uv run python tests/evals/test_single_case.py <case_name>
+
+# Example: Test the "code_implementation" case
+source .env && uv run python tests/evals/test_single_case.py code_implementation
+
+# Specify category to narrow search (optional)
+source .env && uv run python tests/evals/test_single_case.py code_implementation --category clear_queries
+
+# List all available test cases if case not found
+source .env && uv run python tests/evals/test_single_case.py nonexistent_case
+```
+
+**When to use `test_single_case.py`:**
+- Debugging a specific failing test from `run_clarification_eval.py`
+- Iterating on prompt changes for a particular query type
+- Investigating inconsistent results for a specific case
+- Quick validation of fixes without running full suite
+
+**Example workflow:**
+1. Run full evaluation: `uv run python tests/evals/run_clarification_eval.py`
+2. Notice failure: `[6/21] Evaluating: comparison (clear_queries) ❌`
+3. Debug single case: `uv run python tests/evals/test_single_case.py comparison`
+4. Fix issue and retest single case until passing
+5. Run full evaluation again to confirm no regressions
 
 ### Integration Tests
 For testing with real LLM calls using pytest:

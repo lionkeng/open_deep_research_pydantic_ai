@@ -86,15 +86,15 @@ First, break down the query to identify:
 Input: "Tell me about machine learning"
 Issue: No specific aspect, audience, or depth specified
 Required Questions:
-- "Which aspect of ML interests you most?" [choices: algorithms, applications, theory, implementation]
+- "Which aspect of ML interests you most?" [choices: algorithms, applications, theory, impl]
 - "What's your technical background?" [choices: non-technical, beginner, intermediate, expert]
-- "How will you use this information?" [choices: general knowledge, project planning, hands-on implementation]
+- "How will you use this information?" [choices: general knowledge, project planning, hands-on]
 
 **Example 2: Ambiguous Comparison**
 Input: "Compare cloud providers"
 Issue: Which providers? What criteria? For what workload?
 Required Questions:
-- "Which cloud providers to compare?" [choices: AWS/Azure/GCP, All major providers, Include smaller providers]
+- "Which cloud providers to compare?" [choices: AWS/Azure/GCP, All major, Include smaller]
 - "What's your primary use case?" [choices: web hosting, ML/AI, data storage, enterprise apps]
 - "What factors matter most?" [choices: cost, performance, features, support, compliance]
 
@@ -119,6 +119,10 @@ Reasoning: Clear task, technology, model, and application domain
 **Example 3: Bounded Research**
 "Top 5 JavaScript frameworks for building PWAs in 2024, ranked by npm downloads"
 Reasoning: Specific technology, purpose, timeframe, and ranking criteria
+
+**Example 4: Version Comparison**
+"Compare Python 3.11 vs Python 3.12 performance improvements in the official release notes"
+Reasoning: Specific versions, specific source document, factual comparison
 
 ## Step 4: Question Generation Protocol
 

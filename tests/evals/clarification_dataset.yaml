@@ -91,13 +91,13 @@ cases:
         needs_clarification: false
       tags: ["financial", "specific", "current"]
 
-    - name: technical_comparison
-      description: Specific technical comparison with clear metrics
+    - name: comparison
+      description: Specific factual comparison with clear historical data
       input:
-        query: "Compare ResNet-50 vs VGG-16 for ImageNet classification accuracy"
+        query: "Compare the number of trophies that Brazil and Argentina have won in the Men's FIFA World Cup"
       expected:
         needs_clarification: false
-      tags: ["technical", "comparison", "specific"]
+      tags: ["factual", "comparison", "specific", "sports"]
 
     - name: code_implementation
       description: Clear programming task with specific requirements
