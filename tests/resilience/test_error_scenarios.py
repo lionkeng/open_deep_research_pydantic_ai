@@ -17,6 +17,7 @@ from src.agents.base import (
 )
 from src.models.metadata import ResearchMetadata
 from src.models.api_models import APIKeys
+from src.models.core import ResearchState, ResearchStage
 
 class TestErrorScenarios:
     """Test various error scenarios and agent resilience."""
@@ -127,7 +128,7 @@ class TestErrorScenarios:
         agents = [
             AgentFactory.create_agent(AgentType.CLARIFICATION, error_dependencies),
             AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, error_dependencies),
-            AgentFactory.create_agent(AgentType.BRIEF_GENERATOR, error_dependencies)
+            AgentFactory.create_agent(AgentType.COMPRESSION, error_dependencies)
         ]
 
         # First agent fails
@@ -199,7 +200,7 @@ class TestErrorScenarios:
     async def test_validation_error_recovery(self, error_dependencies):
         """Test recovery from validation errors."""
         agent = AgentFactory.create_agent(
-            AgentType.BRIEF_GENERATOR,
+            AgentType.COMPRESSION,
             error_dependencies
         )
 
@@ -211,7 +212,7 @@ class TestErrorScenarios:
 
             if attempt_count == 1:
                 # First attempt: validation error
-                raise AgentValidationError("Invalid brief format", agent_name="brief_generator")
+                raise AgentValidationError("Invalid compression format", agent_name="compression")
             else:
                 # Second attempt: succeed with fallback
                 return MagicMock()

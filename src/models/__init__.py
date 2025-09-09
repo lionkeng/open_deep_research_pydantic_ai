@@ -2,10 +2,8 @@
 
 # Core models
 # Phase 2 model imports
-from .brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
 from .compression import CompressedContent, CompressedSection
 from .core import (
-    BriefGenerationResult,
     ClarificationResult,
     ResearchPriority,
     ResearchStage,
@@ -22,14 +20,9 @@ __all__ = [
     "ResearchPriority",
     "ClarificationResult",
     "TransformedQueryResult",
-    "BriefGenerationResult",
     "ResearchState",
     # Query transformation models
     "TransformedQuery",
-    # Brief generator models
-    "ResearchObjective",
-    "ResearchMethodology",
-    "ResearchBrief",
     # Research executor models
     "ResearchSource",
     "ResearchFinding",

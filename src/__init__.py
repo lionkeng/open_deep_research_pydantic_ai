@@ -4,8 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .core.workflow import workflow
-from .models.brief_generator import ResearchBrief
+from .core.workflow import ResearchWorkflow
 from .models.core import ResearchStage, ResearchState
 from .models.report_generator import ResearchReport
 from .models.research_executor import ResearchFinding
@@ -19,10 +18,9 @@ for path in [Path.cwd() / ".env"] + [p / ".env" for p in Path.cwd().parents]:
 
 __version__ = "1.0.0"
 __all__ = [
-    "workflow",
+    "ResearchWorkflow",
     "ResearchState",
     "ResearchStage",
-    "ResearchBrief",
     "ResearchFinding",
     "ResearchReport",
 ]

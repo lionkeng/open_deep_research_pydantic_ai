@@ -7,9 +7,8 @@ from src.core.events import (
     emit_research_started,
     research_event_bus,
 )
-from src.models.brief_generator import ResearchBrief
 from src.models.core import ResearchStage, ResearchState
-from src.models.research_executor import ResearchFinding
+from src.models.research_executor import ResearchFinding, ResearchSource
 
 
 def test_research_state():
@@ -36,32 +35,24 @@ def test_research_state():
     assert state.is_completed()
 
 
-def test_research_brief():
-    """Test research brief creation."""
-    brief = ResearchBrief(
-        topic="Quantum Computing",
-        objectives=["Understand basics", "Learn applications"],
-        key_questions=["What is it?", "How does it work?"],
-        scope="Basic introduction",
-    )
-
-    assert brief.topic == "Quantum Computing"
-    assert len(brief.objectives) == 2
-    assert len(brief.key_questions) == 2
-
-
 def test_research_finding():
     """Test research finding creation."""
-    finding = ResearchFinding(
-        content="Quantum computing uses quantum bits",
-        source="https://example.com",
-        relevance_score=0.9,
-        confidence=0.85,
+    source = ResearchSource(
+        url="https://example.com",
+        title="Quantum Computing Research",
+        relevance_score=0.9
     )
 
-    assert finding.content == "Quantum computing uses quantum bits"
-    assert finding.relevance_score == 0.9
-    assert finding.confidence == 0.85
+    finding = ResearchFinding(
+        finding="Quantum computing uses quantum bits",
+        confidence_level=0.85,
+        source=source,
+        supporting_evidence=["Evidence 1", "Evidence 2"]
+    )
+
+    assert finding.finding == "Quantum computing uses quantum bits"
+    assert finding.confidence_level == 0.85
+    assert finding.source.relevance_score == 0.9
 
 
 @pytest.mark.asyncio

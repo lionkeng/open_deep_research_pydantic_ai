@@ -74,15 +74,6 @@ class TestAgentFactory:
         assert agent is not None
         assert hasattr(agent, 'execute')
 
-    def test_create_brief_generator_agent(self, mock_dependencies):
-        """Test creation of brief generator agent."""
-        agent = AgentFactory.create_agent(
-            AgentType.BRIEF_GENERATOR,
-            mock_dependencies
-        )
-
-        assert agent is not None
-        assert hasattr(agent, 'execute')
 
     def test_create_research_executor_agent(self, mock_dependencies):
         """Test creation of research executor agent."""
@@ -149,13 +140,13 @@ class TestAgentFactory:
         """Test that agents use registered default configs."""
         # Register a default config
         AgentFactory.register_default_config(
-            AgentType.BRIEF_GENERATOR,
+            AgentType.COMPRESSION,
             test_config
         )
 
         # Create agent without specifying config
         agent = AgentFactory.create_agent(
-            AgentType.BRIEF_GENERATOR,
+            AgentType.COMPRESSION,
             mock_dependencies
         )
 
@@ -167,7 +158,7 @@ class TestAgentFactory:
         agent_specs = [
             (AgentType.CLARIFICATION, mock_dependencies, None),
             (AgentType.QUERY_TRANSFORMATION, mock_dependencies, test_config),
-            (AgentType.BRIEF_GENERATOR, mock_dependencies, None),
+            (AgentType.COMPRESSION, mock_dependencies, None),
         ]
 
         agents = AgentFactory.create_agent_batch(agent_specs)
@@ -181,7 +172,6 @@ class TestAgentFactory:
         expected_types = [
             AgentType.CLARIFICATION,
             AgentType.QUERY_TRANSFORMATION,
-            AgentType.BRIEF_GENERATOR,
             AgentType.RESEARCH_EXECUTOR,
             AgentType.COMPRESSION,
             AgentType.REPORT_GENERATOR
@@ -197,7 +187,6 @@ class TestAgentFactory:
         # Check that all agent types are registered
         assert AgentType.CLARIFICATION in registry
         assert AgentType.QUERY_TRANSFORMATION in registry
-        assert AgentType.BRIEF_GENERATOR in registry
         assert AgentType.RESEARCH_EXECUTOR in registry
         assert AgentType.COMPRESSION in registry
         assert AgentType.REPORT_GENERATOR in registry
@@ -255,7 +244,6 @@ class TestAgentFactory:
         test_cases = [
             ("CLARIFICATION", AgentType.CLARIFICATION),
             ("QUERY_TRANSFORMATION", AgentType.QUERY_TRANSFORMATION),
-            ("BRIEF_GENERATOR", AgentType.BRIEF_GENERATOR),
             ("RESEARCH_EXECUTOR", AgentType.RESEARCH_EXECUTOR),
             ("COMPRESSION", AgentType.COMPRESSION),
             ("REPORT_GENERATOR", AgentType.REPORT_GENERATOR),
@@ -283,9 +271,6 @@ class TestAgentFactory:
 
         query_transform = create_query_transformation_agent(mock_dependencies)
         assert query_transform is not None
-
-        brief_gen = create_brief_generator_agent(mock_dependencies)
-        assert brief_gen is not None
 
         research_exec = create_research_executor_agent(mock_dependencies)
         assert research_exec is not None
@@ -335,7 +320,6 @@ class TestAgentFactory:
 from src.agents.factory import (
     create_clarification_agent,
     create_query_transformation_agent,
-    create_brief_generator_agent,
     create_research_executor_agent,
     create_compression_agent,
     create_report_generator_agent

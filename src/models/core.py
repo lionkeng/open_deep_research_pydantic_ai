@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from .brief_generator import ResearchBrief
-
 # Import Phase 2 models
 from .metadata import ResearchMetadata
 from .report_generator import ReportSection as ResearchSection
@@ -24,7 +22,6 @@ class ResearchStage(str, Enum):
 
     PENDING = "pending"  # Initial state before research starts
     CLARIFICATION = "clarification"
-    BRIEF_GENERATION = "brief_generation"
     RESEARCH_EXECUTION = "research_execution"
     COMPRESSION = "compression"
     REPORT_GENERATION = "report_generation"
@@ -141,69 +138,6 @@ class TransformedQueryResult(BaseModel):
         return self
 
 
-class BriefGenerationResult(BaseModel):
-    """Structured output for Brief Generation Agent."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, validate_assignment=True, extra="forbid")
-
-    brief_text: Annotated[str, Field(min_length=100, description="Generated research brief")]
-    confidence_score: Annotated[
-        float, Field(ge=0.0, le=1.0, description="Confidence in brief quality")
-    ]
-    key_research_areas: Annotated[
-        list[str], Field(min_length=1, description="Primary research areas identified")
-    ]
-    research_objectives: list[str] = Field(
-        default_factory=list, description="Specific research objectives"
-    )
-    methodology_suggestions: list[str] = Field(
-        default_factory=list, description="Suggested research methodologies"
-    )
-    estimated_complexity: Literal["low", "medium", "high"] = Field(
-        default="medium", description="Estimated research complexity"
-    )
-    estimated_duration: str = Field(default="", description="Estimated time to complete research")
-    suggested_sources: list[str] = Field(
-        default_factory=list, description="Suggested source types or specific sources"
-    )
-    potential_challenges: list[str] = Field(
-        default_factory=list, description="Anticipated research challenges"
-    )
-    success_criteria: list[str] = Field(
-        default_factory=list, description="Criteria for successful research completion"
-    )
-
-    @field_validator("brief_text")
-    @classmethod
-    def validate_brief_completeness(cls, v: str) -> str:
-        """Ensure brief contains essential elements."""
-        v = v.strip()
-
-        # Check for minimum content indicators
-        required_indicators = ["research", "objective", "scope"]
-        content_lower = v.lower()
-
-        missing_indicators = [
-            indicator for indicator in required_indicators if indicator not in content_lower
-        ]
-
-        if missing_indicators:
-            raise ValueError(f"Brief missing key elements: {', '.join(missing_indicators)}")
-
-        return v
-
-    @model_validator(mode="after")
-    def validate_brief_consistency(self) -> "BriefGenerationResult":
-        """Ensure consistency across brief elements."""
-        if not self.key_research_areas:
-            raise ValueError("At least one key research area must be identified")
-
-        if self.confidence_score > 0.9 and self.estimated_complexity == "high":
-            raise ValueError("High confidence inconsistent with high complexity assessment")
-
-        return self
-
-
 class ResearchState(BaseModel):
     """Current state of the research workflow."""
 
@@ -225,7 +159,9 @@ class ResearchState(BaseModel):
     clarified_query: str | None = Field(
         default=None, description="Clarified query after validation"
     )
-    research_brief: ResearchBrief | None = Field(default=None, description="Research plan")
+    research_plan: dict | None = Field(
+        default=None, description="Research plan from query transformation"
+    )
     findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")
     compressed_findings: str | None = Field(default=None, description="Synthesized findings")
     final_report: ResearchReport | None = Field(default=None, description="Final report")

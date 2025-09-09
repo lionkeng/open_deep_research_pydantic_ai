@@ -14,7 +14,7 @@ from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 from src.models.api_models import APIKeys
 from src.models.query_transformation import TransformedQuery
-from src.models.brief_generator import ResearchBrief, ResearchObjective
+from src.models.research_plan_models import ResearchPlan, ResearchObjective
 from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource
 from src.models.compression import CompressedContent
 from src.models.report_generator import ResearchReport, ReportSection
@@ -90,70 +90,6 @@ class TestAgentPipelineIntegration:
                 assert transformed.original_query == clarified.transformed_query
                 assert transformed.specificity_score > 0.8
 
-    @pytest.mark.asyncio
-    async def test_transformation_to_brief_generation_flow(self, pipeline_dependencies):
-        """Test data flow from query transformation to brief generation."""
-        # Create agents
-        transformation_agent = AgentFactory.create_agent(
-            AgentType.QUERY_TRANSFORMATION,
-            pipeline_dependencies
-        )
-        brief_agent = AgentFactory.create_agent(
-            AgentType.BRIEF_GENERATOR,
-            pipeline_dependencies
-        )
-
-        # Mock transformation output
-        transformation_result = TransformedQuery(
-            original_query="AI in healthcare",
-            transformed_query="AI applications in healthcare diagnostics",
-            supporting_questions=["Q1", "Q2"],
-            transformation_rationale="Focused transformation",
-            specificity_score=0.9,
-            missing_dimensions=[],
-            clarification_responses={},
-            transformation_metadata={}
-        )
-
-        with patch.object(transformation_agent, 'run', return_value=transformation_result):
-            transformed = await transformation_agent.run(pipeline_dependencies)
-
-            # Update dependencies with transformation result
-            pipeline_dependencies.metadata.additional_context = {
-                "transformed_query": transformed.transformed_query,
-                "supporting_questions": transformed.supporting_questions
-            }
-
-            # Mock brief generation
-            brief_result = ResearchBrief(
-                title="AI in Healthcare Diagnostics",
-                executive_summary="Research brief on AI applications",
-                objectives=[
-                    ResearchObjective(
-                        objective="Analyze AI diagnostic tools",
-                        importance="critical",
-                        success_criteria="Comprehensive coverage"
-                    )
-                ],
-                scope="Healthcare AI applications",
-                methodology="Literature review",
-                key_questions=transformed.supporting_questions,
-                constraints=[],
-                deliverables=["Report"],
-                timeline="2 weeks",
-                success_metrics=["Coverage"],
-                assumptions=[],
-                risks=[],
-                stakeholders=["Healthcare providers"],
-                resources_required=["Databases"],
-                metadata={}
-            )
-
-            with patch.object(brief_agent, 'run', return_value=brief_result):
-                brief = await brief_agent.run(pipeline_dependencies)
-
-                # Verify data flow
-                assert brief.key_questions == transformed.supporting_questions
 
     @pytest.mark.asyncio
     async def test_research_to_compression_flow(self, pipeline_dependencies):
@@ -296,7 +232,6 @@ class TestAgentPipelineIntegration:
         agents = {
             AgentType.CLARIFICATION: AgentFactory.create_agent(AgentType.CLARIFICATION, pipeline_dependencies),
             AgentType.QUERY_TRANSFORMATION: AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, pipeline_dependencies),
-            AgentType.BRIEF_GENERATOR: AgentFactory.create_agent(AgentType.BRIEF_GENERATOR, pipeline_dependencies),
             AgentType.RESEARCH_EXECUTOR: AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, pipeline_dependencies),
             AgentType.COMPRESSION: AgentFactory.create_agent(AgentType.COMPRESSION, pipeline_dependencies),
             AgentType.REPORT_GENERATOR: AgentFactory.create_agent(AgentType.REPORT_GENERATOR, pipeline_dependencies),
@@ -319,7 +254,6 @@ class TestAgentPipelineIntegration:
         for agent_type in [
             AgentType.CLARIFICATION,
             AgentType.QUERY_TRANSFORMATION,
-            AgentType.BRIEF_GENERATOR,
             AgentType.RESEARCH_EXECUTOR,
             AgentType.COMPRESSION,
             AgentType.REPORT_GENERATOR
@@ -327,7 +261,7 @@ class TestAgentPipelineIntegration:
             await agents[agent_type].run(pipeline_dependencies)
 
         # Verify execution order
-        assert len(execution_order) == 6
+        assert len(execution_order) == 5
 
     @pytest.mark.asyncio
     async def test_pipeline_error_propagation(self, pipeline_dependencies):
@@ -378,8 +312,7 @@ class TestAgentPipelineIntegration:
         # Create agents
         agents = [
             AgentFactory.create_agent(AgentType.CLARIFICATION, pipeline_dependencies),
-            AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, pipeline_dependencies),
-            AgentFactory.create_agent(AgentType.BRIEF_GENERATOR, pipeline_dependencies)
+            AgentFactory.create_agent(AgentType.QUERY_TRANSFORMATION, pipeline_dependencies)
         ]
 
         # Mock executions that preserve and add to context
@@ -400,7 +333,7 @@ class TestAgentPipelineIntegration:
         assert pipeline_dependencies.metadata.additional_context["user_preference"] == "technical_detail"
         assert all(
             f"agent_{i}_processed" in pipeline_dependencies.metadata.additional_context
-            for i in range(3)
+            for i in range(2)
         )
 
     @pytest.mark.asyncio
