@@ -158,3 +158,6 @@ temp/
 tmp/
 scratch/
 .claude
+
+# no repo storage for eval results
+eval_results/

@@ -64,78 +64,7 @@ source .env && uv run pytest tests/integration/test_clarification_workflows.py::
 
 ### 4. LLM Evaluation Framework
 
-Run comprehensive evaluations using the Pydantic AI evaluation framework:
-
-```bash
-# Run the comprehensive evaluation suite
-source .env && uv run python tests/evals/run_clarification_eval.py
-
-# Run specific evaluations
-source .env && uv run python -c "
-import asyncio
-from tests.evals.clarification_evals import ClarificationEvaluator
-from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys
-from pydantic import SecretStr
-import os
-
-async def main():
-    deps = ResearchDependencies(
-        api_keys=APIKeys(openai=SecretStr(os.getenv('OPENAI_API_KEY'))),
-        research_state=None
-    )
-    evaluator = ClarificationEvaluator(deps)
-    evaluator.create_comprehensive_test_cases()
-    results = await evaluator.run_evaluation_suite()
-    print(f'Overall accuracy: {results[\"summary\"][\"overall_metrics\"][\"accuracy\"]:.2%}')
-
-asyncio.run(main())
-"
-
-# Run multi-judge evaluation
-source .env && uv run python -c "
-import asyncio
-from tests.evals.multi_judge_evaluation import MultiJudgeEvaluator
-from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys
-from pydantic import SecretStr
-import os
-
-async def main():
-    deps = ResearchDependencies(
-        api_keys=APIKeys(openai=SecretStr(os.getenv('OPENAI_API_KEY'))),
-        research_state=None
-    )
-    evaluator = MultiJudgeEvaluator(deps)
-    evaluator.create_default_test_cases()
-    results = await evaluator.run_evaluation_suite()
-    print(f'Average score: {results[\"summary\"][\"avg_overall_score\"]:.2f}/5')
-
-asyncio.run(main())
-"
-
-# Run domain-specific evaluation
-source .env && uv run python -c "
-import asyncio
-from tests.evals.domain_specific_evals import DomainEvaluationOrchestrator
-from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys
-from pydantic import SecretStr
-import os
-
-async def main():
-    deps = ResearchDependencies(
-        api_keys=APIKeys(openai=SecretStr(os.getenv('OPENAI_API_KEY'))),
-        research_state=None
-    )
-    orchestrator = DomainEvaluationOrchestrator(deps)
-    orchestrator.create_default_test_cases()
-    results = await orchestrator.run_all_evaluations()
-    print(f'Pass rate: {results[\"pass_rate\"]:.2%}')
-
-asyncio.run(main())
-"
-```
+Run comprehensive evaluations using the Pydantic AI evaluation framework. See details in [evals/README.md](./evals/README.md)
 
 ### 5. Regression Testing
 

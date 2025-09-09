@@ -32,7 +32,7 @@ async def quick_test():
 
     test_cases = [
         {
-            "query": "What is the current Bitcoin price?",
+            "query": "What is the capital of France?",
             "expected_clarification": False,
             "description": "Specific query - no clarification needed"
         },
@@ -163,9 +163,13 @@ async def quick_test():
         print(f"   Min questions: {min(r['num_questions'] for r in multi_q_results)}")
 
     # Save results
-    with open('quick_test_results.json', 'w') as f:
+    results_dir = Path('./eval_results')
+    results_dir.mkdir(exist_ok=True)
+    results_file = results_dir / 'quick_test_results.json'
+
+    with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
-    print(f"\n💾 Results saved to quick_test_results.json")
+    print(f"\n💾 Results saved to {results_file}")
 
     print("\n" + "=" * 60)
     print("Test completed!")
