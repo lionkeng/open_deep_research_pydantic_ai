@@ -184,7 +184,7 @@ class ResearchWorkflow:
                 # Run clarification agent
                 result = await agent.run(deps)
             elif agent_type == AgentType.QUERY_TRANSFORMATION:
-                # Run query transformation to get EnhancedTransformedQuery
+                # Run query transformation to get TransformedQuery
                 result = await agent.run(deps)
             elif agent_type == AgentType.RESEARCH_EXECUTOR:
                 # Extract SearchQueryBatch from transformed query
@@ -301,7 +301,7 @@ class ResearchWorkflow:
             )
 
             try:
-                # Run query transformation agent to get EnhancedTransformedQuery
+                # Run query transformation agent to get TransformedQuery
                 enhanced_query = await self._run_agent_with_circuit_breaker(
                     AgentType.QUERY_TRANSFORMATION, deps
                 )

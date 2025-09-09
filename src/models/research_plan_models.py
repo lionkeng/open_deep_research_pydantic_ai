@@ -122,8 +122,8 @@ class ResearchPlan(BaseModel):
         return result
 
 
-class EnhancedTransformedQuery(BaseModel):
-    """Enhanced query transformation output combining search queries and research plan."""
+class TransformedQuery(BaseModel):
+    """Query transformation output combining search queries and research plan."""
 
     # Original context
     original_query: str = Field(description="The original user query")
@@ -155,7 +155,7 @@ class EnhancedTransformedQuery(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_coherence(self) -> "EnhancedTransformedQuery":
+    def validate_coherence(self) -> "TransformedQuery":
         """Ensure queries and plan are coherent."""
         # Validate that queries reference valid objectives
         objective_ids = {obj.id for obj in self.research_plan.objectives}

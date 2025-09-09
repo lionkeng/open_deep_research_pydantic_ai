@@ -62,7 +62,7 @@ flowchart LR
 
 ## 2. ENHANCED DATA MODELS
 
-### 2.1 Enhanced TransformedQuery Model
+### 2.1 TransformedQuery Model
 
 ```python
 # src/models/query_transformation.py - Enhanced version
@@ -163,7 +163,7 @@ class ResearchPlan(BaseModel):
         description="Estimated execution time"
     )
 
-class EnhancedTransformedQuery(BaseModel):
+class TransformedQuery(BaseModel):
     """Complete output from enhanced Query Transformation Agent."""
 
     # Original query information
@@ -190,7 +190,7 @@ class EnhancedTransformedQuery(BaseModel):
     assumptions_made: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def link_queries_to_objectives(self) -> "EnhancedTransformedQuery":
+    def link_queries_to_objectives(self) -> "TransformedQuery":
         """Ensure queries are properly linked to objectives."""
         # Auto-link queries to objectives based on priority matching
         for i, query in enumerate(self.search_queries.queries):
@@ -254,7 +254,7 @@ from pydantic_ai import Agent, RunContext
 import logfire
 
 from ..models.query_transformation import (
-    EnhancedTransformedQuery,
+    TransformedQuery,
     SearchQueryBatch,
     SearchQuery,
     ResearchPlan,
@@ -263,7 +263,7 @@ from ..models.query_transformation import (
 )
 from .base import BaseAgent
 
-class EnhancedQueryTransformationAgent(BaseAgent[EnhancedTransformedQuery]):
+class EnhancedQueryTransformationAgent(BaseAgent[TransformedQuery]):
     """
     Enhanced Query Transformation Agent that generates both search queries
     AND research plan, eliminating the need for Brief Generator.
@@ -281,7 +281,7 @@ class EnhancedQueryTransformationAgent(BaseAgent[EnhancedTransformedQuery]):
         """Configure the enhanced agent."""
         self.agent = Agent(
             model=self.model,
-            result_type=EnhancedTransformedQuery,
+            result_type=TransformedQuery,
             system_prompt=self._get_enhanced_system_prompt(),
             retries=2
         )
@@ -396,7 +396,7 @@ Remember: You are replacing TWO agents (Query Transformation + Brief Generator) 
         self,
         query: str,
         clarification_context: Optional[Dict[str, Any]] = None
-    ) -> EnhancedTransformedQuery:
+    ) -> TransformedQuery:
         """
         Transform query into search queries WITH complete research plan.
 
@@ -630,7 +630,7 @@ from ..agents.query_transformation import EnhancedQueryTransformationAgent
 from ..agents.research_executor import SimplifiedResearchExecutor
 from ..agents.compression import CompressionAgent
 from ..agents.report_generator import ReportGeneratorAgent
-from ..models.query_transformation import EnhancedTransformedQuery
+from ..models.query_transformation import TransformedQuery
 from ..models.research_executor import ResearchResults
 
 class SimplifiedResearchWorkflow:
@@ -795,7 +795,7 @@ from unittest.mock import Mock, AsyncMock
 
 from src.agents.query_transformation import EnhancedQueryTransformationAgent
 from src.agents.research_executor import SimplifiedResearchExecutor
-from src.models.query_transformation import EnhancedTransformedQuery
+from src.models.query_transformation import TransformedQuery
 
 class TestSimplifiedArchitecture:
     """Test the simplified 5-agent architecture."""
@@ -828,7 +828,7 @@ class TestSimplifiedArchitecture:
         executor = SimplifiedResearchExecutor(search_service=mock_search_service)
 
         # Create a sample transformed query
-        transformed = Mock(spec=EnhancedTransformedQuery)
+        transformed = Mock(spec=TransformedQuery)
         transformed.search_queries = Mock()
         transformed.search_queries.queries = [
             Mock(query="test query", priority=5, max_results=10)
@@ -927,7 +927,7 @@ class TestSimplifiedArchitecture:
 
 | Phase | Duration | Tasks | Risk |
 |-------|----------|-------|------|
-| **Phase 1: Data Models** | 2 days | - Create EnhancedTransformedQuery<br>- Add ResearchPlan model<br>- Update SearchQuery with objective_id | Low |
+| **Phase 1: Data Models** | 2 days | - Create TransformedQuery<br>- Add ResearchPlan model<br>- Update SearchQuery with objective_id | Low |
 | **Phase 2: Enhanced Transformer** | 3 days | - Implement EnhancedQueryTransformationAgent<br>- Develop integrated prompts<br>- Test query-to-plan generation | Medium |
 | **Phase 3: Simplified Executor** | 2 days | - Create SimplifiedResearchExecutor<br>- Remove ResearchBrief dependency<br>- Test direct SearchQueryBatch consumption | Low |
 | **Phase 4: Workflow Update** | 2 days | - Create SimplifiedResearchWorkflow<br>- Add feature flags<br>- Implement adaptive workflow | Medium |

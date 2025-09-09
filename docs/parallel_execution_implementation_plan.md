@@ -194,8 +194,8 @@ sequenceDiagram
    - Adds circuit breaker patterns for resilience
 
 4. **Streamlined Data Model Flow**
-   - `ClarificationRequest` → `EnhancedTransformedQuery` → `ResearchResults` → `CompressedFindings` → `FinalReport`
-   - EnhancedTransformedQuery contains both SearchQueryBatch AND ResearchPlan
+   - `ClarificationRequest` → `TransformedQuery` → `ResearchResults` → `CompressedFindings` → `FinalReport`
+   - TransformedQuery contains both SearchQueryBatch AND ResearchPlan
    - No ResearchBrief in the flow (functionality merged into ResearchPlan)
    - Each model carries forward context without redundant transformations
 

@@ -6,7 +6,7 @@ import logfire
 from pydantic_ai import RunContext
 
 from src.models.metadata import ResearchMetadata
-from src.models.research_plan_models import EnhancedTransformedQuery
+from src.models.research_plan_models import TransformedQuery
 
 from .base import (
     AgentConfiguration,
@@ -226,7 +226,7 @@ Transformation:
 """
 
 
-class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, EnhancedTransformedQuery]):
+class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, TransformedQuery]):
     """Agent responsible for transforming and optimizing user queries for research.
 
     This agent takes vague or broad queries and transforms them into specific,
@@ -350,9 +350,9 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, EnhancedT
         """Get the base system prompt for this agent."""
         return "You are a Query Transformation Specialist focused on optimizing research queries."
 
-    def _get_output_type(self) -> type[EnhancedTransformedQuery]:
+    def _get_output_type(self) -> type[TransformedQuery]:
         """Get the output type for this agent."""
-        return EnhancedTransformedQuery
+        return TransformedQuery
 
 
 # Lazy initialization of module-level instance

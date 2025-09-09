@@ -1,4 +1,4 @@
-"""Unit tests for QueryTransformationAgent with EnhancedTransformedQuery."""
+"""Unit tests for QueryTransformationAgent with TransformedQuery."""
 
 import uuid
 import pytest
@@ -15,7 +15,7 @@ from src.models.clarification import (
     ClarificationQuestion, ClarificationAnswer
 )
 from src.models.research_plan_models import (
-    EnhancedTransformedQuery,
+    TransformedQuery,
     ResearchPlan,
     ResearchObjective,
     ResearchMethodology
@@ -71,7 +71,7 @@ class TestQueryTransformationAgent:
 
     @pytest.mark.asyncio
     async def test_enhanced_query_generation(self, transformation_agent, agent_dependencies):
-        """Test generation of EnhancedTransformedQuery with SearchQueryBatch and ResearchPlan."""
+        """Test generation of TransformedQuery with SearchQueryBatch and ResearchPlan."""
         # Create research objectives first
         objective_id = str(uuid.uuid4())
         objectives = [
@@ -126,7 +126,7 @@ class TestQueryTransformationAgent:
         )
 
         # Create enhanced query
-        enhanced_query = EnhancedTransformedQuery(
+        enhanced_query = TransformedQuery(
             original_query="How does machine learning work?",
             search_queries=batch,
             research_plan=plan,
@@ -140,7 +140,7 @@ class TestQueryTransformationAgent:
         with patch.object(transformation_agent.agent, 'run', return_value=mock_result):
             result = await transformation_agent.run(deps=agent_dependencies)
 
-            assert isinstance(result, EnhancedTransformedQuery)
+            assert isinstance(result, TransformedQuery)
             assert result.search_queries == batch
             assert result.research_plan == plan
             assert len(result.search_queries.queries) == 2
@@ -295,7 +295,7 @@ class TestQueryTransformationAgent:
         )
 
         mock_result = MagicMock()
-        mock_result.output = EnhancedTransformedQuery(
+        mock_result.output = TransformedQuery(
             original_query="How does machine learning work?",
             search_queries=batch,
             research_plan=plan,
@@ -443,7 +443,7 @@ class TestQueryTransformationAgent:
         )
 
         mock_result = MagicMock()
-        mock_result.output = EnhancedTransformedQuery(
+        mock_result.output = TransformedQuery(
             original_query=agent_dependencies.research_state.user_query,
             search_queries=batch,
             research_plan=plan,
@@ -513,7 +513,7 @@ class TestQueryTransformationAgent:
             expected_deliverables=["Test deliverable"]
         )
 
-        enhanced_query = EnhancedTransformedQuery(
+        enhanced_query = TransformedQuery(
             original_query="test",
             search_queries=batch,
             research_plan=plan,
