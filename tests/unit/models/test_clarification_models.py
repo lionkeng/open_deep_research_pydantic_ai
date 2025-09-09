@@ -171,16 +171,16 @@ class TestClarificationRequest:
 
     def test_o1_lookup_performance(self):
         """Test O(1) lookup for questions by ID."""
-        # Create request with many questions
+        # Create request with maximum allowed questions (10)
         questions = [
             ClarificationQuestion(question=f"Q{i}", order=i)
-            for i in range(100)
+            for i in range(10)
         ]
         req = ClarificationRequest(questions=questions)
 
         # Test O(1) lookup
-        q50 = req.get_question_by_id(questions[50].id)
-        assert q50 == questions[50]
+        q5 = req.get_question_by_id(questions[5].id)
+        assert q5 == questions[5]
 
         # Test non-existent ID
         assert req.get_question_by_id("non-existent") is None
