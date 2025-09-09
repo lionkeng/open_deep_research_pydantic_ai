@@ -47,7 +47,7 @@ Test agent logic in isolation:
 uv run pytest tests/unit/agents/test_clarification_agent.py -v
 
 # Test specific functionality
-uv run pytest tests/unit/agents/test_clarification_agent_unit.py::TestClarificationAgentUnit::test_response_structure_validation -v
+uv run pytest tests/unit/agents/test_clarification_agent.py::TestClarificationAgent::test_validates_output_structure -v
 ```
 
 ### 3. Integration Tests
