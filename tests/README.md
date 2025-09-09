@@ -27,6 +27,7 @@ tests/
 ## Testing the Clarification Agent
 
 ### 1. Model Tests
+
 Test the data models used by the clarification agent:
 
 ```bash
@@ -38,17 +39,19 @@ uv run pytest tests/unit/models/test_clarification_models.py::TestClarificationQ
 ```
 
 ### 2. Unit Tests
+
 Test agent logic in isolation:
 
 ```bash
 # Run all unit tests for the clarification agent
-uv run pytest tests/unit/agents/test_clarification_agent_unit.py -v
+uv run pytest tests/unit/agents/test_clarification_agent.py -v
 
 # Test specific functionality
 uv run pytest tests/unit/agents/test_clarification_agent_unit.py::TestClarificationAgentUnit::test_response_structure_validation -v
 ```
 
 ### 3. Integration Tests
+
 Test workflow integration and dependencies:
 
 ```bash
@@ -60,6 +63,7 @@ source .env && uv run pytest tests/integration/test_clarification_workflows.py::
 ```
 
 ### 4. LLM Evaluation Framework
+
 Run comprehensive evaluations using the Pydantic AI evaluation framework:
 
 ```bash
@@ -134,6 +138,7 @@ asyncio.run(main())
 ```
 
 ### 5. Regression Testing
+
 Track performance over time and detect regressions:
 
 ```bash
@@ -181,6 +186,7 @@ asyncio.run(main())
 ```
 
 ### 6. Comprehensive Evaluation Runner
+
 Run the complete evaluation suite with reporting:
 
 ```bash
@@ -195,6 +201,7 @@ source .env && uv run python tests/evals/evaluation_runner.py --suites regressio
 ```
 
 ### 7. Acceptance Tests
+
 Run final validation tests:
 
 ```bash
@@ -211,6 +218,7 @@ source .env && uv run pytest tests/acceptance/test_final_validation.py::TestCrit
 ## Quick Test Commands
 
 ### Minimal Testing (No API Keys Required)
+
 ```bash
 # Unit tests only
 uv run pytest tests/unit/ -v
@@ -223,6 +231,7 @@ uv run pytest tests/acceptance/test_final_validation.py::TestSystemHealth -v
 ```
 
 ### Standard Testing (API Keys Required)
+
 ```bash
 # Set up environment
 source .env
@@ -235,6 +244,7 @@ uv run python tests/evals/evaluation_runner.py --suites regression clarification
 ```
 
 ### Comprehensive Testing
+
 ```bash
 # Run everything
 source .env && uv run python tests/evals/evaluation_runner.py --suites all --output-formats console markdown json html
@@ -243,6 +253,7 @@ source .env && uv run python tests/evals/evaluation_runner.py --suites all --out
 ## Test Coverage Areas
 
 ### Clarification Agent Coverage
+
 - **Unit Tests**: Agent initialization, response structure, input validation, error handling
 - **Integration Tests**: Workflow integration, dependency injection, performance monitoring
 - **Model Tests**: Data model validation, serialization, consistency checks
@@ -257,6 +268,7 @@ source .env && uv run python tests/evals/evaluation_runner.py --suites all --out
 ## Evaluation Metrics
 
 ### Core Metrics
+
 - **Accuracy**: Correct clarification decisions (target: >90%)
 - **Precision**: Of clarifications requested, how many were needed
 - **Recall**: Of needed clarifications, how many were requested
@@ -264,6 +276,7 @@ source .env && uv run python tests/evals/evaluation_runner.py --suites all --out
 - **Response Time**: Average processing time (target: <2s)
 
 ### Quality Metrics
+
 - **Question Quality**: 1-5 scale rating of clarification questions
 - **Domain Accuracy**: Performance on domain-specific queries
 - **Edge Case Handling**: Robustness score for edge cases
@@ -272,6 +285,7 @@ source .env && uv run python tests/evals/evaluation_runner.py --suites all --out
 ## Configuration
 
 ### Environment Variables
+
 ```bash
 # Required for LLM evaluations
 OPENAI_API_KEY=your_api_key
@@ -281,6 +295,7 @@ LOGFIRE_IGNORE_NO_CONFIG=1  # Suppress Logfire warnings
 ```
 
 ### Test Markers
+
 ```bash
 # Run specific test categories
 uv run pytest -m "unit" -v        # Unit tests only
@@ -299,6 +314,7 @@ When adding tests for the clarification agent:
 4. **Evaluation Cases**: Add to `tests/evals/clarification_evals.py`
 
 Follow these patterns:
+
 - Use fixtures from `conftest.py`
 - Mock external dependencies in unit tests
 - Use real agents for integration/evaluation tests
@@ -309,12 +325,14 @@ Follow these patterns:
 ### Common Issues
 
 1. **Import Errors**
+
    ```bash
    # Ensure proper Python path
    export PYTHONPATH="${PYTHONPATH}:$(pwd)"
    ```
 
 2. **API Key Issues**
+
    ```bash
    # Check API key is set
    echo $OPENAI_API_KEY
@@ -324,6 +342,7 @@ Follow these patterns:
    ```
 
 3. **Performance Test Failures**
+
    - Increase timeouts for slower systems
    - Run with `--verbose` for detailed output
    - Check resource usage with performance monitoring
@@ -358,6 +377,7 @@ For continuous integration:
 ## Future Enhancements
 
 Planned improvements for the testing framework:
+
 - [ ] Automated performance benchmarking
 - [ ] Visual evaluation dashboards
 - [ ] Comparative analysis across model versions
