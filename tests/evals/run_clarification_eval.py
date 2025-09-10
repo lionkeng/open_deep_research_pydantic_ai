@@ -31,7 +31,7 @@ from pydantic import SecretStr
 
 from src.agents.base import ResearchDependencies
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.models.api_models import APIKeys
+from src.models.api_models import APIKeys, ConversationMessage
 from src.models.core import ResearchStage, ResearchState
 from src.models.metadata import ResearchMetadata
 
@@ -50,7 +50,8 @@ class MultiQuestionClarificationEvaluator:
         query: str,
         expected_clarification: bool,
         expected_question_count: int | None = None,
-        expected_question_types: list[str] | None = None
+        expected_question_types: list[str] | None = None,
+        context: list[dict[str, str]] | None = None
     ) -> dict[str, Any]:
         """Evaluate a single query with multi-question support.
 
@@ -59,13 +60,28 @@ class MultiQuestionClarificationEvaluator:
             expected_clarification: Whether clarification is expected
             expected_question_count: Expected number of questions (if clarification needed)
             expected_question_types: Expected types of questions
+            context: Optional conversation context (list of role/content dicts)
         """
         async with httpx.AsyncClient(timeout=30.0) as http_client:
+            # Create conversation messages from context if provided
+            conversation_messages = []
+            if context:
+                for msg in context:
+                    conversation_messages.append(ConversationMessage(
+                        role=msg['role'],
+                        content=msg['content']
+                    ))
+
+            # Create metadata with conversation context
+            metadata = ResearchMetadata(
+                conversation_messages=conversation_messages
+            )
+
             state = ResearchState(
                 request_id=f"eval-{abs(hash(query))}",
                 user_query=query,
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=ResearchMetadata()
+                metadata=metadata
             )
             deps = ResearchDependencies(
                 http_client=http_client,
@@ -171,6 +187,9 @@ class MultiQuestionClarificationEvaluator:
                             "expected": case['expected']['needs_clarification'],
                             "category": category
                         }
+                        # Add context if present
+                        if 'context' in case['input']:
+                            test_case['context'] = case['input']['context']
                         # Add multi-question expectations if present
                         if 'expected_questions' in case['expected']:
                             test_case['expected_question_count'] = case['expected'].get('expected_questions')
@@ -266,7 +285,8 @@ class MultiQuestionClarificationEvaluator:
                 test_case['query'],
                 test_case['expected'],
                 test_case.get('expected_question_count'),
-                test_case.get('expected_question_types')
+                test_case.get('expected_question_types'),
+                test_case.get('context')
             )
 
             result['name'] = test_case['name']

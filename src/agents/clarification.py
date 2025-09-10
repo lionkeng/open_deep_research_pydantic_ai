@@ -27,12 +27,21 @@ comprehensive, high-quality research execution.
 
 # CHAIN-OF-THOUGHT ANALYSIS FRAMEWORK
 
+## Step 0: Simple Factual Query Check
+Before detailed analysis, determine if this is a simple factual query with clear intent:
+- **Current values**: prices (stocks, crypto, forex), weather, time/date
+- **Basic facts**: definitions, conversions, simple statistics
+- **Recognition pattern**: Query asks for a single current/factual value
+- **Action**: If simple factual query, proceed without clarification using reasonable defaults
+
 ## Step 1: Initial Query Decomposition (Think Step-by-Step)
 First, break down the query to identify:
+- **Query type**: Is this a simple factual request or a research query?
 - Primary subject/topic
 - Implicit assumptions
 - Stated constraints
 - Unstated but necessary parameters
+- **Conversation context**: Check if prior messages provide context that clarifies the query
 - **Multiple distinct topics**: If query contains multiple questions connected by "and",
   "also", "plus", assess if they need separate treatment
 - **Typos and misspellings**: Consider if intent is still clear despite errors - if intent
@@ -45,6 +54,9 @@ First, break down the query to identify:
 - Is the scope clearly bounded? (geographical, temporal, domain)
 - Are key terms unambiguous?
 - Can this be researched in reasonable time?
+**Exception for simple factual queries:**
+- "Current" is sufficient temporal scope for prices, weather, time
+- Well-known entities (Bitcoin, Apple stock, major cities) need no further specification
 **Red Flags:**
 - Broad terms without qualifiers ("AI", "technology", "business")
 - Missing boundaries ("best", "top", "leading" without criteria)
@@ -68,8 +80,11 @@ First, break down the query to identify:
 - Recency requirements
 - Geographic or language constraints
 - Credibility thresholds
+**Exception for simple factual queries:**
+- For current prices, weather, basic facts: reasonable defaults are acceptable
+- Major exchanges/sources can be assumed unless specific requirements stated
 **Red Flags:**
-- No quality indicators
+- No quality indicators (except for simple factual queries)
 - Unrealistic source expectations
 - Conflicting requirements
 
@@ -79,8 +94,10 @@ First, break down the query to identify:
 - Level of detail needed
 - Specific questions to answer
 - Frameworks to apply
+**Exception for simple factual queries:**
+- Basic value/fact requests: simple answer format is expected
 **Red Flags:**
-- Vague expectations
+- Vague expectations (except for simple factual queries)
 - Format misalignment with purpose
 - Missing success metrics
 
@@ -143,6 +160,23 @@ Reasoning: Specific versions, specific source document, factual comparison
 **Example 5: Clear Intent Despite Typos**
 "Wat is teh curent temprature in New York?"
 Reasoning: Despite typos, intent is unambiguous - requesting current temperature in New York City
+
+**Example 6: Follow-up Question with Clear Context**
+Context: User: "Tell me about Tesla Model 3" / Assistant: "Tesla Model 3 is an electric sedan..."
+Query: "What about the performance?"
+Reasoning: With prior context about Tesla Model 3, the query clearly refers to its performance
+
+**Example 7: Current Price Query**
+"What is the current Bitcoin price in USD?"
+Reasoning: Simple factual query - any major exchange price is acceptable as default
+
+**Example 8: Simple Definition**
+"What is the capital of France?"
+Reasoning: Basic factual question with a single, unambiguous answer
+
+**Example 9: Current Weather**
+"What's the weather in London?"
+Reasoning: Current conditions request - standard weather report is expected
 
 ## Step 4: Question Generation Protocol
 
