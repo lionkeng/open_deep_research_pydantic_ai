@@ -5,7 +5,6 @@ These tests use real QueryTransformationAgent instances and only mock external d
 """
 
 import asyncio
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,14 +16,10 @@ from src.models.api_models import APIKeys
 from src.models.core import ResearchState
 from src.models.metadata import ResearchMetadata
 from src.models.research_plan_models import (
-    ResearchMethodology,
-    ResearchObjective,
-    ResearchPlan,
     TransformedQuery,
 )
-from src.models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
+from src.models.search_query_models import SearchQueryType
 from tests.test_helpers import (
-    MockLLMAgent,
     create_dynamic_query_response,
     create_mock_llm_response,
 )
