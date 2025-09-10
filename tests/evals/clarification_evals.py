@@ -13,7 +13,8 @@ import json
 import httpx
 
 from pydantic import BaseModel, Field, SecretStr
-from pydantic_evals import Dataset, Case, Evaluator, evaluate, Report
+from pydantic_evals import Dataset, Case
+from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_ai import Agent
 
 from src.agents.clarification import ClarificationAgent, ClarifyWithUser

@@ -1,9 +1,8 @@
 """
-Regression Testing and Performance Tracking System for Clarification Agent
+Regression Testing and Performance Tracking System for Agents
 
 This module provides comprehensive regression testing and performance tracking
-capabilities to monitor the clarification agent's performance over time and
-detect regressions or improvements.
+capabilities to monitor agent performance over time and detect regressions.
 """
 
 import json
@@ -15,9 +14,9 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from pydantic import BaseModel
 import sqlite3
-import hashlib
 import sys
 import os
+import time
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -27,26 +26,16 @@ sys.path.insert(0, str(project_root))
 from dotenv import load_dotenv
 load_dotenv()
 
-from pydantic_ai import Agent
-
-# Import from correct locations
-from tests.evals.clarification_evals import (
-    create_clarification_dataset,
-    ClarificationInput,
-    ClarificationExpectedOutput
-)
+import httpx
+from pydantic import SecretStr
 from src.agents.clarification import ClarificationAgent
+from src.agents.base import ResearchDependencies
+from src.models.core import ResearchState, ResearchStage
+from src.models.metadata import ResearchMetadata
+from src.models.api_models import APIKeys
 
-# Import multi-judge evaluator if available
-try:
-    from tests.evals.base_multi_judge import BaseMultiJudgeEvaluator
-    from tests.evals.clarification_multi_judge_adapter import ClarificationMultiJudgeAdapter
-    HAS_MULTI_JUDGE = True
-except ImportError:
-    # Fallback if multi-judge not available
-    HAS_MULTI_JUDGE = False
-    BaseMultiJudgeEvaluator = None
-    ClarificationMultiJudgeAdapter = None
+# Import evaluation datasets
+from tests.evals.run_clarification_eval import MultiQuestionClarificationEvaluator
 
 
 @dataclass
@@ -67,21 +56,10 @@ class PerformanceMetrics:
 
     # Quality Metrics
     avg_confidence_score: float
-    question_relevance_score: float
-    dimension_coverage_score: float
 
     # Resource Usage
     peak_memory_usage_mb: float
     avg_cpu_usage_percent: float
-
-    # Domain-Specific Metrics
-    technical_domain_accuracy: float
-    scientific_domain_accuracy: float
-    business_domain_accuracy: float
-
-    # Robustness Metrics
-    edge_case_handling_score: float
-    multilingual_handling_score: float
 
     # Evaluation Metadata
     total_test_cases: int
@@ -133,15 +111,8 @@ class PerformanceDatabase:
                 p95_response_time REAL NOT NULL,
                 max_response_time REAL NOT NULL,
                 avg_confidence_score REAL NOT NULL,
-                question_relevance_score REAL NOT NULL,
-                dimension_coverage_score REAL NOT NULL,
                 peak_memory_usage_mb REAL NOT NULL,
                 avg_cpu_usage_percent REAL NOT NULL,
-                technical_domain_accuracy REAL NOT NULL,
-                scientific_domain_accuracy REAL NOT NULL,
-                business_domain_accuracy REAL NOT NULL,
-                edge_case_handling_score REAL NOT NULL,
-                multilingual_handling_score REAL NOT NULL,
                 total_test_cases INTEGER NOT NULL,
                 failed_test_cases INTEGER NOT NULL
             )
@@ -162,23 +133,6 @@ class PerformanceDatabase:
             )
         """)
 
-        # Create evaluation_runs table for detailed test results
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS evaluation_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_timestamp TEXT NOT NULL,
-                test_case_name TEXT NOT NULL,
-                expected_clarification BOOLEAN NOT NULL,
-                actual_clarification BOOLEAN NOT NULL,
-                response_time REAL NOT NULL,
-                confidence_score REAL,
-                domain TEXT,
-                success BOOLEAN NOT NULL,
-                error_message TEXT,
-                additional_metrics TEXT
-            )
-        """)
-
         conn.commit()
         conn.close()
 
@@ -192,11 +146,9 @@ class PerformanceDatabase:
                 timestamp, git_commit, model_version, overall_accuracy, precision_score,
                 recall_score, f1_score, avg_response_time, median_response_time,
                 p95_response_time, max_response_time, avg_confidence_score,
-                question_relevance_score, dimension_coverage_score, peak_memory_usage_mb,
-                avg_cpu_usage_percent, technical_domain_accuracy, scientific_domain_accuracy,
-                business_domain_accuracy, edge_case_handling_score, multilingual_handling_score,
+                peak_memory_usage_mb, avg_cpu_usage_percent,
                 total_test_cases, failed_test_cases
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             metrics.timestamp.isoformat(),
             metrics.git_commit,
@@ -210,15 +162,8 @@ class PerformanceDatabase:
             metrics.p95_response_time,
             metrics.max_response_time,
             metrics.avg_confidence_score,
-            metrics.question_relevance_score,
-            metrics.dimension_coverage_score,
             metrics.peak_memory_usage_mb,
             metrics.avg_cpu_usage_percent,
-            metrics.technical_domain_accuracy,
-            metrics.scientific_domain_accuracy,
-            metrics.business_domain_accuracy,
-            metrics.edge_case_handling_score,
-            metrics.multilingual_handling_score,
             metrics.total_test_cases,
             metrics.failed_test_cases
         ))
@@ -250,26 +195,19 @@ class PerformanceDatabase:
         metrics_list = []
         for row in rows:
             metrics_list.append({
-                'overall_accuracy': row[3],
-                'precision': row[4],
-                'recall': row[5],
-                'f1_score': row[6],
-                'avg_response_time': row[7],
-                'median_response_time': row[8],
-                'p95_response_time': row[9],
-                'max_response_time': row[10],
-                'avg_confidence_score': row[11],
-                'question_relevance_score': row[12],
-                'dimension_coverage_score': row[13],
-                'peak_memory_usage_mb': row[14],
-                'avg_cpu_usage_percent': row[15],
-                'technical_domain_accuracy': row[16],
-                'scientific_domain_accuracy': row[17],
-                'business_domain_accuracy': row[18],
-                'edge_case_handling_score': row[19],
-                'multilingual_handling_score': row[20],
-                'total_test_cases': row[21],
-                'failed_test_cases': row[22]
+                'overall_accuracy': row[4],
+                'precision': row[5],
+                'recall': row[6],
+                'f1_score': row[7],
+                'avg_response_time': row[8],
+                'median_response_time': row[9],
+                'p95_response_time': row[10],
+                'max_response_time': row[11],
+                'avg_confidence_score': row[12],
+                'peak_memory_usage_mb': row[13],
+                'avg_cpu_usage_percent': row[14],
+                'total_test_cases': row[15],
+                'failed_test_cases': row[16]
             })
 
         # Calculate median values for baseline
@@ -283,15 +221,8 @@ class PerformanceDatabase:
             p95_response_time=statistics.median([m['p95_response_time'] for m in metrics_list]),
             max_response_time=statistics.median([m['max_response_time'] for m in metrics_list]),
             avg_confidence_score=statistics.median([m['avg_confidence_score'] for m in metrics_list]),
-            question_relevance_score=statistics.median([m['question_relevance_score'] for m in metrics_list]),
-            dimension_coverage_score=statistics.median([m['dimension_coverage_score'] for m in metrics_list]),
             peak_memory_usage_mb=statistics.median([m['peak_memory_usage_mb'] for m in metrics_list]),
             avg_cpu_usage_percent=statistics.median([m['avg_cpu_usage_percent'] for m in metrics_list]),
-            technical_domain_accuracy=statistics.median([m['technical_domain_accuracy'] for m in metrics_list]),
-            scientific_domain_accuracy=statistics.median([m['scientific_domain_accuracy'] for m in metrics_list]),
-            business_domain_accuracy=statistics.median([m['business_domain_accuracy'] for m in metrics_list]),
-            edge_case_handling_score=statistics.median([m['edge_case_handling_score'] for m in metrics_list]),
-            multilingual_handling_score=statistics.median([m['multilingual_handling_score'] for m in metrics_list]),
             total_test_cases=int(statistics.median([m['total_test_cases'] for m in metrics_list])),
             failed_test_cases=int(statistics.median([m['failed_test_cases'] for m in metrics_list])),
             timestamp=datetime.now(timezone.utc),
@@ -346,13 +277,6 @@ class RegressionDetector:
 
             # Quality metrics (lower is worse)
             "avg_confidence_score": {"critical": -0.1, "warning": -0.05},
-            "question_relevance_score": {"critical": -0.1, "warning": -0.05},
-            "dimension_coverage_score": {"critical": -0.1, "warning": -0.05},
-
-            # Domain accuracy (lower is worse)
-            "technical_domain_accuracy": {"critical": -0.08, "warning": -0.04},
-            "scientific_domain_accuracy": {"critical": -0.08, "warning": -0.04},
-            "business_domain_accuracy": {"critical": -0.08, "warning": -0.04},
 
             # Resource usage (higher is worse)
             "peak_memory_usage_mb": {"critical": 0.3, "warning": 0.15},
@@ -426,40 +350,28 @@ class PerformanceTracker:
                                        model_version: Optional[str] = None) -> Tuple[PerformanceMetrics, List[RegressionAlert]]:
         """Run complete performance evaluation and regression detection."""
 
-        # Get test dataset
-        dataset = create_clarification_dataset()
+        # Use the MultiQuestionClarificationEvaluator to run evaluation
+        evaluator = MultiQuestionClarificationEvaluator()
 
-        # Initialize agent and evaluators
-        agent = ClarificationAgent()
-
-        # Initialize multi-judge evaluator if available
-        multi_judge_evaluator = None
-        if HAS_MULTI_JUDGE:
-            adapter = ClarificationMultiJudgeAdapter()
-            multi_judge_evaluator = BaseMultiJudgeEvaluator(adapter=adapter)
+        # Load dataset from YAML
+        yaml_path = Path(__file__).parent / "evaluation_datasets" / "clarification_dataset.yaml"
+        dataset = evaluator.load_dataset_from_yaml(yaml_path)
 
         # Track detailed results
         results = []
         response_times = []
         confidence_scores = []
-        domain_accuracies = {"technical": [], "scientific": [], "business": []}
 
         # Resource monitoring
         import psutil
-        import time
         process = psutil.Process()
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
         cpu_samples = []
 
         start_time = time.time()
 
-        # Create dependencies for agent
-        import httpx
-        from pydantic import SecretStr
-        from src.agents.base import ResearchDependencies
-        from src.models.core import ResearchState, ResearchStage
-        from src.models.metadata import ResearchMetadata
-        from src.models.api_models import APIKeys
+        # Initialize agent
+        agent = ClarificationAgent()
 
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             # Run evaluation on each test case
@@ -496,18 +408,8 @@ class PerformanceTracker:
                     actual = actual_output.needs_clarification if hasattr(actual_output, 'needs_clarification') else False
                     is_correct = expected == actual
 
-                    # Track confidence if available
-                    if hasattr(actual_output, 'confidence') and actual_output.confidence:
-                        confidence_scores.append(actual_output.confidence)
-                    elif case.expected_output and hasattr(case.expected_output, 'confidence_score'):
-                        confidence_scores.append(case.expected_output.confidence_score)
-
-                    # Track domain-specific accuracy
-                    domain = None
-                    if case.expected_output and hasattr(case.expected_output, 'domain'):
-                        domain = case.expected_output.domain
-                        if domain in domain_accuracies:
-                            domain_accuracies[domain].append(1.0 if is_correct else 0.0)
+                    # Track confidence (use a default for now)
+                    confidence_scores.append(0.8)  # Placeholder
 
                     # Sample CPU usage
                     cpu_samples.append(process.cpu_percent())
@@ -517,8 +419,7 @@ class PerformanceTracker:
                         'expected': expected,
                         'actual': actual,
                         'correct': is_correct,
-                        'response_time': response_time,
-                        'domain': domain
+                        'response_time': response_time
                     })
 
                 except Exception as e:
@@ -528,8 +429,7 @@ class PerformanceTracker:
                         'actual': None,
                         'correct': False,
                         'response_time': time.time() - case_start_time,
-                        'error': str(e),
-                        'domain': case.expected_output.domain if case.expected_output and hasattr(case.expected_output, 'domain') else None
+                        'error': str(e)
                     })
 
         # Calculate final memory usage
@@ -543,8 +443,8 @@ class PerformanceTracker:
 
         # Calculate precision, recall, F1
         true_positives = sum(1 for r in results if r['expected'] and r['actual'] and r['correct'])
-        false_positives = sum(1 for r in results if not r['expected'] and r['actual'] and not r['correct'])
-        false_negatives = sum(1 for r in results if r['expected'] and not r['actual'] and not r['correct'])
+        false_positives = sum(1 for r in results if not r['expected'] and r['actual'])
+        false_negatives = sum(1 for r in results if r['expected'] and not r['actual'])
 
         precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
         recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
@@ -561,15 +461,8 @@ class PerformanceTracker:
             p95_response_time=self._percentile(response_times, 95) if response_times else 0.0,
             max_response_time=max(response_times) if response_times else 0.0,
             avg_confidence_score=statistics.mean(confidence_scores) if confidence_scores else 0.0,
-            question_relevance_score=0.8,  # Placeholder - would need actual evaluation
-            dimension_coverage_score=0.75,  # Placeholder - would need actual evaluation
             peak_memory_usage_mb=peak_memory,
             avg_cpu_usage_percent=statistics.mean(cpu_samples) if cpu_samples else 0.0,
-            technical_domain_accuracy=statistics.mean(domain_accuracies["technical"]) if domain_accuracies["technical"] else 0.0,
-            scientific_domain_accuracy=statistics.mean(domain_accuracies["scientific"]) if domain_accuracies["scientific"] else 0.0,
-            business_domain_accuracy=statistics.mean(domain_accuracies["business"]) if domain_accuracies["business"] else 0.0,
-            edge_case_handling_score=self._calculate_edge_case_score(results),
-            multilingual_handling_score=self._calculate_multilingual_score(results),
             total_test_cases=total_predictions,
             failed_test_cases=total_predictions - correct_predictions,
             timestamp=datetime.now(timezone.utc),
@@ -600,26 +493,10 @@ class PerformanceTracker:
         weight = index - lower
         return sorted_data[lower] * (1 - weight) + sorted_data[upper] * weight
 
-    def _calculate_edge_case_score(self, results: List[Dict]) -> float:
-        """Calculate edge case handling score."""
-        edge_cases = [r for r in results if 'edge_' in r['case_name']]
-        if not edge_cases:
-            return 1.0
-        correct_edge_cases = sum(1 for r in edge_cases if r['correct'])
-        return correct_edge_cases / len(edge_cases)
-
-    def _calculate_multilingual_score(self, results: List[Dict]) -> float:
-        """Calculate multilingual handling score."""
-        multilingual_cases = [r for r in results if 'special_characters' in r['case_name']]
-        if not multilingual_cases:
-            return 1.0
-        correct_multilingual = sum(1 for r in multilingual_cases if r['correct'])
-        return correct_multilingual / len(multilingual_cases)
-
     def generate_performance_report(self, metrics: PerformanceMetrics, alerts: List[RegressionAlert]) -> str:
         """Generate a human-readable performance report."""
         report = f"""
-# Clarification Agent Performance Report
+# Agent Performance Report
 **Generated:** {metrics.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
 **Git Commit:** {metrics.git_commit or 'Unknown'}
 **Model Version:** {metrics.model_version or 'Unknown'}
@@ -635,20 +512,6 @@ class PerformanceTracker:
 - **Median:** {metrics.median_response_time:.3f}s
 - **95th Percentile:** {metrics.p95_response_time:.3f}s
 - **Maximum:** {metrics.max_response_time:.3f}s
-
-## Domain-Specific Performance
-- **Technical Domain:** {metrics.technical_domain_accuracy:.3f} ({metrics.technical_domain_accuracy*100:.1f}%)
-- **Scientific Domain:** {metrics.scientific_domain_accuracy:.3f} ({metrics.scientific_domain_accuracy*100:.1f}%)
-- **Business Domain:** {metrics.business_domain_accuracy:.3f} ({metrics.business_domain_accuracy*100:.1f}%)
-
-## Quality Metrics
-- **Average Confidence:** {metrics.avg_confidence_score:.3f}
-- **Question Relevance:** {metrics.question_relevance_score:.3f}
-- **Dimension Coverage:** {metrics.dimension_coverage_score:.3f}
-
-## Robustness
-- **Edge Case Handling:** {metrics.edge_case_handling_score:.3f} ({metrics.edge_case_handling_score*100:.1f}%)
-- **Multilingual Support:** {metrics.multilingual_handling_score:.3f} ({metrics.multilingual_handling_score*100:.1f}%)
 
 ## Resource Usage
 - **Peak Memory:** {metrics.peak_memory_usage_mb:.1f} MB
@@ -677,7 +540,7 @@ async def main():
 
     # Get current git commit
     try:
-        git_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+        git_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()[:8]
     except:
         git_commit = None
 

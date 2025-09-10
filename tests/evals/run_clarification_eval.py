@@ -31,7 +31,6 @@ from src.agents.clarification import ClarificationAgent, ClarifyWithUser
 from src.agents.base import ResearchDependencies
 from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
-from src.models.clarification import ClarificationQuestion, ClarificationRequest
 from src.models.api_models import APIKeys
 
 
@@ -153,7 +152,8 @@ class MultiQuestionClarificationEvaluator:
         """Run complete evaluation suite with multi-question support."""
 
         # Load test cases from YAML
-        yaml_path = Path(__file__).parent / "clarification_dataset.yaml"
+        yaml_path = Path(__file__).parent / "evaluation_datasets" / "clarification_dataset.yaml"
+
         test_cases = []
 
         if yaml_path.exists():

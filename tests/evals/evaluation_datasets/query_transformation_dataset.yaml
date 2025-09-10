@@ -1,0 +1,496 @@
+# Query Transformation Agent Evaluation Dataset
+# This dataset provides comprehensive test cases for evaluating the query transformation agent
+# following pydantic-ai evaluation patterns
+
+metadata:
+  name: query_transformation_comprehensive_evaluation
+  description: Comprehensive evaluation dataset for QueryTransformationAgent
+  version: 1.0.0
+  created: 2024-01-10
+  model_requirements:
+    - gpt-4o-mini
+    - gpt-3.5-turbo
+
+# Golden Standard Cases - Expert validated scenarios with clear expected outcomes
+golden_standard_cases:
+  - id: golden_complex_ai
+    name: Complex AI in Healthcare
+    category: golden_standard
+    inputs:
+      query: "How does machine learning work in healthcare?"
+      complexity: medium
+      domain: technical
+    expected_output:
+      min_search_queries: 5
+      max_search_queries: 12
+      min_objectives: 2
+      max_objectives: 4
+      expected_search_themes:
+        - machine learning
+        - healthcare
+        - algorithms
+        - medical
+      expected_objective_themes:
+        - analyze
+        - understand
+        - applications
+      query_types_expected:
+        - factual
+        - analytical
+        - exploratory
+      transformation_quality: excellent
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+      - TransformationAccuracyEvaluator
+
+  - id: golden_specific_technical
+    name: Database Comparison for E-commerce
+    category: golden_standard
+    inputs:
+      query: "Compare PostgreSQL vs MySQL performance for e-commerce"
+      complexity: medium
+      domain: technical
+    expected_output:
+      min_search_queries: 4
+      max_search_queries: 8
+      min_objectives: 2
+      max_objectives: 3
+      expected_search_themes:
+        - PostgreSQL
+        - MySQL
+        - performance
+        - e-commerce
+      expected_objective_themes:
+        - compare
+        - analyze
+        - evaluate
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - QueryDiversityEvaluator
+
+  - id: golden_broad_research
+    name: Climate Change Research
+    category: golden_standard
+    inputs:
+      query: "Research climate change impacts"
+      complexity: complex
+      domain: scientific
+    expected_output:
+      min_search_queries: 6
+      max_search_queries: 15
+      min_objectives: 3
+      max_objectives: 5
+      expected_search_themes:
+        - climate change
+        - impacts
+        - environment
+        - research
+      expected_objective_themes:
+        - investigate
+        - analyze
+        - assess
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+      - QueryDiversityEvaluator
+      - TransformationAccuracyEvaluator
+
+# Technical Domain Cases
+technical_cases:
+  - id: tech_microservices
+    name: Microservices Best Practices
+    category: technical
+    inputs:
+      query: "Best practices for microservices architecture"
+      complexity: medium
+      domain: technical
+    expected_output:
+      min_search_queries: 4
+      max_search_queries: 10
+      expected_search_themes:
+        - microservices
+        - architecture
+        - best practices
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+
+  - id: tech_optimization
+    name: Database Query Optimization
+    category: technical
+    inputs:
+      query: "How to optimize database queries"
+      complexity: simple
+      domain: technical
+    expected_output:
+      min_search_queries: 3
+      max_search_queries: 6
+      expected_search_themes:
+        - database
+        - optimization
+        - queries
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - QueryDiversityEvaluator
+
+  - id: tech_api_design
+    name: RESTful API Design
+    category: technical
+    inputs:
+      query: "Design RESTful API for user management system"
+      complexity: medium
+      domain: technical
+    expected_output:
+      min_search_queries: 5
+      max_search_queries: 10
+      min_objectives: 2
+      max_objectives: 4
+      expected_search_themes:
+        - REST
+        - API
+        - user management
+        - authentication
+      expected_objective_themes:
+        - design
+        - implement
+        - secure
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+
+  - id: tech_cloud_migration
+    name: Cloud Migration Strategy
+    category: technical
+    inputs:
+      query: "Migrate monolithic application to AWS cloud"
+      complexity: complex
+      domain: technical
+    expected_output:
+      min_search_queries: 8
+      max_search_queries: 15
+      min_objectives: 3
+      max_objectives: 5
+      expected_search_themes:
+        - AWS
+        - cloud migration
+        - monolithic
+        - microservices
+        - containerization
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+      - TransformationAccuracyEvaluator
+
+# Scientific Domain Cases
+scientific_cases:
+  - id: sci_quantum_computing
+    name: Quantum Computing Research
+    category: scientific
+    inputs:
+      query: "Quantum computing applications in cryptography"
+      complexity: complex
+      domain: scientific
+    expected_output:
+      min_search_queries: 6
+      max_search_queries: 12
+      min_objectives: 3
+      max_objectives: 5
+      expected_search_themes:
+        - quantum computing
+        - cryptography
+        - quantum algorithms
+        - security
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - QueryDiversityEvaluator
+
+  - id: sci_vaccine_development
+    name: Vaccine Development Process
+    category: scientific
+    inputs:
+      query: "mRNA vaccine development process and challenges"
+      complexity: complex
+      domain: scientific
+    expected_output:
+      min_search_queries: 7
+      max_search_queries: 14
+      min_objectives: 3
+      max_objectives: 5
+      expected_search_themes:
+        - mRNA
+        - vaccine
+        - development
+        - clinical trials
+        - challenges
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+      - TransformationAccuracyEvaluator
+
+  - id: sci_renewable_energy
+    name: Renewable Energy Analysis
+    category: scientific
+    inputs:
+      query: "Compare solar vs wind energy efficiency"
+      complexity: medium
+      domain: scientific
+    expected_output:
+      min_search_queries: 5
+      max_search_queries: 10
+      expected_search_themes:
+        - solar energy
+        - wind energy
+        - efficiency
+        - comparison
+      expected_objective_themes:
+        - compare
+        - evaluate
+        - analyze
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - QueryDiversityEvaluator
+
+# Business Domain Cases
+business_cases:
+  - id: biz_market_analysis
+    name: EV Market Analysis
+    category: business
+    inputs:
+      query: "Analyze market trends for electric vehicles"
+      complexity: medium
+      domain: business
+    expected_output:
+      min_search_queries: 5
+      max_search_queries: 10
+      expected_search_themes:
+        - market
+        - trends
+        - electric vehicles
+        - sales data
+        - forecast
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+
+  - id: biz_startup_strategy
+    name: Startup Strategy Development
+    category: business
+    inputs:
+      query: "Develop go-to-market strategy for SaaS startup"
+      complexity: complex
+      domain: business
+    expected_output:
+      min_search_queries: 7
+      max_search_queries: 14
+      min_objectives: 3
+      max_objectives: 5
+      expected_search_themes:
+        - go-to-market
+        - SaaS
+        - startup
+        - customer acquisition
+        - pricing strategy
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+      - TransformationAccuracyEvaluator
+
+  - id: biz_competitive_analysis
+    name: Competitive Analysis
+    category: business
+    inputs:
+      query: "Competitive analysis of streaming services market"
+      complexity: medium
+      domain: business
+    expected_output:
+      min_search_queries: 6
+      max_search_queries: 12
+      expected_search_themes:
+        - streaming services
+        - Netflix
+        - Disney+
+        - market share
+        - competitive advantage
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - QueryDiversityEvaluator
+
+# Edge Cases
+edge_cases:
+  - id: edge_minimal
+    name: Minimal Query
+    category: edge_cases
+    inputs:
+      query: "AI"
+      complexity: simple
+    expected_output:
+      min_search_queries: 3
+      max_search_queries: 8
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - TransformationAccuracyEvaluator
+
+  - id: edge_very_specific
+    name: Ultra-Specific Query
+    category: edge_cases
+    inputs:
+      query: "What is the molecular structure of caffeine C8H10N4O2?"
+      complexity: simple
+    expected_output:
+      min_search_queries: 2
+      max_search_queries: 5
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - TransformationAccuracyEvaluator
+
+  - id: edge_multi_topic
+    name: Multi-Topic Query
+    category: edge_cases
+    inputs:
+      query: "Compare AI, blockchain, and quantum computing impact on cybersecurity"
+      complexity: complex
+    expected_output:
+      min_search_queries: 9
+      max_search_queries: 18
+      min_objectives: 3
+      max_objectives: 6
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - QueryDiversityEvaluator
+
+  - id: edge_ambiguous
+    name: Ambiguous Query
+    category: edge_cases
+    inputs:
+      query: "How does it work?"
+      complexity: simple
+    expected_output:
+      min_search_queries: 3
+      max_search_queries: 6
+      confidence_score: 0.4
+    evaluators:
+      - TransformationAccuracyEvaluator
+
+  - id: edge_contradictory
+    name: Contradictory Requirements
+    category: edge_cases
+    inputs:
+      query: "Give me a brief but comprehensive overview of everything about AI"
+      complexity: medium
+    expected_output:
+      min_search_queries: 5
+      max_search_queries: 10
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+
+# Cross-Domain Cases
+cross_domain_cases:
+  - id: cross_ai_ethics
+    name: AI Ethics and Law
+    category: cross_domain
+    inputs:
+      query: "Legal and ethical implications of AI in healthcare"
+      complexity: complex
+      domain: interdisciplinary
+    expected_output:
+      min_search_queries: 8
+      max_search_queries: 15
+      min_objectives: 3
+      max_objectives: 5
+      expected_search_themes:
+        - AI ethics
+        - healthcare law
+        - patient privacy
+        - liability
+        - regulation
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - PlanCoherenceEvaluator
+      - QueryDiversityEvaluator
+
+  - id: cross_fintech_ml
+    name: FinTech Machine Learning
+    category: cross_domain
+    inputs:
+      query: "Machine learning applications in cryptocurrency trading"
+      complexity: complex
+      domain: interdisciplinary
+    expected_output:
+      min_search_queries: 7
+      max_search_queries: 14
+      expected_search_themes:
+        - machine learning
+        - cryptocurrency
+        - trading algorithms
+        - risk management
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - TransformationAccuracyEvaluator
+
+# Performance Benchmark Cases
+performance_cases:
+  - id: perf_simple
+    name: Simple Performance Test
+    category: performance
+    inputs:
+      query: "What is Python?"
+      complexity: simple
+    expected_output:
+      min_search_queries: 2
+      max_search_queries: 5
+      max_response_time: 2.0
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+
+  - id: perf_complex
+    name: Complex Performance Test
+    category: performance
+    inputs:
+      query: "Comprehensive analysis of global supply chain disruptions post-COVID"
+      complexity: complex
+    expected_output:
+      min_search_queries: 10
+      max_search_queries: 20
+      max_response_time: 10.0
+    evaluators:
+      - SearchQueryRelevanceEvaluator
+      - ObjectiveCoverageEvaluator
+      - QueryDiversityEvaluator
+
+# Evaluation Configuration
+evaluation_config:
+  default_evaluators:
+    - SearchQueryRelevanceEvaluator
+    - TransformationAccuracyEvaluator
+
+  thresholds:
+    relevance_threshold: 0.7
+    coverage_threshold: 0.75
+    coherence_threshold: 0.7
+    accuracy_threshold: 0.75
+    diversity_threshold: 0.7
+
+  execution:
+    max_concurrency: 5
+    timeout_seconds: 30
+    retry_attempts: 2
+
+  reporting:
+    generate_html: true
+    include_failed_cases: true
+    include_performance_metrics: true
