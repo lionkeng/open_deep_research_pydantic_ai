@@ -9,7 +9,7 @@ metadata:
   created: 2024-01-10
   model_requirements:
     - gpt-5-mini
-    - gpt-5-turbo
+    - gpt-5
 
 # Golden Standard Cases - Expert validated scenarios with clear expected outcomes
 golden_standard_cases:
