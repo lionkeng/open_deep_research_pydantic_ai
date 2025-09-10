@@ -232,20 +232,12 @@ cases:
       tags: ["edge-case", "minimal"]
 
     - name: multiple_questions
-      description: Multiple questions needing prioritization
+      description: Multiple related questions that form a coherent learning path
       input:
         query: "What is machine learning and how does it compare to deep learning and can you also explain neural networks?"
       expected:
-        needs_clarification: true
-        dimension_categories:
-          - scope_focus
-          - deliverable
-        key_themes:
-          - "which topic"
-          - "prioritize"
-          - "depth"
-          - "focus"
-      tags: ["multiple", "complex"]
+        needs_clarification: false
+      tags: ["multiple", "related", "coherent"]
 
     - name: typo_query
       description: Query with typos but clear intent

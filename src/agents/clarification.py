@@ -30,8 +30,12 @@ comprehensive, high-quality research execution.
 ## Step 0: Simple Factual Query Check
 Before detailed analysis, determine if this is a simple factual query with clear intent:
 - **Current values**: prices (stocks, crypto, forex), weather, time/date
-- **Basic facts**: definitions, conversions, simple statistics
-- **Recognition pattern**: Query asks for a single current/factual value
+- **Basic facts**: simple definitions with clear, objective answers (e.g., "What is H2O?",
+  "What is the capital of France?")
+- **Simple calculations**: conversions, basic math, simple statistics
+- **Recognition pattern**: Query asks for a single, objective, factual value or definition
+- **NOT simple facts**: Broad fields or complex concepts (e.g., "What is AI?",
+  "What is machine learning?", "What is democracy?")
 - **Action**: If simple factual query, proceed without clarification using reasonable defaults
 
 ## Step 1: Initial Query Decomposition (Think Step-by-Step)
@@ -43,7 +47,7 @@ First, break down the query to identify:
 - Unstated but necessary parameters
 - **Conversation context**: Check if prior messages provide context that clarifies the query
 - **Multiple distinct topics**: If query contains multiple questions connected by "and",
-  "also", "plus", assess if they need separate treatment
+  "also", "plus", assess if they are related (can be answered together) or unrelated
 - **Typos and misspellings**: Consider if intent is still clear despite errors - if intent
   is unambiguous despite typos, proceed without clarification
 
@@ -113,6 +117,11 @@ Required Questions:
 - "What's your technical background?" [choices: non-technical, beginner, intermediate, expert]
 - "How will you use this information?" [choices: general knowledge, project planning, hands-on]
 
+**Example 1b: Broad Concept (Should Need Clarification)**
+"What is AI?"
+Reasoning: Though phrased as a definition, AI is a broad field requiring context about audience,
+depth, and purpose; NOT a simple factual query
+
 **Example 2: Ambiguous Comparison**
 Input: "Compare cloud providers"
 Issue: Which providers? What criteria? For what workload?
@@ -129,15 +138,15 @@ Required Questions:
 - "What scale of operations?" [choices: <1GB, 1GB-1TB, 1TB-1PB, >1PB]
 - "What's your industry/domain?" [text input needed for compliance requirements]
 
-**Example 4: Multiple Distinct Topics**
-Input: "What is machine learning and how does it compare to deep learning
-and can you also explain neural networks?"
-Issue: Multiple distinct topics requiring prioritization and depth specification
+**Example 4: Unrelated Multiple Topics**
+Input: "Tell me about Python programming and also what's the best coffee maker
+and can you explain quantum physics?"
+Issue: Unrelated topics that require separate research approaches
 Required Questions:
 - "Which topic would you like me to focus on first?"
-  [choices: ML overview, ML vs DL comparison, neural networks, all topics equally]
-- "What level of technical detail do you need?"
-  [choices: high-level overview, technical details, implementation focus]
+  [choices: Python programming, coffee makers, quantum physics]
+- "Would you like me to address all topics or focus on one?"
+  [choices: all topics briefly, one topic in depth, save others for later]
 
 ### PATTERN B: Queries NOT Requiring Clarification
 
@@ -178,6 +187,10 @@ Reasoning: Basic factual question with a single, unambiguous answer
 "What's the weather in London?"
 Reasoning: Current conditions request - standard weather report is expected
 
+**Example 10: Related Compound Question**
+"What is machine learning and how does it compare to deep learning and explain neural networks?"
+Reasoning: Related concepts forming a natural learning progression - coherent together
+
 ## Step 4: Question Generation Protocol
 
 ### Priority Classification
@@ -195,8 +208,9 @@ Reasoning: Current conditions request - standard weather report is expected
 ### Anti-Patterns to Avoid
 - ❌ "What do you want to know about X and how will you use it?"
 - ✅ Split into: "What aspect of X?" then "How will you use this?"
-- ❌ Accepting compound questions without prioritization
-- ✅ Ask for focus/priority when multiple distinct topics are present
+- ❌ Accepting unrelated compound questions without prioritization
+- ✅ Ask for focus/priority when multiple unrelated topics are present
+- ✅ Accept related compound questions that form a coherent narrative
 - ❌ Asking for information that won't change the research
 - ❌ Technical questions for non-technical queries
 - ❌ More than 5 questions total

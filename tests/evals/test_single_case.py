@@ -67,12 +67,18 @@ async def test_single_case(case_name: str, category: str = None):
     if 'question_types' in found_case['expected']:
         test_case['expected_question_types'] = found_case['expected'].get('question_types')
 
+    # Add context if present
+    context = None
+    if 'context' in found_case['input']:
+        context = found_case['input']['context']
+
     # Run evaluation
     result = await evaluator.evaluate_query(
         test_case['query'],
         test_case['expected'],
         test_case.get('expected_question_count'),
-        test_case.get('expected_question_types')
+        test_case.get('expected_question_types'),
+        context=context
     )
 
     # Display results
