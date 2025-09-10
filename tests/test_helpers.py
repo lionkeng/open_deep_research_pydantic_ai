@@ -102,6 +102,204 @@ def create_mock_llm_response():
     return _create_response
 
 
+def create_dynamic_query_response(
+    query: str,
+    clarification_state: Optional[Any] = None,
+    conversation_history: Optional[List[Any]] = None
+) -> Any:
+    """Create a dynamic TransformedQuery response based on input.
+
+    This function simulates realistic LLM behavior by generating
+    responses that vary based on the input parameters.
+
+    Args:
+        query: The original query string
+        clarification_state: Optional clarification state
+        conversation_history: Optional conversation history
+
+    Returns:
+        A TransformedQuery with contextually appropriate content
+    """
+    from src.models.research_plan_models import (
+        TransformedQuery,
+        ResearchPlan,
+        ResearchObjective,
+        ResearchMethodology,
+    )
+    from src.models.search_query_models import (
+        SearchQuery,
+        SearchQueryBatch,
+        SearchQueryType,
+    )
+    import uuid
+
+    # Start with the base query
+    research_query = query
+    objectives = []
+    queries = []
+    key_concepts = []
+    assumptions = []
+
+    # If we have clarification, use the final query
+    if clarification_state:
+        # Check if it's a dict (from test) or an object
+        if isinstance(clarification_state, dict):
+            if clarification_state.get('is_clarified') and clarification_state.get('final_query'):
+                research_query = clarification_state['final_query']
+                assumptions.append("Query clarified by user")
+            # Extract keywords from user responses
+            if clarification_state.get('user_responses'):
+                for response in clarification_state['user_responses']:
+                    words = response.lower().split()
+                    key_concepts.extend([w for w in words if len(w) > 3][:2])
+        elif hasattr(clarification_state, 'is_clarified'):
+            if clarification_state.is_clarified and clarification_state.final_query:
+                research_query = clarification_state.final_query
+                assumptions.append("Query clarified by user")
+            # Extract keywords from user responses
+            if hasattr(clarification_state, 'user_responses'):
+                for response in clarification_state.user_responses:
+                    words = response.lower().split()
+                    key_concepts.extend([w for w in words if len(w) > 3][:2])
+
+    # Add conversation context if available
+    if conversation_history:
+        context_snippets = []
+        for turn in conversation_history[-3:]:  # Last 3 turns
+            if hasattr(turn, 'role') and turn.role == "user":
+                context_snippets.append(turn.content[:50])
+        if context_snippets:
+            assumptions.append(f"Building on previous discussion about: {', '.join(context_snippets[:2])}")
+
+    # Generate objectives based on query type
+    if "compare" in query.lower() or "vs" in query.lower():
+        # Comparison query
+        obj_id = str(uuid.uuid4())
+        objectives.append(ResearchObjective(
+            id=obj_id,
+            objective="Compare and contrast the specified items",
+            priority="PRIMARY",
+            success_criteria="Clear comparison with pros and cons"
+        ))
+        # Generate comparison-specific queries
+        queries.extend([
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"comparison {query[:50]}",
+                query_type=SearchQueryType.COMPARATIVE,
+                priority=5,
+                max_results=10,
+                rationale="Direct comparison",
+                objective_id=obj_id
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"differences between {query[:40]}",
+                query_type=SearchQueryType.ANALYTICAL,
+                priority=4,
+                max_results=10,
+                rationale="Analyze differences",
+                objective_id=obj_id
+            )
+        ])
+
+    elif "how" in query.lower() or "tutorial" in query.lower():
+        # Tutorial/How-to query
+        obj_id = str(uuid.uuid4())
+        objectives.append(ResearchObjective(
+            id=obj_id,
+            objective="Provide step-by-step guidance",
+            priority="PRIMARY",
+            success_criteria="Clear instructions with examples"
+        ))
+        queries.extend([
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"tutorial {query[:50]}",
+                query_type=SearchQueryType.EXPLORATORY,
+                priority=5,
+                max_results=10,
+                rationale="Find tutorials",
+                objective_id=obj_id
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"guide how to {query[:40]}",
+                query_type=SearchQueryType.FACTUAL,
+                priority=4,
+                max_results=10,
+                rationale="Find guides",
+                objective_id=obj_id
+            )
+        ])
+
+    else:
+        # General query
+        obj_id = str(uuid.uuid4())
+        objectives.append(ResearchObjective(
+            id=obj_id,
+            objective=f"Research and explain: {query[:100]}",
+            priority="PRIMARY",
+            success_criteria="Comprehensive understanding"
+        ))
+        queries.extend([
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"information about {query[:50]}",
+                query_type=SearchQueryType.FACTUAL,
+                priority=5,
+                max_results=10,
+                rationale="General information",
+                objective_id=obj_id
+            ),
+            SearchQuery(
+                id=str(uuid.uuid4()),
+                query=f"explain {query[:50]}",
+                query_type=SearchQueryType.ANALYTICAL,
+                priority=4,
+                max_results=10,
+                rationale="Detailed explanation",
+                objective_id=obj_id
+            )
+        ])
+
+    # Extract key concepts if not already done
+    if not key_concepts and query:
+        words = query.lower().split()
+        key_concepts = [w for w in words if len(w) > 3 and w not in
+                       {"what", "when", "where", "which", "that", "this", "with", "from"}][:5]
+
+    # Create the research plan
+    plan = ResearchPlan(
+        objectives=objectives,
+        methodology=ResearchMethodology(
+            approach="Systematic research and analysis",
+            data_sources=["Academic sources", "Technical documentation"],
+            analysis_methods=["Content analysis", "Synthesis"],
+            quality_criteria=["Accuracy", "Relevance"]
+        ),
+        expected_deliverables=["Comprehensive research report"]
+    )
+
+    # Create SearchQueryBatch
+    batch = SearchQueryBatch(queries=queries)
+
+    return TransformedQuery(
+        original_query=query,
+        search_queries=batch,
+        research_plan=plan,
+        clarification_context={
+            "clarified": clarification_state is not None,
+            "has_conversation": conversation_history is not None
+        },
+        transformation_rationale=f"Transformed query for {'comparison' if 'compare' in query.lower() else 'tutorial' if 'how' in query.lower() else 'general'} research",
+        confidence_score=0.9 if clarification_state else 0.7,
+        ambiguities_resolved=["Query clarified by user"] if clarification_state else [],
+        assumptions_made=assumptions if assumptions else ["No specific context provided"],
+        potential_gaps=["Specific requirements may need clarification"]
+    )
+
+
 def assert_valid_clarification_output(output):
     """Assert that output is valid ClarifyWithUser.
 
