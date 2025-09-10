@@ -318,7 +318,7 @@ class MultiQuestionEvaluator(Evaluator):
 class LLMJudgeEvaluator(Evaluator):
     """Uses an LLM to judge the quality of clarification questions."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-5-mini"):
         self.model = model
         self.judge_agent = Agent(
             model=model,
@@ -408,8 +408,8 @@ class MultiJudgeConsensusEvaluator(Evaluator):
             weight_by_confidence: Whether to weight votes by confidence scores
         """
         self.models = models or [
-            "openai:gpt-4o-mini",
-            "openai:gpt-4o",
+            "openai:gpt-5-mini",
+            "openai:gpt-5",
             "anthropic:claude-3-haiku-20240307"
         ]
         self.consensus_threshold = consensus_threshold

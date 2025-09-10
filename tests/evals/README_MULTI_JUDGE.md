@@ -79,7 +79,7 @@ from tests.evals.base_multi_judge import JudgeConfiguration, JudgeExpertise
 
 custom_judges = [
     JudgeConfiguration(
-        model="openai:gpt-4o",
+        model="openai:gpt-5",
         expertise=JudgeExpertise.SCIENTIFIC,
         weight=1.5,  # Higher weight for this judge
         temperature=0.1

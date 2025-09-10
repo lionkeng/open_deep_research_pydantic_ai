@@ -155,13 +155,13 @@ class BaseMultiJudgeEvaluator(Generic[TInput, TOutput]):
         if os.getenv("OPENAI_API_KEY"):
             judges.extend([
                 JudgeConfiguration(
-                    model="openai:gpt-4o",
+                    model="openai:gpt-5",
                     expertise=JudgeExpertise.GENERAL,
                     weight=1.2,
                     temperature=0.1
                 ),
                 JudgeConfiguration(
-                    model="openai:gpt-4o-mini",
+                    model="openai:gpt-5-mini",
                     expertise=JudgeExpertise.GENERAL,
                     weight=1.0,
                     temperature=0.0
@@ -189,7 +189,7 @@ class BaseMultiJudgeEvaluator(Generic[TInput, TOutput]):
         if not judges:
             judges.append(
                 JudgeConfiguration(
-                    model="openai:gpt-4o-mini",
+                    model="openai:gpt-5-mini",
                     expertise=JudgeExpertise.GENERAL,
                     weight=1.0,
                     temperature=0.0

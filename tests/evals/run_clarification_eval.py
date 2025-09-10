@@ -478,7 +478,7 @@ async def main():
         return
 
     print("\n🚀 Starting Multi-Question Clarification Agent Evaluation...")
-    print(f"   Using model: {os.getenv('MODEL_NAME', 'gpt-4o-mini')}")
+    print(f"   Using model: {os.getenv('MODEL_NAME', 'gpt-5-mini')}")
 
     evaluator = MultiQuestionClarificationEvaluator()
     await evaluator.run_evaluation_suite()

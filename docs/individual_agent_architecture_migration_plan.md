@@ -75,7 +75,7 @@ class BaseResearchAgent(ABC, Generic[TDeps, TOutput]):
 
     # Class-level configuration
     agent_name: ClassVar[str]
-    model_name: ClassVar[KnownModelName] = "openai:gpt-4o"
+    model_name: ClassVar[KnownModelName] = "openai:gpt-5"
     max_retries: ClassVar[int] = 3
     timeout_seconds: ClassVar[float] = 30.0
 ```
@@ -370,7 +370,7 @@ class TestWorkflowIntegration:
         assert result.brief_result is not None
 ```
 
-<!-- 
+<!--
 ## Phase 5: Performance Optimization (1-2 Days)
 
 ### 5.1 Performance Monitoring

@@ -296,7 +296,7 @@ Set your API keys in the `.env` file:
 ```bash
 OPENAI_API_KEY=your-key-here
 ANTHROPIC_API_KEY=your-key-here  # Optional for multi-judge evaluation
-MODEL_NAME=gpt-4o-mini  # Optional, defaults to gpt-4o-mini
+MODEL_NAME=gpt-5-mini  # Optional, defaults to gpt-5-mini
 ```
 
 ### Evaluation Runner Configuration

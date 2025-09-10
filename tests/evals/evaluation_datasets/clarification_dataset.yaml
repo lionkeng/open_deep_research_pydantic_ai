@@ -329,7 +329,7 @@ evaluation:
       description: Uses LLM to judge clarification quality
       weight: 0.6
       config:
-        model: "gpt-4o-mini"
+        model: "gpt-5-mini"
       applies_to: ["ambiguous_queries"]
 
 # Metrics to track

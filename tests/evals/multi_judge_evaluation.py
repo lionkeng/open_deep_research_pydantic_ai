@@ -121,13 +121,13 @@ class AdvancedMultiJudgeEvaluator:
         """Create default judge configuration."""
         return [
             JudgeConfiguration(
-                model="openai:gpt-4o",
+                model="openai:gpt-5",
                 expertise=JudgeExpertise.GENERAL,
                 weight=1.2,  # Higher weight for more capable model
                 temperature=0.1
             ),
             JudgeConfiguration(
-                model="openai:gpt-4o-mini",
+                model="openai:gpt-5-mini",
                 expertise=JudgeExpertise.GENERAL,
                 weight=1.0,
                 temperature=0.0

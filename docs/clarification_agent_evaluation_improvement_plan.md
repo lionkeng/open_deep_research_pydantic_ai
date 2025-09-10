@@ -120,12 +120,12 @@ class PerformanceMetrics:
     def calculate_cost(self) -> float:
         """Calculate cost based on model and token usage."""
         pricing = {
-            "gpt-4": {"input": 0.03, "output": 0.06},  # per 1K tokens
-            "gpt-4o": {"input": 0.005, "output": 0.015},
-            "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015}
+            "gpt-5-pro": {"input": 0.03, "output": 0.06},  # per 1K tokens
+            "gpt-5": {"input": 0.005, "output": 0.015},
+            "gpt-5-turbo": {"input": 0.0005, "output": 0.0015}
         }
 
-        model_pricing = pricing.get(self.model, pricing["gpt-3.5-turbo"])
+        model_pricing = pricing.get(self.model, pricing["gpt-5-turbo"])
         input_cost = (self.tokens_input / 1000) * model_pricing["input"]
         output_cost = (self.tokens_output / 1000) * model_pricing["output"]
 
@@ -192,7 +192,7 @@ class BaselineManager:
             "timestamp": datetime.now().isoformat(),
             "metrics": metrics,
             "metadata": {
-                "model": os.getenv("MODEL_NAME", "gpt-4"),
+                "model": os.getenv("MODEL_NAME", "gpt-5"),
                 "dataset_version": "1.0.0"
             }
         }
@@ -651,7 +651,7 @@ async def test_performance_evaluator():
         end_time=0.8,  # 800ms
         tokens_input=200,
         tokens_output=100,
-        model="gpt-4"
+        model="gpt-5"
     )
 
     result = await evaluator.evaluate(None, metrics)

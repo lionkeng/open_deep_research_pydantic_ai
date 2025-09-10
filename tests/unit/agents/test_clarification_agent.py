@@ -384,7 +384,7 @@ class TestClarificationAgent:
         config1 = AgentConfiguration(
             agent_name="agent1",
             agent_type="clarification",
-            model="gpt-4",
+            model="gpt-5",
             max_retries=1,
             custom_settings={"temperature": 0.1}
         )
@@ -404,7 +404,7 @@ class TestClarificationAgent:
             agent2 = ClarificationAgent(config=config2)
 
             # Verify configs are applied
-            assert agent1.config.model == "gpt-4"
+            assert agent1.config.model == "gpt-5"
             assert agent2.config.model == "claude-3"
             assert agent1.config.custom_settings["temperature"] == 0.1
             assert agent2.config.custom_settings["temperature"] == 0.9

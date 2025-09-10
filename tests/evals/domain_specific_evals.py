@@ -51,7 +51,7 @@ class DomainEvaluationResult(BaseModel):
 class BaseDomainEvaluator(Evaluator, ABC):
     """Base class for domain-specific evaluators."""
 
-    def __init__(self, domain: Domain, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, domain: Domain, model: str = "openai:gpt-5-mini"):
         self.domain = domain
         self.model = model
         self.domain_keywords = self._get_domain_keywords()
@@ -219,7 +219,7 @@ class BaseDomainEvaluator(Evaluator, ABC):
 class TechnicalDomainEvaluator(BaseDomainEvaluator):
     """Evaluator for technical/programming domain queries."""
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: str = "openai:gpt-5-mini"):
         super().__init__(Domain.TECHNICAL, model)
 
     def _get_domain_keywords(self) -> Set[str]:
@@ -321,7 +321,7 @@ class TechnicalDomainEvaluator(BaseDomainEvaluator):
 class ScientificDomainEvaluator(BaseDomainEvaluator):
     """Evaluator for scientific research domain queries."""
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: str = "openai:gpt-5-mini"):
         super().__init__(Domain.SCIENTIFIC, model)
 
     def _get_domain_keywords(self) -> Set[str]:
@@ -417,7 +417,7 @@ class ScientificDomainEvaluator(BaseDomainEvaluator):
 class BusinessDomainEvaluator(BaseDomainEvaluator):
     """Evaluator for business and commercial domain queries."""
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: str = "openai:gpt-5-mini"):
         super().__init__(Domain.BUSINESS, model)
 
     def _get_domain_keywords(self) -> Set[str]:
@@ -538,7 +538,7 @@ class DomainDetector:
         return Domain.TECHNICAL
 
     @classmethod
-    def get_evaluator_for_domain(cls, domain: Domain, model: str = "openai:gpt-4o-mini") -> BaseDomainEvaluator:
+    def get_evaluator_for_domain(cls, domain: Domain, model: str = "openai:gpt-5-mini") -> BaseDomainEvaluator:
         """Get appropriate evaluator for a domain."""
         evaluator_map = {
             Domain.TECHNICAL: TechnicalDomainEvaluator,

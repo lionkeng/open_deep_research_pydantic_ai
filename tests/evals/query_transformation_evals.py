@@ -440,7 +440,7 @@ class TransformationAccuracyEvaluator(Evaluator):
 class LLMJudgeEvaluator(Evaluator):
     """Uses an LLM to judge transformation quality."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-5-mini"):
         self.model = model
         self.judge_agent = Agent(
             model=model,

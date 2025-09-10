@@ -134,13 +134,13 @@ async def evaluate_query_transformation_agent():
     # Custom judge configuration for query transformation
     custom_judges = [
         JudgeConfiguration(
-            model="openai:gpt-4o",
+            model="openai:gpt-5",
             expertise=JudgeExpertise.SCIENTIFIC,  # Good for research methodology
             weight=1.3,
             temperature=0.1
         ),
         JudgeConfiguration(
-            model="openai:gpt-4o-mini",
+            model="openai:gpt-5-mini",
             expertise=JudgeExpertise.TECHNICAL,
             weight=1.0,
             temperature=0.0

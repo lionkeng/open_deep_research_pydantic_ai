@@ -80,7 +80,7 @@ async def test_framework():
     # Use only OpenAI judges for testing
     test_judges = [
         JudgeConfiguration(
-            model="openai:gpt-4o-mini",
+            model="openai:gpt-5-mini",
             expertise=JudgeExpertise.GENERAL,
             weight=1.0,
             temperature=0.0

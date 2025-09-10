@@ -236,7 +236,7 @@ class ClarifyWithUser(BaseModel):
 class ClarificationAgent:
     """Agent for generating clarification questions."""
 
-    def __init__(self, model_name: str = "openai:gpt-4"):
+    def __init__(self, model_name: str = "openai:gpt-5"):
         self.agent = Agent(
             model_name,
             result_type=ClarifyWithUser,
