@@ -472,6 +472,169 @@ performance_cases:
       - ObjectiveCoverageEvaluator
       - QueryDiversityEvaluator
 
+# Enhanced Evaluator Test Cases - Test new behavioral evaluators
+enhanced_evaluator_cases:
+  - id: enhanced_assumptions
+    name: Test Assumption Quality
+    category: enhanced_evaluators
+    inputs:
+      query: "Compare cloud providers for startup"
+      complexity: medium
+      domain: technical
+    expected_output:
+      min_search_queries: 5
+      max_search_queries: 10
+      min_objectives: 2
+      max_objectives: 4
+      confidence_score: 0.7
+    evaluators:
+      - AssumptionQualityEvaluator
+      - ConfidenceCalibrationEvaluator
+      - PriorityDistributionEvaluator
+
+  - id: enhanced_temporal
+    name: Test Temporal Scope
+    category: enhanced_evaluators
+    inputs:
+      query: "Recent trends in AI development in 2024"
+      complexity: medium
+      domain: technical
+    expected_output:
+      min_search_queries: 6
+      max_search_queries: 12
+      expected_search_themes:
+        - "2024"
+        - recent
+        - trends
+        - AI development
+    evaluators:
+      - TemporalGeographicScopeEvaluator
+      - SearchSourceSelectionEvaluator
+      - QueryDiversityEvaluator
+
+  - id: enhanced_clarification
+    name: Test Clarification Integration
+    category: enhanced_evaluators
+    inputs:
+      query: "How to improve website performance"
+      complexity: medium
+      domain: technical
+      clarification_context:
+        missing_dimensions: ["specific technology", "performance metrics", "website type"]
+        answers: |
+          Q: What technology stack?
+          A: React and Node.js
+          Q: What performance metrics?
+          A: Page load time and Core Web Vitals
+          Q: What type of website?
+          A: [SKIPPED]
+    expected_output:
+      min_search_queries: 7
+      max_search_queries: 15
+      confidence_score: 0.8
+    evaluators:
+      - ClarificationIntegrationEvaluator
+      - AssumptionQualityEvaluator
+      - ConfidenceCalibrationEvaluator
+
+  - id: enhanced_decomposition
+    name: Test Query Decomposition
+    category: enhanced_evaluators
+    inputs:
+      query: "Build a machine learning pipeline for fraud detection"
+      complexity: complex
+      domain: technical
+    expected_output:
+      min_objectives: 4
+      max_objectives: 7
+      min_search_queries: 10
+      max_search_queries: 18
+    evaluators:
+      - QueryDecompositionEvaluator
+      - SupportingQuestionsEvaluator
+      - SuccessCriteriaMeasurabilityEvaluator
+      - ExecutionStrategyEvaluator
+
+  - id: enhanced_medical_domain
+    name: Test Medical Domain Sources
+    category: enhanced_evaluators
+    inputs:
+      query: "Latest medical research on diabetes treatment"
+      complexity: medium
+      domain: medical
+    expected_output:
+      min_search_queries: 6
+      max_search_queries: 12
+      expected_search_themes:
+        - diabetes
+        - treatment
+        - medical
+        - research
+    evaluators:
+      - SearchSourceSelectionEvaluator
+      - TemporalGeographicScopeEvaluator
+      - PriorityDistributionEvaluator
+
+  - id: enhanced_geographic
+    name: Test Geographic Scope
+    category: enhanced_evaluators
+    inputs:
+      query: "Compare renewable energy adoption in European countries"
+      complexity: complex
+      domain: scientific
+    expected_output:
+      min_search_queries: 8
+      max_search_queries: 15
+      min_objectives: 3
+      max_objectives: 5
+    evaluators:
+      - TemporalGeographicScopeEvaluator
+      - QueryDecompositionEvaluator
+      - ExecutionStrategyEvaluator
+
+  - id: enhanced_priority_distribution
+    name: Test Priority Distribution
+    category: enhanced_evaluators
+    inputs:
+      query: "Design a scalable microservices architecture"
+      complexity: complex
+      domain: technical
+    expected_output:
+      min_search_queries: 10
+      max_search_queries: 18
+      min_objectives: 4
+      max_objectives: 6
+    evaluators:
+      - PriorityDistributionEvaluator
+      - ExecutionStrategyEvaluator
+      - QueryDecompositionEvaluator
+      - SuccessCriteriaMeasurabilityEvaluator
+
+  - id: enhanced_comprehensive
+    name: Comprehensive Enhanced Evaluation
+    category: enhanced_evaluators
+    inputs:
+      query: "Analyze the impact of climate change on global agriculture in the next decade"
+      complexity: complex
+      domain: scientific
+    expected_output:
+      min_search_queries: 12
+      max_search_queries: 20
+      min_objectives: 4
+      max_objectives: 7
+      confidence_score: 0.75
+    evaluators:
+      - AssumptionQualityEvaluator
+      - PriorityDistributionEvaluator
+      - ClarificationIntegrationEvaluator
+      - QueryDecompositionEvaluator
+      - SupportingQuestionsEvaluator
+      - SuccessCriteriaMeasurabilityEvaluator
+      - TemporalGeographicScopeEvaluator
+      - SearchSourceSelectionEvaluator
+      - ConfidenceCalibrationEvaluator
+      - ExecutionStrategyEvaluator
+
 # Evaluation Configuration
 evaluation_config:
   default_evaluators:

@@ -46,18 +46,160 @@ golden_standard_cases:
 - `LLMJudgeEvaluator`: LLM-based quality assessment
 
 #### Query Transformation Evaluators
-- `SearchQueryRelevanceEvaluator`: Validates search query relevance
-- `ObjectiveCoverageEvaluator`: Checks research objective coverage
-- `PlanCoherenceEvaluator`: Evaluates research plan structure
-- `QueryDiversityEvaluator`: Measures query diversity
-- `TransformationAccuracyEvaluator`: Overall transformation quality
 
-### 3. Dataset Loaders
+The Query Transformation evaluation framework includes both original and enhanced evaluators that provide comprehensive behavioral coverage of the agent.
 
-- **`query_transformation_dataset_loader.py`**: Utilities for loading YAML datasets
-  - `load_dataset_from_yaml()`: Load complete dataset
-  - `load_golden_standard_dataset()`: Load only golden cases
-  - `create_filtered_dataset()`: Create custom filtered datasets
+##### Original Evaluators
+
+These evaluators cover the fundamental aspects of query transformation:
+
+##### **SearchQueryRelevanceEvaluator**
+- **Goal**: Ensure generated search queries maintain semantic connection to the original query
+- **What it measures**:
+  - Word overlap between original and transformed queries
+  - Coverage of expected search themes
+  - Relevance scores for each generated query
+- **Why it matters**: Prevents query drift and ensures searches remain on-topic
+- **Scoring approach**: Combines lexical overlap analysis with theme coverage validation
+
+##### **ObjectiveCoverageEvaluator**
+- **Goal**: Ensure comprehensive, specific, diverse, and aligned research objectives
+- **What it measures**:
+  - Objective count validation (within min/max bounds)
+  - Specificity through action verbs ("analyze", "evaluate", "compare")
+  - Diversity to avoid redundant objectives
+  - Alignment with original query intent
+- **Why it matters**: Well-defined objectives guide effective research execution
+- **Scoring approach**: Multi-factor assessment of count, quality, diversity, and alignment
+
+##### **PlanCoherenceEvaluator**
+- **Goal**: Ensure well-structured, methodologically sound research plans
+- **What it measures**:
+  - Methodology quality (approach, data sources, analysis methods, quality criteria)
+  - Deliverables clarity and appropriateness
+  - Success metrics definition
+- **Why it matters**: Coherent plans lead to systematic, reproducible research
+- **Scoring approach**: Evaluates structural completeness and logical consistency
+
+##### **QueryDiversityEvaluator**
+- **Goal**: Ensure search queries explore different aspects and perspectives
+- **What it measures**:
+  - Lexical diversity (unique word ratio)
+  - Query type diversity (factual, analytical, comparative)
+  - Length variation for broad and specific searches
+- **Why it matters**: Diverse queries capture comprehensive information
+- **Scoring approach**: Statistical analysis of lexical, type, and length variations
+
+##### **TransformationAccuracyEvaluator**
+- **Goal**: Ensure accurate, complete, and internally consistent transformations
+- **What it measures**:
+  - Query preservation (original intent maintained)
+  - Completeness (all required components present)
+  - Internal consistency (balanced objectives-to-queries ratio)
+- **Why it matters**: Validates overall transformation quality and coherence
+- **Scoring approach**: Holistic assessment of preservation, completeness, and consistency
+
+##### Enhanced Evaluators
+
+These evaluators provide comprehensive behavioral coverage for previously untested aspects of the Query Transformation agent:
+
+##### **AssumptionQualityEvaluator**
+- **Goal**: Evaluate the quality and reasonableness of assumptions made during transformation
+- **What it measures**:
+  - Assumption count appropriateness relative to identified gaps
+  - Clarity and explicitness of assumptions
+  - Gap coverage by assumptions
+  - Risk assessment of assumptions made
+- **Why it matters**: Ensures assumptions are reasonable and well-documented
+- **Scoring approach**: Multi-factor assessment of count, clarity, coverage, and risk
+
+##### **PriorityDistributionEvaluator**
+- **Goal**: Evaluate the distribution and appropriateness of search query priorities
+- **What it measures**:
+  - Priority distribution balance (HIGH/MEDIUM/LOW)
+  - Alignment between query priorities and objective importance
+  - Critical query prioritization
+- **Why it matters**: Ensures efficient research execution order
+- **Scoring approach**: Statistical analysis of distribution and alignment
+
+##### **ClarificationIntegrationEvaluator**
+- **Goal**: Measure how well clarification responses are integrated into transformation
+- **What it measures**:
+  - Coverage of user-provided answers in transformation
+  - Preservation of clarified intent
+  - Handling of skipped or partial responses
+- **Why it matters**: Ensures user clarifications are properly utilized
+- **Scoring approach**: Term coverage and ambiguity resolution analysis
+
+##### **QueryDecompositionEvaluator**
+- **Goal**: Evaluate the quality of query decomposition into sub-components
+- **What it measures**:
+  - Hierarchical structure quality (PRIMARY/SECONDARY/TERTIARY)
+  - Component independence
+  - Coverage completeness of original query
+- **Why it matters**: Ensures systematic and comprehensive research approach
+- **Scoring approach**: Structural analysis and term coverage
+
+##### **SupportingQuestionsEvaluator**
+- **Goal**: Evaluate the quality of supporting questions in research objectives
+- **What it measures**:
+  - Question relevance to objectives
+  - Question specificity and clarity
+  - Question diversity
+- **Why it matters**: Ensures thorough exploration of research topics
+- **Scoring approach**: Relevance, specificity, and diversity metrics
+
+##### **SuccessCriteriaMeasurabilityEvaluator**
+- **Goal**: Evaluate the measurability of success criteria
+- **What it measures**:
+  - Presence of quantifiable metrics
+  - Clarity of completion indicators
+  - Achievability assessment
+- **Why it matters**: Ensures research goals are measurable and achievable
+- **Scoring approach**: Pattern matching for quantifiable terms and achievability
+
+##### **TemporalGeographicScopeEvaluator**
+- **Goal**: Evaluate appropriateness of temporal and geographic scope definitions
+- **What it measures**:
+  - Temporal boundaries relevance
+  - Geographic scope necessity
+  - Scope constraint consistency
+- **Why it matters**: Ensures appropriate research boundaries
+- **Scoring approach**: Keyword detection and scope-objective alignment
+
+##### **SearchSourceSelectionEvaluator**
+- **Goal**: Evaluate the appropriateness of search source selections
+- **What it measures**:
+  - Source diversity appropriateness
+  - Source-query type alignment
+  - Domain-specific source usage
+- **Why it matters**: Ensures reliable and relevant information sources
+- **Scoring approach**: Domain mapping and source-type alignment
+
+##### **ConfidenceCalibrationEvaluator**
+- **Goal**: Evaluate the calibration of confidence scores
+- **What it measures**:
+  - Confidence vs. assumption count correlation
+  - Confidence vs. gap count correlation
+  - Confidence vs. complexity correlation
+- **Why it matters**: Ensures realistic confidence assessment
+- **Scoring approach**: Statistical correlation analysis
+
+##### **ExecutionStrategyEvaluator**
+- **Goal**: Evaluate execution strategy selection appropriateness
+- **What it measures**:
+  - Strategy appropriateness for query batch
+  - Dependency handling in HIERARCHICAL mode
+  - Parallelization efficiency
+- **Why it matters**: Ensures optimal query execution approach
+- **Scoring approach**: Strategy-context alignment and efficiency analysis
+
+### 3. Dataset Loading
+
+Dataset loading is now integrated directly into the evaluation runners:
+- **`run_query_transformation_eval.py`**: Contains `load_dataset_from_yaml()` method
+- **`run_clarification_eval.py`**: Contains dataset loading logic
+- Both runners support category filtering for selective evaluation
 
 ### 4. Running Evaluations
 
@@ -72,29 +214,15 @@ uv run python tests/evals/run_query_transformation_eval.py
 
 #### Load Specific Categories
 ```python
-from tests.evals.query_transformation_dataset_loader import (
-    load_golden_standard_dataset,
-    load_technical_dataset,
-    load_edge_cases_dataset
-)
+# Run evaluation with specific categories
+uv run python tests/evals/run_query_transformation_eval.py --categories golden_standard
 
-# Load only golden standard cases
-dataset = load_golden_standard_dataset()
+# Run enhanced evaluator tests
+uv run python tests/evals/run_query_transformation_eval.py --categories enhanced_evaluator
 
-# Load only technical cases
-dataset = load_technical_dataset()
-```
-
-#### Create Custom Filtered Dataset
-```python
-from tests.evals.query_transformation_dataset_loader import create_filtered_dataset
-
-# Get only medium/complex technical cases
-dataset = create_filtered_dataset(
-    min_complexity="medium",
-    domains=["technical"],
-    max_cases=10
-)
+# In code, load specific categories
+evaluator = QueryTransformationEvaluator()
+dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_evaluator"])
 ```
 
 ## Dataset Categories
@@ -137,7 +265,17 @@ dataset = create_filtered_dataset(
    - Simple Performance Test
    - Complex Performance Test
 
-**Total: 22 test cases**
+8. **Enhanced Evaluator Cases** (8 cases)
+   - Test Assumption Quality
+   - Test Temporal Scope
+   - Test Clarification Integration
+   - Test Query Decomposition
+   - Test Medical Domain Sources
+   - Test Geographic Scope
+   - Test Priority Distribution
+   - Comprehensive Enhanced Evaluation
+
+**Total: 30 test cases**
 
 ## Evaluation Metrics
 

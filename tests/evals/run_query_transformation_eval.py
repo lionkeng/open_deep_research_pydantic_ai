@@ -48,14 +48,39 @@ from tests.evals.query_transformation_evals import (
     TransformationAccuracyEvaluator,
 )
 
+from tests.evals.query_transformation_enhanced_evals import (
+    AssumptionQualityEvaluator,
+    PriorityDistributionEvaluator,
+    ClarificationIntegrationEvaluator,
+    QueryDecompositionEvaluator,
+    SupportingQuestionsEvaluator,
+    SuccessCriteriaMeasurabilityEvaluator,
+    TemporalGeographicScopeEvaluator,
+    SearchSourceSelectionEvaluator,
+    ConfidenceCalibrationEvaluator,
+    ExecutionStrategyEvaluator,
+)
+
 
 # Map evaluator names to classes
 EVALUATOR_MAP = {
+    # Original evaluators
     "SearchQueryRelevanceEvaluator": SearchQueryRelevanceEvaluator,
     "ObjectiveCoverageEvaluator": ObjectiveCoverageEvaluator,
     "PlanCoherenceEvaluator": PlanCoherenceEvaluator,
     "QueryDiversityEvaluator": QueryDiversityEvaluator,
     "TransformationAccuracyEvaluator": TransformationAccuracyEvaluator,
+    # Enhanced evaluators
+    "AssumptionQualityEvaluator": AssumptionQualityEvaluator,
+    "PriorityDistributionEvaluator": PriorityDistributionEvaluator,
+    "ClarificationIntegrationEvaluator": ClarificationIntegrationEvaluator,
+    "QueryDecompositionEvaluator": QueryDecompositionEvaluator,
+    "SupportingQuestionsEvaluator": SupportingQuestionsEvaluator,
+    "SuccessCriteriaMeasurabilityEvaluator": SuccessCriteriaMeasurabilityEvaluator,
+    "TemporalGeographicScopeEvaluator": TemporalGeographicScopeEvaluator,
+    "SearchSourceSelectionEvaluator": SearchSourceSelectionEvaluator,
+    "ConfidenceCalibrationEvaluator": ConfidenceCalibrationEvaluator,
+    "ExecutionStrategyEvaluator": ExecutionStrategyEvaluator,
 }
 
 
@@ -101,7 +126,8 @@ class QueryTransformationEvaluator:
             "business_cases",
             "edge_cases",
             "cross_domain_cases",
-            "performance_cases"
+            "performance_cases",
+            "enhanced_evaluator_cases"
         ]
 
         # Filter categories if specified
