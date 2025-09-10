@@ -24,7 +24,7 @@ golden_standard_cases:
   - id: unique_id
     name: Human-readable name
     inputs:
-      query: "User query"
+      query: 'User query'
       complexity: simple|medium|complex
       domain: technical|scientific|business
     expected_output:
@@ -39,6 +39,7 @@ golden_standard_cases:
 ### 2. Evaluators
 
 #### Clarification Agent Evaluators
+
 - `BinaryAccuracyEvaluator`: Validates clarification decision accuracy
 - `DimensionCoverageEvaluator`: Checks 4-dimension framework coverage
 - `QuestionRelevanceEvaluator`: Evaluates question quality
@@ -49,11 +50,8 @@ golden_standard_cases:
 
 The Query Transformation evaluation framework includes both original and enhanced evaluators that provide comprehensive behavioral coverage of the agent.
 
-##### Original Evaluators
-
-These evaluators cover the fundamental aspects of query transformation:
-
 ##### **SearchQueryRelevanceEvaluator**
+
 - **Goal**: Ensure generated search queries maintain semantic connection to the original query
 - **What it measures**:
   - Word overlap between original and transformed queries
@@ -63,6 +61,7 @@ These evaluators cover the fundamental aspects of query transformation:
 - **Scoring approach**: Combines lexical overlap analysis with theme coverage validation
 
 ##### **ObjectiveCoverageEvaluator**
+
 - **Goal**: Ensure comprehensive, specific, diverse, and aligned research objectives
 - **What it measures**:
   - Objective count validation (within min/max bounds)
@@ -73,6 +72,7 @@ These evaluators cover the fundamental aspects of query transformation:
 - **Scoring approach**: Multi-factor assessment of count, quality, diversity, and alignment
 
 ##### **PlanCoherenceEvaluator**
+
 - **Goal**: Ensure well-structured, methodologically sound research plans
 - **What it measures**:
   - Methodology quality (approach, data sources, analysis methods, quality criteria)
@@ -82,6 +82,7 @@ These evaluators cover the fundamental aspects of query transformation:
 - **Scoring approach**: Evaluates structural completeness and logical consistency
 
 ##### **QueryDiversityEvaluator**
+
 - **Goal**: Ensure search queries explore different aspects and perspectives
 - **What it measures**:
   - Lexical diversity (unique word ratio)
@@ -91,6 +92,7 @@ These evaluators cover the fundamental aspects of query transformation:
 - **Scoring approach**: Statistical analysis of lexical, type, and length variations
 
 ##### **TransformationAccuracyEvaluator**
+
 - **Goal**: Ensure accurate, complete, and internally consistent transformations
 - **What it measures**:
   - Query preservation (original intent maintained)
@@ -99,11 +101,8 @@ These evaluators cover the fundamental aspects of query transformation:
 - **Why it matters**: Validates overall transformation quality and coherence
 - **Scoring approach**: Holistic assessment of preservation, completeness, and consistency
 
-##### Enhanced Evaluators
-
-These evaluators provide comprehensive behavioral coverage for previously untested aspects of the Query Transformation agent:
-
 ##### **AssumptionQualityEvaluator**
+
 - **Goal**: Evaluate the quality and reasonableness of assumptions made during transformation
 - **What it measures**:
   - Assumption count appropriateness relative to identified gaps
@@ -114,6 +113,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Multi-factor assessment of count, clarity, coverage, and risk
 
 ##### **PriorityDistributionEvaluator**
+
 - **Goal**: Evaluate the distribution and appropriateness of search query priorities
 - **What it measures**:
   - Priority distribution balance (HIGH/MEDIUM/LOW)
@@ -123,6 +123,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Statistical analysis of distribution and alignment
 
 ##### **ClarificationIntegrationEvaluator**
+
 - **Goal**: Measure how well clarification responses are integrated into transformation
 - **What it measures**:
   - Coverage of user-provided answers in transformation
@@ -132,6 +133,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Term coverage and ambiguity resolution analysis
 
 ##### **QueryDecompositionEvaluator**
+
 - **Goal**: Evaluate the quality of query decomposition into sub-components
 - **What it measures**:
   - Hierarchical structure quality (PRIMARY/SECONDARY/TERTIARY)
@@ -141,6 +143,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Structural analysis and term coverage
 
 ##### **SupportingQuestionsEvaluator**
+
 - **Goal**: Evaluate the quality of supporting questions in research objectives
 - **What it measures**:
   - Question relevance to objectives
@@ -150,6 +153,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Relevance, specificity, and diversity metrics
 
 ##### **SuccessCriteriaMeasurabilityEvaluator**
+
 - **Goal**: Evaluate the measurability of success criteria
 - **What it measures**:
   - Presence of quantifiable metrics
@@ -159,6 +163,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Pattern matching for quantifiable terms and achievability
 
 ##### **TemporalGeographicScopeEvaluator**
+
 - **Goal**: Evaluate appropriateness of temporal and geographic scope definitions
 - **What it measures**:
   - Temporal boundaries relevance
@@ -168,6 +173,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Keyword detection and scope-objective alignment
 
 ##### **SearchSourceSelectionEvaluator**
+
 - **Goal**: Evaluate the appropriateness of search source selections
 - **What it measures**:
   - Source diversity appropriateness
@@ -177,6 +183,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Domain mapping and source-type alignment
 
 ##### **ConfidenceCalibrationEvaluator**
+
 - **Goal**: Evaluate the calibration of confidence scores
 - **What it measures**:
   - Confidence vs. assumption count correlation
@@ -186,6 +193,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 - **Scoring approach**: Statistical correlation analysis
 
 ##### **ExecutionStrategyEvaluator**
+
 - **Goal**: Evaluate execution strategy selection appropriateness
 - **What it measures**:
   - Strategy appropriateness for query batch
@@ -197,6 +205,7 @@ These evaluators provide comprehensive behavioral coverage for previously untest
 ### 3. Dataset Loading
 
 Dataset loading is now integrated directly into the evaluation runners:
+
 - **`run_query_transformation_eval.py`**: Contains `load_dataset_from_yaml()` method
 - **`run_clarification_eval.py`**: Contains dataset loading logic
 - Both runners support category filtering for selective evaluation
@@ -204,6 +213,7 @@ Dataset loading is now integrated directly into the evaluation runners:
 ### 4. Running Evaluations
 
 #### Quick Test
+
 ```bash
 # Test clarification agent
 uv run python tests/evals/run_clarification_eval.py
@@ -213,6 +223,7 @@ uv run python tests/evals/run_query_transformation_eval.py
 ```
 
 #### Load Specific Categories
+
 ```python
 # Run evaluation with specific categories
 uv run python tests/evals/run_query_transformation_eval.py --categories golden_standard
@@ -230,27 +241,32 @@ dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_ev
 ### Query Transformation Dataset
 
 1. **Golden Standard Cases** (3 cases)
+
    - Complex AI in Healthcare
    - Database Comparison for E-commerce
    - Climate Change Research
 
 2. **Technical Cases** (4 cases)
+
    - Microservices Best Practices
    - Database Query Optimization
    - RESTful API Design
    - Cloud Migration Strategy
 
 3. **Scientific Cases** (3 cases)
+
    - Quantum Computing Research
    - Vaccine Development Process
    - Renewable Energy Analysis
 
 4. **Business Cases** (3 cases)
+
    - EV Market Analysis
    - Startup Strategy Development
    - Competitive Analysis
 
 5. **Edge Cases** (5 cases)
+
    - Minimal Query
    - Ultra-Specific Query
    - Multi-Topic Query
@@ -258,10 +274,12 @@ dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_ev
    - Contradictory Requirements
 
 6. **Cross-Domain Cases** (2 cases)
+
    - AI Ethics and Law
    - FinTech Machine Learning
 
 7. **Performance Cases** (2 cases)
+
    - Simple Performance Test
    - Complex Performance Test
 
@@ -280,6 +298,7 @@ dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_ev
 ## Evaluation Metrics
 
 ### Thresholds
+
 - `relevance_threshold`: 0.7
 - `coverage_threshold`: 0.75
 - `coherence_threshold`: 0.7
@@ -287,6 +306,7 @@ dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_ev
 - `diversity_threshold`: 0.7
 
 ### Execution Configuration
+
 - `max_concurrency`: 5
 - `timeout_seconds`: 30
 - `retry_attempts`: 2

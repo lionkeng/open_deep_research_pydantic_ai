@@ -7,15 +7,16 @@ multi-question format using real LLM calls.
 """
 
 import asyncio
+import json
 import os
 import sys
 import time
-from pathlib import Path
-from typing import Dict, List, Any, Optional
-import json
-import yaml
 from collections import Counter
+from pathlib import Path
 from statistics import mean, stdev
+from typing import Any
+
+import yaml
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -27,11 +28,12 @@ os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
 
 import httpx
 from pydantic import SecretStr
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
+
 from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
+from src.agents.clarification import ClarificationAgent, ClarifyWithUser
 from src.models.api_models import APIKeys
+from src.models.core import ResearchStage, ResearchState
+from src.models.metadata import ResearchMetadata
 
 
 class MultiQuestionClarificationEvaluator:
@@ -47,9 +49,9 @@ class MultiQuestionClarificationEvaluator:
         self,
         query: str,
         expected_clarification: bool,
-        expected_question_count: Optional[int] = None,
-        expected_question_types: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        expected_question_count: int | None = None,
+        expected_question_types: list[str] | None = None
+    ) -> dict[str, Any]:
         """Evaluate a single query with multi-question support.
 
         Args:
@@ -157,7 +159,7 @@ class MultiQuestionClarificationEvaluator:
         test_cases = []
 
         if yaml_path.exists():
-            with open(yaml_path, 'r') as f:
+            with open(yaml_path) as f:
                 dataset = yaml.safe_load(f)
 
                 # Extract test cases from YAML
@@ -275,7 +277,7 @@ class MultiQuestionClarificationEvaluator:
             if 'error' in result:
                 print(f"  ❌ Error: {result['error']}")
             elif result['correct']:
-                print(f"  ✅ Correct prediction")
+                print("  ✅ Correct prediction")
                 if result.get('question_analysis'):
                     qa = result['question_analysis']
                     print(f"     Questions: {qa['num_questions']} ({qa['required_count']} required, {qa['optional_count']} optional)")
@@ -315,17 +317,17 @@ class MultiQuestionClarificationEvaluator:
         recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
-        print(f"\n📊 OVERALL METRICS:")
+        print("\n📊 OVERALL METRICS:")
         print(f"  Total Cases: {total}")
         print(f"  Correct: {correct} ({accuracy:.1%})")
         print(f"  Errors: {errors}")
-        print(f"\n🎯 BINARY CLASSIFICATION:")
+        print("\n🎯 BINARY CLASSIFICATION:")
         print(f"  Accuracy: {accuracy:.1%}")
         print(f"  Precision: {precision:.1%}")
         print(f"  Recall: {recall:.1%}")
         print(f"  F1 Score: {f1:.3f}")
 
-        print(f"\n📈 CONFUSION MATRIX:")
+        print("\n📈 CONFUSION MATRIX:")
         print(f"  True Positives:  {true_positives}")
         print(f"  False Positives: {false_positives}")
         print(f"  False Negatives: {false_negatives}")
@@ -333,7 +335,7 @@ class MultiQuestionClarificationEvaluator:
 
         # Performance metrics
         if self.timing_data:
-            print(f"\n⏱️  PERFORMANCE METRICS:")
+            print("\n⏱️  PERFORMANCE METRICS:")
             print(f"  Average Response Time: {mean(self.timing_data):.2f}s")
             print(f"  Min Response Time: {min(self.timing_data):.2f}s")
             print(f"  Max Response Time: {max(self.timing_data):.2f}s")
@@ -342,7 +344,7 @@ class MultiQuestionClarificationEvaluator:
 
         # Multi-question analysis
         if self.question_metrics:
-            print(f"\n❓ MULTI-QUESTION ANALYSIS:")
+            print("\n❓ MULTI-QUESTION ANALYSIS:")
             all_counts = [m['num_questions'] for m in self.question_metrics]
             print(f"  Average Questions per Query: {mean(all_counts):.1f}")
             print(f"  Min Questions: {min(all_counts)}")
@@ -353,7 +355,7 @@ class MultiQuestionClarificationEvaluator:
             for m in self.question_metrics:
                 all_types.extend(m['question_types'])
             type_counts = Counter(all_types)
-            print(f"  Question Type Distribution:")
+            print("  Question Type Distribution:")
             for qtype, count in type_counts.most_common():
                 percentage = (count / len(all_types) * 100) if all_types else 0
                 print(f"    - {qtype}: {count} ({percentage:.1f}%)")
@@ -363,7 +365,7 @@ class MultiQuestionClarificationEvaluator:
             total_optional = sum(m['optional_count'] for m in self.question_metrics)
             total_questions = total_required + total_optional
             if total_questions > 0:
-                print(f"  Required vs Optional:")
+                print("  Required vs Optional:")
                 print(f"    - Required: {total_required} ({total_required/total_questions*100:.1f}%)")
                 print(f"    - Optional: {total_optional} ({total_optional/total_questions*100:.1f}%)")
 
@@ -373,7 +375,7 @@ class MultiQuestionClarificationEvaluator:
                 print(f"  Average Question Length: {mean(avg_lengths):.0f} characters")
 
         # Per-category analysis
-        print(f"\n📂 PER-CATEGORY PERFORMANCE:")
+        print("\n📂 PER-CATEGORY PERFORMANCE:")
         categories = {}
         for result in self.results:
             cat = result.get('category', 'unknown')
@@ -398,7 +400,7 @@ class MultiQuestionClarificationEvaluator:
                 print(f"    - Avg Questions: {avg_questions:.1f}")
 
         # Missing dimensions analysis
-        print(f"\n🔍 DIMENSION ANALYSIS:")
+        print("\n🔍 DIMENSION ANALYSIS:")
         all_dimensions = []
         for result in self.results:
             if result.get('predicted') and result.get('missing_dimensions'):
@@ -411,14 +413,14 @@ class MultiQuestionClarificationEvaluator:
                 print(f"    - {dim}: {count} occurrences")
 
         # Example outputs
-        print(f"\n📝 EXAMPLE OUTPUTS:")
+        print("\n📝 EXAMPLE OUTPUTS:")
 
         # Show example with multiple questions
         for result in self.results:
             if result.get('correct') and result.get('predicted') and result.get('question_analysis'):
                 qa = result['question_analysis']
                 if qa['num_questions'] > 1:
-                    print(f"\n  Multi-Question Clarification Example:")
+                    print("\n  Multi-Question Clarification Example:")
                     print(f"    Query: '{result['query']}'")
                     print(f"    Generated {qa['num_questions']} questions:")
                     for i, q in enumerate(qa['questions'][:3], 1):  # Show up to 3 questions
@@ -430,7 +432,7 @@ class MultiQuestionClarificationEvaluator:
         # Show correct non-clarification example
         for result in self.results:
             if result.get('correct') and not result.get('predicted'):
-                print(f"\n  Correct Non-Clarification Example:")
+                print("\n  Correct Non-Clarification Example:")
                 print(f"    Query: '{result['query']}'")
                 print(f"    Reasoning: {result.get('reasoning', 'N/A')[:100]}...")
                 break
@@ -478,7 +480,7 @@ async def main():
         return
 
     print("\n🚀 Starting Multi-Question Clarification Agent Evaluation...")
-    print(f"   Using model: {os.getenv('MODEL_NAME', 'gpt-5-mini')}")
+    print(f"   Using model: {os.getenv('MODEL_NAME', 'gpt-4o-mini')}")
 
     evaluator = MultiQuestionClarificationEvaluator()
     await evaluator.run_evaluation_suite()

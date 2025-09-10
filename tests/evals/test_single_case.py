@@ -16,7 +16,7 @@ async def test_single_case(case_name: str, category: str = None):
     """Test a single case from the dataset."""
 
     # Load test cases from YAML
-    yaml_path = Path(__file__).parent / "clarification_dataset.yaml"
+    yaml_path = Path(__file__).parent / "evaluation_datasets" / "clarification_dataset.yaml"
 
     if not yaml_path.exists():
         print(f"❌ Dataset file not found: {yaml_path}")

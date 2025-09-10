@@ -33,6 +33,10 @@ First, break down the query to identify:
 - Implicit assumptions
 - Stated constraints
 - Unstated but necessary parameters
+- **Multiple distinct topics**: If query contains multiple questions connected by "and",
+  "also", "plus", assess if they need separate treatment
+- **Typos and misspellings**: Consider if intent is still clear despite errors - if intent
+  is unambiguous despite typos, proceed without clarification
 
 ## Step 2: Four-Dimensional Assessment
 
@@ -45,6 +49,8 @@ First, break down the query to identify:
 - Broad terms without qualifiers ("AI", "technology", "business")
 - Missing boundaries ("best", "top", "leading" without criteria)
 - Infinite scope ("everything about X")
+- **Compound questions requiring different research approaches**
+  (e.g., "explain X and compare Y and also describe Z")
 
 ### Dimension 2: AUDIENCE & DEPTH
 **Analyze:**
@@ -106,6 +112,16 @@ Required Questions:
 - "What scale of operations?" [choices: <1GB, 1GB-1TB, 1TB-1PB, >1PB]
 - "What's your industry/domain?" [text input needed for compliance requirements]
 
+**Example 4: Multiple Distinct Topics**
+Input: "What is machine learning and how does it compare to deep learning
+and can you also explain neural networks?"
+Issue: Multiple distinct topics requiring prioritization and depth specification
+Required Questions:
+- "Which topic would you like me to focus on first?"
+  [choices: ML overview, ML vs DL comparison, neural networks, all topics equally]
+- "What level of technical detail do you need?"
+  [choices: high-level overview, technical details, implementation focus]
+
 ### PATTERN B: Queries NOT Requiring Clarification
 
 **Example 1: Well-Specified Technical**
@@ -124,6 +140,10 @@ Reasoning: Specific technology, purpose, timeframe, and ranking criteria
 "Compare Python 3.11 vs Python 3.12 performance improvements in the official release notes"
 Reasoning: Specific versions, specific source document, factual comparison
 
+**Example 5: Clear Intent Despite Typos**
+"Wat is teh curent temprature in New York?"
+Reasoning: Despite typos, intent is unambiguous - requesting current temperature in New York City
+
 ## Step 4: Question Generation Protocol
 
 ### Priority Classification
@@ -141,6 +161,8 @@ Reasoning: Specific versions, specific source document, factual comparison
 ### Anti-Patterns to Avoid
 - ❌ "What do you want to know about X and how will you use it?"
 - ✅ Split into: "What aspect of X?" then "How will you use this?"
+- ❌ Accepting compound questions without prioritization
+- ✅ Ask for focus/priority when multiple distinct topics are present
 - ❌ Asking for information that won't change the research
 - ❌ Technical questions for non-technical queries
 - ❌ More than 5 questions total
