@@ -254,16 +254,14 @@ class ResearchWorkflow:
                 if research_state.metadata:
                     research_state.metadata.clarification.assessment = {
                         "needs_clarification": clarification_result.needs_clarification,
-                        "confidence": clarification_result.confidence_score,
-                        "clarification_type": clarification_result.clarification_type,
+                        "confidence": 0.8,  # Default confidence for now
+                        "clarification_type": "general",  # Default type
                         "assessment_reasoning": clarification_result.reasoning,
                         "missing_dimensions": clarification_result.missing_dimensions,
                     }
 
                     if clarification_result.needs_clarification:
-                        research_state.metadata.clarification.request = (
-                            clarification_result.clarification_request
-                        )
+                        research_state.metadata.clarification.request = clarification_result.request
                         research_state.metadata.clarification.awaiting_clarification = True
 
                 await emit_stage_completed(
@@ -279,13 +277,19 @@ class ResearchWorkflow:
                 if clarification_result.needs_clarification:
                     logfire.info("Clarification needed, entering interactive flow")
                     # Handle clarification flow
-                    clarification_handled = await handle_clarification_with_review(
-                        research_state=research_state,
-                        clarification_result=clarification_result,
-                        deps=deps,
-                    )
-                    if not clarification_handled:
-                        logfire.info("Clarification still pending")
+                    if clarification_result.request:
+                        clarification_response = await handle_clarification_with_review(
+                            request=clarification_result.request,
+                            original_query=research_state.user_query,
+                        )
+                        if not clarification_response:
+                            logfire.info("Clarification still pending")
+                            return
+                        # Store the clarification response in metadata
+                        if research_state.metadata and clarification_response:
+                            research_state.metadata.clarification.response = clarification_response
+                    else:
+                        logfire.warn("Clarification needed but no request provided")
                         return
 
             except Exception as e:
@@ -444,8 +448,7 @@ class ResearchWorkflow:
 
             except Exception as e:
                 logfire.error(f"Research workflow failed: {e}", exc_info=True)
-                research_state.current_stage = ResearchStage.FAILED
-                research_state.error = str(e)
+                research_state.set_error(str(e))
                 await emit_error(
                     research_state.request_id,
                     research_state.current_stage,
@@ -635,6 +638,5 @@ class ResearchWorkflow:
 
             except Exception as e:
                 logfire.error(f"Resume failed: {e}", exc_info=True)
-                research_state.current_stage = ResearchStage.FAILED
-                research_state.error = str(e)
+                research_state.set_error(str(e))
                 return research_state

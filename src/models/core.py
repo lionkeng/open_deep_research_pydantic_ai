@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 # Import Phase 2 models
+from .compression import CompressedContent
 from .metadata import ResearchMetadata
 from .report_generator import ReportSection as ResearchSection
 from .report_generator import ResearchReport
@@ -118,7 +119,9 @@ class ResearchState(BaseModel):
         default=None, description="Research plan from query transformation"
     )
     findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")
-    compressed_findings: str | None = Field(default=None, description="Synthesized findings")
+    compressed_findings: CompressedContent | None = Field(
+        default=None, description="Compressed and synthesized findings"
+    )
     final_report: ResearchReport | None = Field(default=None, description="Final report")
     error_message: str | None = Field(default=None, description="Error message if any")
     started_at: datetime = Field(default_factory=datetime.now)

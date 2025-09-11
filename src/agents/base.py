@@ -269,19 +269,12 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.model = self.config.model or model_config["model"]
         self._output_type = self._get_output_type()
 
-        # Handle output type properly
-        if self._output_type is None:
-            # Default to dict output
-            actual_output_type = dict
-        else:
-            actual_output_type = self._output_type
-
         # Create the Pydantic AI agent with proper configuration
-        self.agent: Agent[DepsT | ResearchDependencies, OutputT | dict[Any, Any]] = Agent(
+        self.agent: Agent[DepsT | ResearchDependencies, OutputT] = Agent(
             model=self.model,
             retries=self.config.max_retries,
             deps_type=type(dependencies) if dependencies else ResearchDependencies,
-            output_type=actual_output_type,
+            output_type=self._output_type,
             system_prompt=self.config.system_prompt or self._get_default_system_prompt(),
         )
 
@@ -347,7 +340,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         pass
 
     @abstractmethod
-    def _get_output_type(self) -> type[OutputT] | None:
+    def _get_output_type(self) -> type[OutputT]:
         """Get the output type for this agent. Override in subclasses."""
         pass
 
@@ -377,7 +370,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         deps: DepsT | None = None,
         message_history: list[ModelMessage] | None = None,
         stream: bool = False,
-    ) -> OutputT | dict[Any, Any]:
+    ) -> OutputT:
         """Run the agent with the given prompt.
 
         Args:
