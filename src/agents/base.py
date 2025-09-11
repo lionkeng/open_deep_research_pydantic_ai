@@ -20,8 +20,8 @@ from core.events import (
     research_event_bus,
 )
 from core.logging import configure_logging
-from src.models.api_models import APIKeys
-from src.models.core import ResearchState
+from models.api_models import APIKeys
+from models.core import ResearchState
 
 
 # Enhanced exception system for agent errors

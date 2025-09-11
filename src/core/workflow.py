@@ -8,6 +8,7 @@ import logfire
 
 from agents.base import ResearchDependencies
 from agents.factory import AgentFactory, AgentType
+from core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from core.events import (
     emit_error,
     emit_research_started,
@@ -16,9 +17,8 @@ from core.events import (
     emit_streaming_update,
 )
 from interfaces.clarification_flow import handle_clarification_with_review
-from src.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
-from src.models.api_models import APIKeys, ConversationMessage
-from src.models.core import (
+from models.api_models import APIKeys, ConversationMessage
+from models.core import (
     ResearchMetadata,
     ResearchStage,
     ResearchState,

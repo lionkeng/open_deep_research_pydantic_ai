@@ -6,7 +6,7 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from src.models.compression import CompressedContent
+from models.compression import CompressedContent
 
 from .base import (
     AgentConfiguration,

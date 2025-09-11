@@ -17,6 +17,8 @@ from rich.progress import TaskID
 from rich.prompt import Prompt
 from rich.table import Table
 
+from core.workflow import ResearchWorkflow
+
 # Try to import interactive selector for better UX
 try:
     from interfaces.interactive_selector import interactive_select
@@ -57,10 +59,9 @@ from core.sse_models import (
     UpdateMessage,
     parse_sse_message,
 )
-from core.workflow import workflow
-from src.models.api_models import APIKeys
-from src.models.core import ResearchStage
-from src.models.report_generator import ResearchReport
+from models.api_models import APIKeys
+from models.core import ResearchStage
+from models.report_generator import ResearchReport
 
 # Create console with force_terminal to ensure Live displays work correctly
 console = Console(force_terminal=True)
@@ -212,6 +213,19 @@ class CLIStreamHandler:
                 console.print()
             return
 
+        # Handle FAILED stage - exit immediately
+        if event.stage == ResearchStage.FAILED:
+            if self._post_clarification_active:
+                self.progress_manager.stop()
+                self._post_clarification_active = False
+            # Display failure message
+            if not event.success and event.error_message:
+                console.print(f"\n[red]✗ Research failed: {event.error_message}[/red]")
+            else:
+                console.print("\n[red]✗ Research failed[/red]")
+            console.print("[dim]Exiting...[/dim]")
+            sys.exit(1)
+
         # For non-clarification stages, reset the post-clarification flag
         self._post_clarification_active = False
 
@@ -226,9 +240,27 @@ class CLIStreamHandler:
         if not self._research_started:
             self.start_research_tracking(self.query or "Research Query")
 
-        # Show error in progress
+        # Show error in progress and console
         if event.error_message:
             self.progress_manager.update(f"Error: {event.error_message}")
+
+            # Also print to console for visibility
+            error_msg = event.error_message
+            if event.stage == ResearchStage.FAILED:
+                # Stop any active progress indicators
+                if self._post_clarification_active:
+                    self.progress_manager.stop()
+                    self._post_clarification_active = False
+                console.print(f"\n[red]✗ Research failed during {event.stage.value}[/red]")
+                console.print(f"[red]  Error: {error_msg}[/red]")
+                console.print("[dim]Exiting...[/dim]")
+                sys.exit(1)
+            elif event.recoverable:
+                console.print(
+                    f"[yellow]⚠ Recoverable error in {event.stage.value}: {error_msg}[/yellow]"
+                )
+            else:
+                console.print(f"[red]✗ Error in {event.stage.value}: {error_msg}[/red]")
 
     async def handle_research_completed(self, event: ResearchCompletedEvent) -> None:
         """Handle research completion with enhanced display."""
@@ -767,7 +799,7 @@ async def run_research(
         # Start progress display
         with handler:
             # Execute research
-            state = await workflow.execute_research(
+            state = await ResearchWorkflow().run(
                 user_query=query,
                 api_keys=api_keys,
                 stream_callback=True,
@@ -805,13 +837,10 @@ async def run_research(
             )
 
             # Show clarifying questions if available
-            if (
-                hasattr(state.metadata, "clarifying_questions")
-                and state.metadata.clarifying_questions
-            ):
+            if state.metadata.pending_questions:
                 console.print("\n[yellow]Clarifying questions needed:[/yellow]")
-                for q in state.metadata.clarifying_questions:
-                    console.print(f"  • {q}")
+                for q in state.metadata.pending_questions:
+                    console.print(f"  • {q.question}")
 
     else:  # HTTP mode
         if not _http_mode_available:

@@ -99,7 +99,7 @@ reportAny = "warning"
 
 # Keep strict error checking for code quality
 reportMissingImports = "error"
-reportMissingTypeStubs = "warning"
+reportMissingTypeStubs = "none"  # Disabled - not needed for internal modules with type hints
 reportUnusedImport = "error"
 reportUnusedClass = "error"
 reportUnusedFunction = "information"  # Lowered for Pydantic-AI tools (called dynamically)

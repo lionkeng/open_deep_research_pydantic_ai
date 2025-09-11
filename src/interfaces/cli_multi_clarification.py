@@ -7,6 +7,13 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
+from models.clarification import (
+    ClarificationAnswer,
+    ClarificationQuestion,
+    ClarificationRequest,
+    ClarificationResponse,
+)
+
 # Import interactive selector for better UX
 try:
     from .interactive_selector import interactive_select
@@ -15,13 +22,6 @@ try:
 except ImportError:
     interactive_select = None
     has_interactive = False
-
-from src.models.clarification import (
-    ClarificationAnswer,
-    ClarificationQuestion,
-    ClarificationRequest,
-    ClarificationResponse,
-)
 
 
 def display_clarification_request(

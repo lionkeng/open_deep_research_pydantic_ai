@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_ai.models import KnownModelName
 
-from src.models.api_models import APIKeys
+from models.api_models import APIKeys
 
 # Note: .env file is loaded in src/__init__.py before this module is imported
 

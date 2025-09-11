@@ -22,10 +22,12 @@ class ResearchStage(str, Enum):
 
     PENDING = "pending"  # Initial state before research starts
     CLARIFICATION = "clarification"
+    QUERY_TRANSFORMATION = "query_transformation"  # Transform query based on clarification
     RESEARCH_EXECUTION = "research_execution"
     COMPRESSION = "compression"
     REPORT_GENERATION = "report_generation"
     COMPLETED = "completed"
+    FAILED = "failed"  # Terminal state for failed research
 
 
 class ResearchPriority(str, Enum):
@@ -148,17 +150,17 @@ class ResearchState(BaseModel):
             self.current_stage = ResearchStage.CLARIFICATION
 
     def is_completed(self) -> bool:
-        """Check if research is completed."""
-        return self.current_stage == ResearchStage.COMPLETED
+        """Check if research is completed (either successfully or with failure)."""
+        return self.current_stage in (ResearchStage.COMPLETED, ResearchStage.FAILED)
 
     def add_finding(self, finding: ResearchFinding) -> None:
         """Add a research finding."""
         self.findings.append(finding)
 
     def set_error(self, message: str) -> None:
-        """Set error message and mark as completed."""
+        """Set error message and mark as failed."""
         self.error_message = message
-        self.current_stage = ResearchStage.COMPLETED
+        self.current_stage = ResearchStage.FAILED
         self.completed_at = datetime.now()
 
     @classmethod

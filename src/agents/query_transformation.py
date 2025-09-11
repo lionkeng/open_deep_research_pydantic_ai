@@ -5,8 +5,8 @@ from typing import Any
 import logfire
 from pydantic_ai import RunContext
 
-from src.models.metadata import ResearchMetadata
-from src.models.research_plan_models import TransformedQuery
+from models.metadata import ResearchMetadata
+from models.research_plan_models import TransformedQuery
 
 from .base import (
     AgentConfiguration,
