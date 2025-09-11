@@ -188,19 +188,27 @@ class ResearchWorkflow:
                 # Run query transformation to get TransformedQuery
                 result = await agent.run(deps)
             elif agent_type == AgentType.RESEARCH_EXECUTOR:
-                # Extract SearchQueryBatch from transformed query
-                enhanced_query = deps.research_state.metadata.query.enhanced_query
-                if enhanced_query and hasattr(enhanced_query, "search_queries"):
+                # Retrieve transformed query from metadata and pass search queries via dependencies
+                if (
+                    deps.research_state.metadata
+                    and deps.research_state.metadata.query.transformed_query
+                ):
+                    transformed_query_data = deps.research_state.metadata.query.transformed_query
+                    # Reconstruct SearchQueryBatch from the stored data
+                    from models.search_query_models import SearchQueryBatch
+
+                    search_queries_data = transformed_query_data.get("search_queries", {})
+                    search_queries = SearchQueryBatch.model_validate(search_queries_data)
+                    # Pass search queries to the Research Executor via dependencies
+                    deps.search_queries = search_queries
                     result = await agent.run(deps)
                 else:
-                    raise ValueError("No search queries available for research execution")
+                    raise ValueError("No transformed query available for research execution")
             elif agent_type == AgentType.COMPRESSION:
-                # Get research plan from transformed query
-                enhanced_query = deps.research_state.metadata.query.enhanced_query
+                # Compression agent can access research plan from metadata if needed
                 result = await agent.run(deps)
             elif agent_type == AgentType.REPORT_GENERATOR:
-                # Get research plan from transformed query
-                enhanced_query = deps.research_state.metadata.query.enhanced_query
+                # Report generator can access research plan from metadata if needed
                 result = await agent.run(deps)
             else:
                 raise ValueError(f"Unknown agent type: {agent_type}")
@@ -307,9 +315,8 @@ class ResearchWorkflow:
                     AgentType.QUERY_TRANSFORMATION, deps
                 )
 
-                # Store the enhanced query with both SearchQueryBatch and ResearchPlan
+                # Store the entire TransformedQuery in metadata for inter-agent communication
                 if research_state.metadata:
-                    research_state.metadata.query.enhanced_query = enhanced_query
                     research_state.metadata.query.transformed_query = {
                         "original_query": enhanced_query.original_query,
                         "search_queries": enhanced_query.search_queries.model_dump(),

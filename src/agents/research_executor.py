@@ -230,8 +230,21 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             query = ctx.deps.research_state.user_query
             metadata = ctx.deps.research_state.metadata
             conversation = metadata.conversation_messages if metadata else []
-            research_brief = ""  # Will be populated from transformed query result
-            methodology = ""  # Methodology will be extracted from research brief if available
+
+            # Extract research plan from transformed query metadata
+            research_brief = ""
+            methodology = ""
+            if metadata and metadata.query.transformed_query:
+                transformed_data = metadata.query.transformed_query
+                research_plan = transformed_data.get("research_plan", {})
+                research_brief = str(research_plan)
+                # Extract methodology if available
+                methodology = research_plan.get("methodology", "")
+
+            # Include search queries if available
+            if ctx.deps.search_queries:
+                search_context = f"\n\nSearch Queries to Execute: {ctx.deps.search_queries.queries}"
+                research_brief += search_context
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

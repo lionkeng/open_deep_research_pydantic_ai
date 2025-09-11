@@ -5,7 +5,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from models.search_query_models import SearchQueryBatch
 
 import httpx
 import logfire
@@ -134,6 +137,8 @@ class ResearchDependencies:
     # Removed redundant metadata field - access via research_state.metadata
     usage: RunUsage | None = None
     stream_callback: Any | None = None
+    # Optional field for passing search queries to Research Executor
+    search_queries: "SearchQueryBatch | None" = None
 
 
 DepsT = TypeVar("DepsT", bound=ResearchDependencies)
