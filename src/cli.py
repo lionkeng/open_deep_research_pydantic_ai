@@ -216,7 +216,7 @@ class CLIStreamHandler:
         # Also handle query transformation completion to ensure we're ready for research execution
         if event.stage == ResearchStage.QUERY_TRANSFORMATION:
             if self._clarification_active:
-                # Query transformation is part of the three-phase clarification
+                # Query transformation is part of the two-phase clarification
                 # Make sure we clear the flag so research execution updates can be shown
                 self._clarification_active = False
             return

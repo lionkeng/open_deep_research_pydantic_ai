@@ -200,6 +200,12 @@ class ResearchWorkflow:
                     search_queries_data = transformed_query_data.get("search_queries", {})
                     search_queries = SearchQueryBatch.model_validate(search_queries_data)
                     # Pass search queries to the Research Executor via dependencies
+                    # for debugging purposes, we log the queries here
+                    logfire.info(
+                        "Passing search queries to Research Executor",
+                        queries=[q.query for q in search_queries.queries],
+                        num_queries=len(search_queries.queries),
+                    )
                     deps.search_queries = search_queries
                     result = await agent.run(deps)
                 else:
@@ -221,17 +227,15 @@ class ResearchWorkflow:
                 raise
             return self._create_fallback(agent_type)
 
-    async def _execute_three_phase_clarification(
+    async def _execute_two_phase_clarification(
         self, deps: ResearchDependencies, user_query: str
     ) -> None:
-        """Execute three-phase clarification system.
+        """Execute two-phase clarification system.
 
         Phase 1: Initial clarification check
         Phase 2: Query transformation (produces SearchQueryBatch and ResearchPlan)
-        Phase 3: Direct to research execution (no Brief Generator)
         """
         research_state = deps.research_state
-        phase_results = {}
 
         try:
             # Phase 1: Clarification Assessment
@@ -270,8 +274,6 @@ class ResearchWorkflow:
                     True,
                     clarification_result,
                 )
-
-                phase_results["clarification"] = clarification_result
 
                 # If clarification needed, handle it
                 if clarification_result.needs_clarification:
@@ -320,14 +322,13 @@ class ResearchWorkflow:
                 )
 
                 # Store the entire TransformedQuery in metadata for inter-agent communication
-                if research_state.metadata:
-                    research_state.metadata.query.transformed_query = {
-                        "original_query": enhanced_query.original_query,
-                        "search_queries": enhanced_query.search_queries.model_dump(),
-                        "research_plan": enhanced_query.research_plan.model_dump(),
-                        "transformation_rationale": enhanced_query.transformation_rationale,
-                        "confidence_score": enhanced_query.confidence_score,
-                    }
+                research_state.metadata.query.transformed_query = {
+                    "original_query": enhanced_query.original_query,
+                    "search_queries": enhanced_query.search_queries.model_dump(),
+                    "research_plan": enhanced_query.research_plan.model_dump(),
+                    "transformation_rationale": enhanced_query.transformation_rationale,
+                    "confidence_score": enhanced_query.confidence_score,
+                }
 
                 await emit_stage_completed(
                     research_state.request_id,
@@ -339,7 +340,6 @@ class ResearchWorkflow:
                 logfire.info(
                     "Query transformation completed",
                     original_query=enhanced_query.original_query,
-                    transformed_query=enhanced_query.search_queries.primary_query,
                     search_queries=[q.query for q in enhanced_query.search_queries.queries],
                     num_search_queries=len(enhanced_query.search_queries.queries),
                     num_objectives=len(enhanced_query.research_plan.objectives),
@@ -347,8 +347,6 @@ class ResearchWorkflow:
                     confidence=enhanced_query.confidence_score,
                     transformation_rationale=enhanced_query.transformation_rationale,
                 )
-
-                phase_results["transformation"] = enhanced_query
 
             except Exception as e:
                 logfire.error(f"Query transformation failed: {e}")
@@ -361,20 +359,13 @@ class ResearchWorkflow:
                 )
                 raise
 
-            # Phase 3 is now direct research execution (no Brief Generator)
-            logfire.info(
-                "Three-phase clarification system completed, proceeding to research execution",
-                has_clarification=phase_results.get("clarification") is not None,
-                has_transformation=phase_results.get("transformation") is not None,
-            )
-
         except Exception as e:
             # Log phase completion failure
-            logfire.error(f"Three-phase clarification system failed: {e}", exc_info=True)
+            logfire.error(f"Two-phase clarification system failed: {e}", exc_info=True)
             await emit_error(
                 research_state.request_id,
                 research_state.current_stage,
-                "ThreePhaseError",
+                "TwoPhaseError",
                 str(e),
                 recoverable=False,
             )
@@ -432,8 +423,8 @@ class ResearchWorkflow:
             )
 
             try:
-                # Execute three-phase clarification (includes query transformation)
-                await self._execute_three_phase_clarification(deps, user_query)
+                # Execute two-phase clarification (includes query transformation)
+                await self._execute_two_phase_clarification(deps, user_query)
 
                 research_state.advance_stage()  # Move to RESEARCH_EXECUTION
 
@@ -610,13 +601,13 @@ class ResearchWorkflow:
                         logfire.info("Still awaiting clarification response")
                         return research_state
 
-                    # Re-execute three-phase clarification system
-                    await self._execute_three_phase_clarification(deps, research_state.user_query)
+                    # Re-execute two-phase clarification system
+                    await self._execute_two_phase_clarification(deps, research_state.user_query)
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
                 elif current_stage == ResearchStage.QUERY_TRANSFORMATION:
-                    # Query transformation should complete in three-phase
+                    # Query transformation should complete in two-phase
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 

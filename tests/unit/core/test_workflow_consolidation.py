@@ -62,8 +62,8 @@ class TestWorkflowConsolidation:
             assert result is not None
 
     @pytest.mark.asyncio
-    async def test_three_phase_clarification_preserved(self, workflow, mock_dependencies):
-        """Ensure _execute_three_phase_clarification works identically."""
+    async def test_two_phase_clarification_preserved(self, workflow, mock_dependencies):
+        """Ensure _execute_two_phase_clarification works identically."""
         # Mock clarification agent
         with patch.object(AgentFactory, "create_agent") as mock_create:
             mock_agent = AsyncMock()
@@ -77,7 +77,7 @@ class TestWorkflowConsolidation:
             mock_create.return_value = mock_agent
 
             # The method signature is (deps, user_query), not (user_query, deps)
-            result = await workflow._execute_three_phase_clarification(
+            result = await workflow._execute_two_phase_clarification(
                 mock_dependencies, "Test query"
             )
             # This method returns None, not a dict
@@ -144,7 +144,7 @@ class TestWorkflowConsolidation:
 
         # Check all public methods exist
         assert hasattr(workflow, "execute_research")
-        assert hasattr(workflow, "_execute_three_phase_clarification")
+        assert hasattr(workflow, "_execute_two_phase_clarification")
         assert hasattr(workflow, "_check_circuit_breaker")
         assert hasattr(workflow, "_record_error")
         assert hasattr(workflow, "_record_success")

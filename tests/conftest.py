@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for the three-phase clarification system tests."""
+"""Pytest configuration and fixtures for the two-phase clarification system tests."""
 
 import os
 import pytest
