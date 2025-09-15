@@ -186,4 +186,17 @@ class ResearchState(BaseModel):
 
 
 # ResearchSection needs model rebuild since it has self-reference
-ResearchSection.model_rebuild()
+_ = ResearchSection.model_rebuild()
+
+# Export all public models
+__all__ = [
+    "ResearchStage",
+    "ResearchPriority",
+    "ClarificationResult",
+    "ResearchState",
+    "ResearchMetadata",
+    "ResearchFinding",
+    "ResearchSection",
+    "ResearchReport",
+    "CompressedContent",
+]

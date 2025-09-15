@@ -338,10 +338,14 @@ class ResearchWorkflow:
 
                 logfire.info(
                     "Query transformation completed",
+                    original_query=enhanced_query.original_query,
+                    transformed_query=enhanced_query.search_queries.primary_query,
+                    search_queries=[q.query for q in enhanced_query.search_queries.queries],
                     num_search_queries=len(enhanced_query.search_queries.queries),
                     num_objectives=len(enhanced_query.research_plan.objectives),
                     execution_strategy=enhanced_query.search_queries.execution_strategy,
                     confidence=enhanced_query.confidence_score,
+                    transformation_rationale=enhanced_query.transformation_rationale,
                 )
 
                 phase_results["transformation"] = enhanced_query
@@ -405,7 +409,9 @@ class ResearchWorkflow:
         research_state = ResearchState(
             user_query=user_query,
             current_stage=ResearchStage.CLARIFICATION,
-            request_id=request_id or f"req_{datetime.now().isoformat()}",
+            request_id=request_id or ResearchState.generate_request_id(),
+            user_id="default",  # Explicitly set to match the default
+            session_id=None,  # Explicitly set to match the default
             metadata=ResearchMetadata(),
         )
 
@@ -530,7 +536,7 @@ class ResearchWorkflow:
         except Exception as e:
             logfire.error(f"Compression failed: {e}")
             # Compression is not critical, continue with uncompressed findings
-            research_state.compressed_findings = research_state.findings
+            # compressed_findings remains None if compression fails
             research_state.advance_stage()
 
         # Stage 3: Report Generation
