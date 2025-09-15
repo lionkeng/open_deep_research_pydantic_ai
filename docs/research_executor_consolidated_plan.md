@@ -52,8 +52,20 @@ Combine the best of both worlds:
 ### 3. Phased Implementation Strategy
 
 - **Phase 1 (MVP)**: Core synthesis with essential features
+  - Streamlined models (defer PatternAnalysis for Phase 2)
+  - Research Executor Agent with 4 core tools
+  - SynthesisEngine with full ML clustering
+  - Simplified ContradictionDetector (2 types)
+  - Core integration tests
 - **Phase 2**: Enhanced synthesis and analysis capabilities
+  - PatternAnalysis model and PatternRecognizer service
+  - ConfidenceAnalyzer service
+  - Enhanced contradiction detection (4 types)
+  - Comprehensive test coverage
 - **Phase 3**: Performance optimizations and advanced features
+  - Caching and parallel execution
+  - Advanced metrics and monitoring
+  - Production optimizations
 
 ## Core Components
 
@@ -1671,9 +1683,7 @@ async def generate_synthesis_metrics(
     )
 ```
 
-## Migration Plan
-
-### Phase 1: Foundation (Week 1)
+## Implementation Plan
 
 1. **Day 1-2**: Implement enhanced synthesis prompt
 
@@ -1783,13 +1793,4 @@ class ResearchExecutorConfig(BaseModel):
 
 ## Summary
 
-This implementation plan provides:
-
-1. **Clean, modern architecture** without legacy constraints
-2. **Rich, integrated data models** with all features directly exposed
-3. **Comprehensive synthesis capabilities** including clustering, contradiction detection, and pattern recognition
-4. **Production-ready code** with proper error handling and logging
-5. **Extensive testing coverage** for all components
-6. **Clear configuration** for customization
-
-The system is designed for immediate implementation without concerns about compatibility with older versions.
+This implementation plan provides a phased approach to building a comprehensive Research Executor Agent:
