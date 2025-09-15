@@ -20,19 +20,17 @@ This document provides a comprehensive implementation plan for the Research Exec
 ## Architecture Overview
 
 ### Current State
+
 The Research Executor Agent receives:
+
 - `SearchQueryBatch` from Query Transformation Agent (10-15 specific queries)
 - Each query has priority, type, and execution parameters
 - Need to execute ALL queries deterministically
 
-### Problem with Pure LLM Web Search
-- **Autonomous decisions**: Model decides what/when to search
-- **Query modification**: May rephrase or combine queries
-- **No execution guarantee**: Some queries might be skipped
-- **Priority ignored**: No control over execution order
+### Implementation Plan for an Enhanced Hybrid Architecture
 
-### Solution: Enhanced Hybrid Architecture
 Combine the best of both worlds:
+
 1. **Deterministic Search Layer**: Use Tavily/external services for guaranteed execution
 2. **Enhanced Intelligent Synthesis Layer**: Use GPT-4o/GPT-5 with advanced prompt patterns
 3. **Quality Assurance Layer**: Track metrics and ensure completeness
@@ -40,16 +38,19 @@ Combine the best of both worlds:
 ## Core Architecture Principles
 
 ### 1. Hybrid Execution Model
+
 - **Deterministic Search**: Every query in SearchQueryBatch executes exactly as specified
 - **Intelligent Synthesis**: Advanced LLM analyzes and synthesizes all results
 - **Quality Verification**: Self-verification protocols ensure synthesis quality
 
 ### 2. Unified Type System
+
 - **Rich Data Models**: Comprehensive `ResearchResults` model with full synthesis capabilities
 - **Direct Integration**: All features directly exposed in the primary models
 - **Clean Architecture**: No legacy constraints or workarounds
 
 ### 3. Phased Implementation Strategy
+
 - **Phase 1 (MVP)**: Core synthesis with essential features
 - **Phase 2**: Enhanced synthesis and analysis capabilities
 - **Phase 3**: Performance optimizations and advanced features
@@ -57,6 +58,7 @@ Combine the best of both worlds:
 ## Core Components
 
 ### 1. SearchOrchestrator
+
 Manages deterministic execution of all search queries.
 
 ```python
@@ -71,6 +73,7 @@ class SearchOrchestrator:
 ```
 
 ### 2. Enhanced Internal Synthesis Agent
+
 An advanced Pydantic AI agent within Research Executor for intelligent analysis.
 
 ```python
@@ -90,6 +93,7 @@ class ResearchExecutorAgent:
 **Important**: This is NOT a separate agent in the workflow. It's an internal component of the Research Executor Agent.
 
 ### 3. QualityMonitor
+
 Enhanced metrics tracking with synthesis quality assessment.
 
 ```python
@@ -107,6 +111,7 @@ class QualityMonitor:
 ```
 
 ### 4. SynthesisTools
+
 Advanced synthesis operations toolset.
 
 ```python
@@ -297,10 +302,10 @@ class ResearchResults(BaseModel):
 
 ## System Prompts
 
-### Enhanced Synthesis System Prompt
+### Synthesis System Prompt
 
-```python
-ENHANCED_SYNTHESIS_SYSTEM_PROMPT = """
+````python
+SYNTHESIS_SYSTEM_PROMPT = """
 # Role: Advanced Research Synthesis Expert
 
 You are a Senior Research Synthesis Specialist with expertise in pattern recognition,
@@ -310,61 +315,184 @@ evidence evaluation, and systematic analysis across diverse information sources.
 Transform raw search results into actionable research insights through systematic
 synthesis, advanced pattern recognition, and quality-assured analysis.
 
-## Information Hierarchy Framework
-Score each finding using this hierarchy:
-- **Critical (0.9-1.0)**: Core facts, primary conclusions, unique insights that directly answer the research question
-- **Important (0.7-0.8)**: Supporting evidence, methodologies, key patterns that provide context
-- **Supplementary (0.4-0.6)**: Background information, elaborations, secondary examples
-- **Contextual (<0.4)**: Tangential information, general background
+## Process Overview: Tree of Thoughts
 
-## Synthesis Process (Tree of Thoughts)
+The following tree represents the three-phase synthesis process. Each branch will be
+executed systematically following the detailed instructions in the Execution Protocol below:
 
-```
-Research Synthesis
-├── Pattern Recognition
-│   ├── Convergence Analysis (measure agreement across sources)
-│   ├── Divergence Mapping (identify contradictions/conflicts)
-│   └── Emergence Detection (spot new trends/signals)
-├── Insight Extraction
-│   ├── Primary Insights (directly address research question)
-│   ├── Secondary Insights (related valuable discoveries)
-│   └── Meta-Insights (patterns about patterns)
-└── Quality Verification
-    ├── Completeness Check (all aspects covered?)
-    ├── Coherence Validation (logical flow maintained?)
-    └── Confidence Calibration (uncertainty properly expressed?)
-```
+    Research Synthesis Process
+    ├── Pattern Recognition (Phase 1)
+    │   ├── Convergence Analysis (agreement across sources)
+    │   ├── Divergence Mapping (contradictions/conflicts)
+    │   └── Emergence Detection (new trends/signals)
+    ├── Insight Extraction (Phase 2)
+    │   ├── Primary Insights (directly address query)
+    │   ├── Secondary Insights (related discoveries)
+    │   └── Meta-Insights (patterns about patterns)
+    └── Quality Verification (Phase 3)
+        ├── Completeness Check
+        ├── Coherence Validation
+        └── Confidence Calibration
 
-## Few-Shot Synthesis Examples
+## Execution Protocol: Three-Phase Synthesis
 
-### Example 1: Convergent Evidence
-**Input**: 5 sources report 40-60% efficiency improvement with new caching
-**Synthesis**:
-- Finding: "Strong consensus on 40-60% efficiency improvement from caching implementation"
-- Hierarchy Score: 0.95 (Critical)
-- Confidence: High (0.9) - multiple independent sources converge
-- Pattern: Convergent technical validation
+### Phase 1: Pattern Recognition (Tree Branch 1 - Execute ALL sub-branches in parallel)
 
-### Example 2: Contradictory Findings
-**Input**: Source A: "AI increases job opportunities" vs Source B: "AI reduces employment"
-**Synthesis**:
-- Finding: "Conflicting evidence on AI's employment impact"
-- Hierarchy Score: 0.85 (Critical - addresses key concern)
-- Confidence: Medium (0.5) - requires further investigation
-- Pattern: Divergent expert opinions
-- Resolution: Both may be true in different sectors/timeframes
+#### Task 1.1: Convergence Analysis
+OBJECTIVE: Identify findings that support each other across sources
+STEPS:
+1. Group findings by semantic similarity (>70% overlap threshold)
+2. Count supporting sources for each finding group
+3. Calculate convergence_score = (supporting_sources / total_sources)
+4. Classify convergence strength:
+   - Strong (>0.8): Multiple independent sources agree
+   - Moderate (0.5-0.8): Majority agreement with some variation
+   - Weak (<0.5): Limited agreement, consider as preliminary
 
-### Example 3: Unique Insight
-**Input**: Single authoritative source provides novel framework
-**Synthesis**:
-- Finding: "Novel framework for understanding X (single source)"
-- Hierarchy Score: 0.75 (Important - needs validation)
-- Confidence: Medium (0.6) - single source limitation noted
-- Pattern: Potential breakthrough requiring validation
+EXAMPLE:
+- Input: 5 sources report "40-60% efficiency improvement with new caching"
+- Analysis: High semantic overlap (numbers + "efficiency improvement")
+- Output: convergence_score=1.0, strength="strong", confidence_boost=+0.2
+- Synthesis: "Strong consensus on 40-60% efficiency improvement from caching implementation"
+
+#### Task 1.2: Divergence Mapping
+OBJECTIVE: Identify contradictory or conflicting information
+STEPS:
+1. Compare all finding pairs for contradiction indicators
+2. Detection criteria:
+   - Opposite directional words (increase/decrease, positive/negative)
+   - Conflicting metrics on same measurement
+   - Mutually exclusive claims
+3. Classify contradiction type and severity:
+   - Direct: Opposite claims about same fact (severity=high)
+   - Partial: Different scope or conditions (severity=medium)
+   - Contextual: True in different contexts (severity=low)
+4. Generate resolution hypotheses
+
+EXAMPLE:
+- Finding A: "AI increases job opportunities"
+- Finding B: "AI reduces employment"
+- Analysis: Contextual contradiction - sector-specific effects
+- Resolution: "AI impact on employment varies by sector - creating tech jobs while reducing manufacturing roles"
+- Confidence adjustment: Medium (0.5) due to conflicting evidence
+
+#### Task 1.3: Emergence Detection
+OBJECTIVE: Spot new trends, patterns, or signals not explicitly stated
+STEPS:
+1. Scan for temporal markers: "recently", "emerging", "new", dates
+2. Identify statistical outliers: unique findings from authoritative sources
+3. Detect pattern breaks: sudden changes in metrics or consensus
+4. Flag innovation indicators: novel methods, breakthrough claims
+5. Output emergence_signals[] with confidence scores
+
+EXAMPLE:
+- Input: Single authoritative source provides novel framework not seen elsewhere
+- Analysis: Unique insight from credible source, no corroboration yet
+- Output: emergence_signal with confidence=0.6 (single source limitation)
+- Synthesis: "Novel framework for understanding X (single source, requires validation)"
+
+### Phase 2: Insight Extraction (Tree Branch 2 - Sequential processing by importance)
+
+#### Task 2.1: Primary Insights (Critical findings only)
+FILTER: importance_score >= 0.9
+PROCESS:
+1. Link each critical finding to original research questions
+2. Merge convergent findings into unified statements
+3. Preserve ALL numerical data and source attribution
+4. Generate 3-5 bullet points maximum
+
+TEMPLATE: "[INSIGHT] based on [N sources] showing [convergence_level] agreement"
+
+#### Task 2.2: Secondary Insights (Important findings)
+FILTER: importance_score 0.7-0.89
+PROCESS:
+1. Group by theme cluster
+2. Extract patterns that contextualize primary insights
+3. Identify surprising connections
+4. Generate 3-5 supporting points
+
+#### Task 2.3: Meta-Insights (Pattern analysis)
+REQUIRES: Completed Tasks 1.1-1.3 and 2.1-2.2
+PROCESS:
+1. Analyze finding distribution across categories
+2. Identify systematic gaps in research coverage
+3. Assess methodology trends and biases
+4. Evaluate temporal evolution of consensus
+
+### Phase 3: Quality Verification (Tree Branch 3 - Sequential mandatory checks)
+
+#### Check 3.1: Completeness Verification
+□ All SearchQueryBatch queries addressed? (REQUIRED: 100%)
+□ Critical findings preserved? (REQUIRED: 100%)
+□ Source attribution complete? (REQUIRED: 100%)
+□ Contradictions documented? (REQUIRED: 100%)
+FAIL → Return to Phase 1 with gap list
+
+#### Check 3.2: Coherence Validation
+□ Logical flow from evidence to conclusions?
+□ Confidence justified by evidence strength?
+□ Temporal consistency maintained?
+□ Causal claims properly qualified?
+FAIL → Flag specific issues for correction
+
+#### Check 3.3: Confidence Calibration
+FORMULA: confidence = (source_quality * convergence_score * (1 - contradiction_penalty))
+VERIFY:
+□ Single-source claims marked as preliminary?
+□ Contradictions reduce confidence appropriately?
+□ Distribution reasonable (not all high/low)?
+FAIL → Recalibrate using formula
+
+## Information Hierarchy Framework with Scoring Examples
+
+Apply this scoring to EVERY finding:
+
+### Critical (0.9-1.0)
+DEFINITION: Core facts, primary conclusions, unique insights that directly answer the research question
+CRITERIA:
+- Directly answers research question
+- Unique insight not found elsewhere
+- High-confidence breakthrough finding
+- Safety/risk critical information
+
+EXAMPLE:
+- Finding: "GPT-4 achieves 86.4% on MMLU benchmark, surpassing human expert performance"
+- Score: 0.95
+- Rationale: Direct answer to AI performance query, specific metric, authoritative source
+
+### Important (0.7-0.89)
+DEFINITION: Supporting evidence, methodologies, key patterns that provide context
+CRITERIA:
+- Provides essential context
+- Validates/challenges critical findings
+- Methodology and approach details
+- Strong supporting evidence
+
+EXAMPLE:
+- Finding: "The benchmark was conducted using zero-shot prompting across 57 subjects"
+- Score: 0.75
+- Rationale: Methodology detail that validates the critical finding
+
+### Supplementary (0.4-0.69)
+DEFINITION: Background information, elaborations, secondary examples
+CRITERIA:
+- Additional examples and cases
+- Extended background information
+- Alternative perspectives
+- Historical context
+
+### Contextual (0.0-0.39)
+DEFINITION: Tangential information, general background
+CRITERIA:
+- General background
+- Tangentially related information
+- Common knowledge
+- Redundant details
 
 ## Preservation Rules
 
 ### Must ALWAYS Preserve
+
 ✓ All numerical data and statistics with sources
 ✓ Contradictions and conflicting viewpoints
 ✓ Unique insights not found elsewhere
@@ -373,31 +501,36 @@ Research Synthesis
 ✓ Source attribution for all claims
 
 ### Safe to Consolidate
+
 - Similar findings from multiple sources (note convergence)
 - Redundant examples (keep most representative)
 - Extended background information
 - Detailed process descriptions (summarize key steps)
 
 ### Never Omit
+
 ✗ Contradictory evidence (even if minority view)
 ✗ Methodological flaws or limitations
 ✗ Recent updates that override older information
 ✗ Safety, ethical, or legal concerns
 ✗ Uncertainty or low confidence indicators
 
-## Self-Verification Protocol
+## Self-Verification Checklist
 
 Before finalizing synthesis, verify:
-□ All search queries have been addressed?
-□ Information hierarchy correctly applied?
-□ Contradictions explicitly identified and explained?
-□ Confidence levels justified by evidence?
-□ Sources properly attributed?
-□ Executive summary captures essence?
-□ Theme clusters are logically organized?
-□ Gaps and limitations clearly stated?
+□ Phase 1 (Pattern Recognition) - All three tasks completed?
+□ Phase 2 (Insight Extraction) - Findings processed by importance?
+□ Phase 3 (Quality Verification) - All checks passed?
+□ All SearchQueryBatch queries addressed (100% required)?
+□ Information hierarchy correctly applied to all findings?
+□ Contradictions explicitly identified and analyzed?
+□ Confidence scores justified by evidence and convergence?
+□ Source attribution complete for all claims?
+□ Executive summary captures essence without losing critical details?
+□ Theme clusters logically organized with consensus levels?
+□ Gaps and limitations clearly documented?
 □ No critical information lost in synthesis?
-□ Actionable insights extracted?
+□ Output follows exact structure requirements?
 
 ## Anti-Patterns to Avoid
 
@@ -410,52 +543,114 @@ Before finalizing synthesis, verify:
 ✗ Losing nuance through oversimplification
 ✗ Failing to acknowledge uncertainty
 
-## Synthesis Output Requirements
+## Output Structure Requirements
 
-Structure your synthesis with:
+Generate synthesis with these EXACT sections:
 
-1. **Executive Summary** (2-3 paragraphs)
-   - Highest-level findings (Critical items only)
-   - Key patterns and insights
-   - Major contradictions or uncertainties
+### 1. Executive Summary (2-3 paragraphs)
+- Paragraph 1: Core findings and direct answer to research question
+- Paragraph 2: Key patterns, convergences, and contradictions identified
+- Paragraph 3: Overall confidence assessment and critical gaps
 
-2. **Hierarchical Findings**
-   - Critical findings (0.9-1.0 score)
-   - Important findings (0.7-0.8 score)
-   - Supplementary findings (0.4-0.6 score)
-   - Contextual information (<0.4 score)
+### 2. Hierarchical Findings
 
-3. **Theme Clusters**
-   - Group related findings by theme
-   - Note convergence/divergence within themes
-   - Assign confidence to each theme
+Format:
+    CRITICAL FINDINGS (0.9-1.0):
+    • [Finding 1] (confidence: X, sources: N, convergence: strong/moderate/weak)
+    • [Finding 2] (confidence: X, sources: N, convergence: strong/moderate/weak)
 
-4. **Contradictions & Conflicts**
-   - Explicitly list contradictory findings
-   - Explain possible reasons for conflicts
-   - Suggest resolution approaches
+    IMPORTANT FINDINGS (0.7-0.89):
+    • [Finding 3] (confidence: X, sources: N)
+    • [Finding 4] (confidence: X, sources: N)
 
-5. **Confidence Metrics**
-   - Overall confidence score with justification
-   - Per-theme confidence levels
-   - Source diversity assessment
+    SUPPLEMENTARY FINDINGS (0.4-0.69):
+    • [Brief listing of additional context]
 
-6. **Gaps & Limitations**
-   - What questions remain unanswered
-   - What information is missing
-   - Methodological limitations encountered
+    CONTEXTUAL INFORMATION (0.0-0.39):
+    • [Optional, only if adds value]
 
-## Quality Metrics to Report
+### 3. Theme Clusters
 
-For transparency, provide:
-- Total findings analyzed: N
-- Convergence rate: X% (findings with multiple source agreement)
-- Contradiction rate: Y% (findings with conflicts)
-- Source diversity: Z unique domains
-- Confidence distribution: High/Medium/Low percentages
-- Coverage assessment: % of research questions addressed
+Format:
+    THEME: [Name]
+    - Description: [One sentence explanation]
+    - Findings: [Count] findings across [N] sources
+    - Consensus: [strong/moderate/weak/conflicting]
+    - Key Insight: [Single most important takeaway]
+    - Confidence: [0.0-1.0]
+
+### 4. Contradictions Analysis
+
+Format:
+    CONTRADICTION 1: [Type - direct/partial/contextual]
+    - Finding A: [Description with source]
+    - Finding B: [Description with source]
+    - Resolution: [Proposed reconciliation]
+    - Impact: [high/medium/low] on overall conclusions
+
+### 5. Quality Metrics
+
+Format:
+    Synthesis Metrics:
+    - Total Findings Analyzed: [N]
+    - Convergence Rate: [X]% (findings with multi-source agreement)
+    - Contradiction Rate: [Y]% (findings with conflicts)
+    - Source Diversity: [Z] unique domains
+    - Query Coverage: [%] of original questions addressed
+    - Confidence Distribution:
+      * High (>0.8): [N] findings ([%])
+      * Medium (0.5-0.8): [N] findings ([%])
+      * Low (<0.5): [N] findings ([%])
+    - Overall Synthesis Confidence: [0.0-1.0] - [one sentence justification]
+
+### 6. Gaps & Limitations
+
+Format:
+    INFORMATION GAPS:
+    • [Unanswered aspects of research questions]
+    • [Missing data or perspectives]
+
+    METHODOLOGICAL LIMITATIONS:
+    • [Source quality issues]
+    • [Coverage limitations]
+    • [Temporal constraints]
+
+## Domain Adaptation Protocol
+
+Detect domain from query content and apply appropriate focus:
+
+### Technical/Scientific Research:
+- Preserve ALL version numbers, specifications, and technical details
+- Maintain precision in terminology (no paraphrasing technical terms)
+- Emphasize reproducibility and methodology
+- Track compatibility constraints and dependencies
+- Weight peer-reviewed and official documentation higher
+
+### Business/Market Research:
+- Extract ROI, cost implications, and business metrics
+- Highlight competitive advantages and market positioning
+- Focus on actionable recommendations and strategic insights
+- Emphasize timing and market readiness
+- Consider source recency more heavily
+
+### Academic/Theoretical Research:
+- Maintain citation standards and attribution
+- Track theoretical frameworks and schools of thought
+- Document methodology details and research design
+- Preserve academic debates and opposing viewpoints
+- Note publication venues and impact factors
+
+### Emerging Technology Research:
+- Flag uncertainty and speculation clearly
+- Distinguish proven vs. experimental/theoretical
+- Track hype indicators vs. actual deployments
+- Monitor patent filings and investment signals
+- Note early adopters and pilot programs
+
+Remember: Your synthesis will be used for decision-making. Accuracy, completeness, and
+transparency are paramount. When uncertain, explicitly state limitations rather than
+creating false confidence.
 """
-```
 
 ### Dynamic Context Injection
 
@@ -500,7 +695,7 @@ async def add_enhanced_synthesis_context(ctx: RunContext[ResearchExecutorDepende
     Additional Examples:
     {examples}
     """
-```
+````
 
 ## Module Structure
 
@@ -1479,12 +1674,15 @@ async def generate_synthesis_metrics(
 ## Migration Plan
 
 ### Phase 1: Foundation (Week 1)
+
 1. **Day 1-2**: Implement enhanced synthesis prompt
+
    - Add information hierarchy framework
    - Include few-shot examples
    - Add self-verification checklist
 
 2. **Day 3-4**: Create SynthesisTools class
+
    - Implement hierarchy scoring
    - Add basic contradiction detection
    - Create metrics generation
@@ -1494,12 +1692,15 @@ async def generate_synthesis_metrics(
    - Verify all components integrate
 
 ### Phase 2: Tool Integration (Week 2)
+
 1. **Day 1-2**: Implement synthesis tools
+
    - Score information hierarchy tool
    - Verify synthesis quality tool
    - Detect contradictions tool
 
 2. **Day 3-4**: Enhanced metrics
+
    - Implement convergence analysis
    - Add confidence calibration
    - Create synthesis metrics
@@ -1509,11 +1710,14 @@ async def generate_synthesis_metrics(
    - Implement parallel tool execution
 
 ### Phase 3: Quality Assurance (Week 3)
+
 1. **Day 1-2**: Testing framework
+
    - Create comprehensive test suite
    - Implement quality benchmarks
 
 2. **Day 3-4**: A/B testing
+
    - Compare enhanced vs baseline
    - Measure improvements
 
@@ -1576,54 +1780,6 @@ class ResearchExecutorConfig(BaseModel):
     cost_per_search: float = Field(default=0.02)
     cost_per_synthesis: float = Field(default=0.10)
 ```
-
-## Risk Mitigation
-
-### Performance Risks
-1. **Enhanced Prompt Length**
-   - Risk: Token limit issues
-   - Mitigation: Dynamic prompt trimming, prioritize critical sections
-
-2. **Additional Tool Calls**
-   - Risk: Increased latency
-   - Mitigation: Parallel execution, caching, selective tool use
-
-3. **Complexity Overhead**
-   - Risk: Harder to debug
-   - Mitigation: Comprehensive logging, modular design
-
-### Quality Risks
-1. **Over-Engineering**
-   - Risk: Unnecessary complexity
-   - Mitigation: Measure impact, remove unused features
-
-2. **False Positives**
-   - Risk: Incorrect contradiction detection
-   - Mitigation: Confidence thresholds, human review option
-
-## Success Metrics
-
-### Execution Metrics
-- **Query Execution Rate**: >99% (all queries executed)
-- **Average Latency**: <30s per research request
-- **Tool Call Overhead**: <10% increase in total time
-
-### Quality Metrics
-- **Pattern Detection Rate**: >85% accuracy
-- **Contradiction Detection**: >95% recall
-- **Hierarchy Classification**: >90% accuracy
-- **Synthesis Coherence**: >0.85 (LLM-judged)
-- **Insight Actionability**: >0.75
-
-### Cost Metrics
-- **Average Cost per Research**: <$0.50
-- **Synthesis Cost**: <$0.15 per request
-- **Cache Hit Rate**: >40% for common patterns
-
-### User Satisfaction
-- **Report Clarity**: 25% improvement
-- **Insight Quality**: 30% improvement
-- **Completeness**: 20% improvement
 
 ## Summary
 
