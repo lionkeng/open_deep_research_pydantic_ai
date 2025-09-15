@@ -1,6 +1,6 @@
 """Research executor agent for conducting actual research."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import logfire
@@ -291,7 +291,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             if source_info.get("date"):
                 try:
                     pub_date = datetime.fromisoformat(source_info["date"])
-                    years_old = (datetime.now() - pub_date).days / 365
+                    years_old = (datetime.now(tz=UTC) - pub_date).days / 365
                     if years_old < 2:
                         score += 0.1
                     elif years_old < 5:

@@ -1,6 +1,6 @@
 """Research executor models for the research system."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -33,7 +33,7 @@ class ResearchResults(BaseModel):
 
     query: str = Field(description="The research query that was executed")
     execution_time: datetime = Field(
-        default_factory=datetime.now, description="Time of research execution"
+        default_factory=lambda: datetime.now(UTC), description="Time of research execution"
     )
     findings: list[ResearchFinding] = Field(
         default_factory=list, description="List of research findings"

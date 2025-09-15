@@ -2,16 +2,17 @@
 
 ## Overview
 
-This evaluation framework provides comprehensive testing for both Clarification and Query Transformation agents using the pydantic-ai evaluation patterns.
+This evaluation framework provides comprehensive testing for Clarification, Query Transformation, and Research Executor agents using the pydantic-ai evaluation patterns.
 
 ## Structure
 
 ### 1. YAML Datasets (`evaluation_datasets/`)
 
-Both agents use YAML-based datasets for evaluation:
+All agents use YAML-based datasets for evaluation:
 
 - **`clarification_dataset.yaml`**: Test cases for clarification agent
 - **`query_transformation_dataset.yaml`**: Test cases for query transformation agent
+- **`research_executor_dataset.yaml`**: Test cases for research executor agent
 
 #### Dataset Structure
 
@@ -202,13 +203,115 @@ The Query Transformation evaluation framework includes both original and enhance
 - **Why it matters**: Ensures optimal query execution approach
 - **Scoring approach**: Strategy-context alignment and efficiency analysis
 
+#### Research Executor Evaluators
+
+The Research Executor evaluation framework provides comprehensive assessment of research quality and execution:
+
+##### **FindingsRelevanceEvaluator**
+
+- **Goal**: Ensure research findings are relevant and well-supported
+- **What it measures**:
+  - Word overlap between findings and original query
+  - Supporting evidence quality
+  - Confidence level appropriateness
+  - Category coverage
+- **Why it matters**: Validates that findings directly address the research query
+- **Scoring approach**: Weighted combination of relevance, evidence, and category metrics
+
+##### **SourceCredibilityEvaluator**
+
+- **Goal**: Assess the credibility and diversity of research sources
+- **What it measures**:
+  - Average source credibility scores
+  - Source diversity (different domains)
+  - Source count vs. expectations
+  - Temporal relevance (recency for time-sensitive queries)
+- **Why it matters**: Ensures research is based on reliable, diverse sources
+- **Scoring approach**: Multi-factor assessment of credibility, diversity, and recency
+
+##### **InsightQualityEvaluator**
+
+- **Goal**: Evaluate the depth and actionability of key insights
+- **What it measures**:
+  - Insight depth (detail level)
+  - Actionability (presence of recommendation keywords)
+  - Theme coverage
+  - Insight count appropriateness
+- **Why it matters**: Ensures insights provide value beyond raw findings
+- **Scoring approach**: Combined assessment of depth, actionability, and coverage
+
+##### **DataGapIdentificationEvaluator**
+
+- **Goal**: Evaluate identification and articulation of data gaps
+- **What it measures**:
+  - Gap identification presence
+  - Gap specificity and detail
+  - Coverage of expected gaps
+  - Reasonable gap count
+- **Why it matters**: Acknowledges research limitations transparently
+- **Scoring approach**: Evaluates presence, specificity, and coverage of gaps
+
+##### **ComprehensiveEvaluator**
+
+- **Goal**: Assess overall research completeness and coherence
+- **What it measures**:
+  - Presence of all required components (findings, sources, insights)
+  - Finding count vs. expectations
+  - Quality score validation
+  - Coherence between findings and insights
+- **Why it matters**: Ensures complete, well-structured research output
+- **Scoring approach**: Holistic assessment of completeness and coherence
+
+##### **ConfidenceCalibrationEvaluator**
+
+- **Goal**: Validate appropriate confidence level assignment
+- **What it measures**:
+  - Confidence distribution (avoiding over/under-confidence)
+  - Correlation with evidence quality
+  - Variance in confidence levels
+  - Calibration type matching
+- **Why it matters**: Ensures realistic confidence assessments
+- **Scoring approach**: Statistical analysis of confidence patterns
+
+##### **EvidenceSupportEvaluator**
+
+- **Goal**: Evaluate quality and sufficiency of supporting evidence
+- **What it measures**:
+  - Evidence presence for findings
+  - Evidence quantity and quality
+  - Source attribution
+  - Evidence detail level
+- **Why it matters**: Validates that findings are properly supported
+- **Scoring approach**: Assessment of evidence presence, quantity, and quality
+
+##### **CategoryCoverageEvaluator**
+
+- **Goal**: Ensure balanced coverage across finding categories
+- **What it measures**:
+  - Coverage of expected categories
+  - Category diversity
+  - Balance (no single category dominance)
+- **Why it matters**: Ensures comprehensive research across domains
+- **Scoring approach**: Analysis of category distribution and balance
+
+##### **CrossReferenceEvaluator**
+
+- **Goal**: Evaluate cross-source verification and synthesis
+- **What it measures**:
+  - Multiple source usage
+  - Finding-source attribution ratio
+  - Verification keyword presence (confirm, contradict, etc.)
+- **Why it matters**: Validates research rigor through cross-referencing
+- **Scoring approach**: Analysis of source diversity and verification patterns
+
 ### 3. Dataset Loading
 
 Dataset loading is now integrated directly into the evaluation runners:
 
 - **`run_query_transformation_eval.py`**: Contains `load_dataset_from_yaml()` method
 - **`run_clarification_eval.py`**: Contains dataset loading logic
-- Both runners support category filtering for selective evaluation
+- **`run_research_executor_eval.py`**: Contains dataset loading with fallback to hardcoded cases
+- All runners support category filtering for selective evaluation
 
 ### 4. Running Evaluations
 
@@ -220,6 +323,31 @@ uv run python tests/evals/run_clarification_eval.py
 
 # Test query transformation agent
 uv run python tests/evals/run_query_transformation_eval.py
+
+# Test research executor agent
+uv run python tests/evals/run_research_executor_eval.py
+```
+
+#### Research Executor Specific Options
+
+```bash
+# Quick test with only 3 cases
+uv run python tests/evals/run_research_executor_eval.py --quick
+
+# Enable multi-judge consensus evaluation
+uv run python tests/evals/run_research_executor_eval.py --multi-judge
+
+# Test specific categories
+uv run python tests/evals/run_research_executor_eval.py --categories golden_standard technical medical
+
+# Save results to JSON
+uv run python tests/evals/run_research_executor_eval.py --save
+
+# Adjust concurrency (default: 3)
+uv run python tests/evals/run_research_executor_eval.py --concurrency 5
+
+# Combined options
+uv run python tests/evals/run_research_executor_eval.py --multi-judge --categories golden_standard --save
 ```
 
 #### Load Specific Categories
@@ -231,9 +359,17 @@ uv run python tests/evals/run_query_transformation_eval.py --categories golden_s
 # Run enhanced evaluator tests
 uv run python tests/evals/run_query_transformation_eval.py --categories enhanced_evaluator
 
+# Research executor categories
+uv run python tests/evals/run_research_executor_eval.py --categories medical scientific
+
 # In code, load specific categories
 evaluator = QueryTransformationEvaluator()
 dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_evaluator"])
+
+# For research executor
+from tests.evals.run_research_executor_eval import ResearchExecutorEvaluator
+evaluator = ResearchExecutorEvaluator()
+dataset = evaluator.load_dataset_from_yaml(categories=["golden_standard", "edge_cases"])
 ```
 
 ## Dataset Categories
@@ -295,6 +431,55 @@ dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_ev
 
 **Total: 30 test cases**
 
+### Research Executor Dataset
+
+1. **Golden Standard Cases** (3 cases)
+   - Technical Framework Comparison
+   - Medical Research Breakthrough (CAR-T therapy)
+   - Business Market Analysis (sustainable packaging)
+
+2. **Technical Cases** (4 cases)
+   - Kubernetes Security Best Practices
+   - Database Performance Optimization
+   - API Design Patterns (GraphQL vs REST vs gRPC)
+   - Cloud Cost Optimization
+
+3. **Scientific Cases** (3 cases)
+   - Climate Technology Research (Direct Air Capture)
+   - Quantum Computing Applications
+   - Renewable Energy Storage
+
+4. **Business Cases** (3 cases)
+   - AI Market Disruption
+   - Supply Chain Resilience
+   - FinTech Innovation
+
+5. **Medical Cases** (2 cases)
+   - Mental Health Digital Interventions
+   - Personalized Medicine Genomics
+
+6. **Edge Cases** (5 cases)
+   - Minimal Ambiguous Query
+   - Ultra-Specific Technical Query
+   - Multi-Domain Complex Query
+   - Contradictory Evidence Topic
+   - Emerging Technology with Limited Data
+
+7. **Performance Cases** (3 cases)
+   - Simple Factual Query
+   - Medium Research Task
+   - Complex Synthesis Task
+
+8. **Temporal Sensitive Cases** (2 cases)
+   - Current Events Research
+   - Technology Trends 2024
+
+9. **Cross-Domain Cases** (2 cases)
+   - AI Ethics and Law
+   - Biotech Business Ethics
+
+**Total: 27+ test cases**
+
 ## Evaluation Metrics
 
 ### Thresholds
@@ -304,12 +489,16 @@ dataset = evaluator.load_dataset_from_yaml(categories=["technical", "enhanced_ev
 - `coherence_threshold`: 0.7
 - `accuracy_threshold`: 0.75
 - `diversity_threshold`: 0.7
+- `source_credibility_threshold`: 0.6-0.8 (domain-dependent)
+- `confidence_calibration_threshold`: 0.4-0.8 (well-calibrated range)
+- `pass_rate_threshold`: 0.7 (for overall evaluation)
 
 ### Execution Configuration
 
-- `max_concurrency`: 5
+- `max_concurrency`: 3-5 (adjustable per runner)
 - `timeout_seconds`: 30
 - `retry_attempts`: 2
+- `response_time_limits`: 5-45s (complexity-dependent)
 
 ## Best Practices
 
@@ -329,9 +518,39 @@ uv run pytest tests/evals/
 
 # Run specific evaluation
 uv run python tests/evals/run_query_transformation_eval.py
+uv run python tests/evals/run_clarification_eval.py
+uv run python tests/evals/run_research_executor_eval.py
+
+# Quick validation for CI
+uv run python tests/evals/run_research_executor_eval.py --quick
+
+# Full validation with multi-judge for release
+uv run python tests/evals/run_research_executor_eval.py --multi-judge --save
 
 # Run with custom dataset
 EVAL_DATASET=golden_standard uv run python tests/evals/run_query_transformation_eval.py
+```
+
+### GitHub Actions Example
+
+```yaml
+name: Agent Evaluations
+on: [push, pull_request]
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Quick Research Executor Test
+        run: |
+          source .env
+          uv run python tests/evals/run_research_executor_eval.py --quick
+      - name: Full Evaluation (main branch only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          source .env
+          uv run python tests/evals/run_research_executor_eval.py --multi-judge --save
 ```
 
 ## Troubleshooting
