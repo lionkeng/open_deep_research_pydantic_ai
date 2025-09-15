@@ -6,6 +6,7 @@ following pydantic-ai evaluation patterns with custom evaluators, metrics, and L
 """
 
 import asyncio
+import concurrent.futures
 import os
 import sys
 from typing import Dict, List, Any, Optional
@@ -29,6 +30,16 @@ from src.models.metadata import ResearchMetadata
 from src.models.core import ResearchState, ResearchStage
 from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource
 from src.models.api_models import APIKeys
+
+# Constants for evaluation scoring weights
+LLM_RELEVANCE_WEIGHT = 0.8
+CATEGORY_COVERAGE_WEIGHT = 0.2
+FALLBACK_CONFIDENCE_WEIGHT = 0.5
+FALLBACK_EVIDENCE_WEIGHT = 0.5
+FALLBACK_SCORE_MULTIPLIER = 0.7
+INSIGHT_DEPTH_WEIGHT = 0.5
+INSIGHT_ACTIONABILITY_WEIGHT = 0.5
+FALLBACK_INSIGHT_MULTIPLIER = 0.6
 
 
 class ResearchExecutorInput(BaseModel):
@@ -155,8 +166,7 @@ Return a JSON object with:
         if not output.findings:
             return 0.0
 
-        # Use asyncio.run to execute the async evaluation synchronously
-        import asyncio
+        # Use asyncio to execute the async evaluation
 
         async def run_evaluation():
             # Format findings for evaluation
@@ -200,7 +210,7 @@ Consider semantic similarity, not just exact word matches.
                     category_coverage = len(covered_categories) / len(expected.expected_categories)
 
                 # Combine LLM relevance score with category coverage
-                final_score = (llm_relevance * 0.8 + category_coverage * 0.2)
+                final_score = (llm_relevance * LLM_RELEVANCE_WEIGHT + category_coverage * CATEGORY_COVERAGE_WEIGHT)
 
                 return final_score
 
@@ -209,15 +219,13 @@ Consider semantic similarity, not just exact word matches.
                 # Check if findings have good confidence and evidence
                 avg_confidence = sum(f.confidence_level or 0.5 for f in output.findings) / len(output.findings)
                 has_evidence = sum(1 for f in output.findings if f.supporting_evidence) / len(output.findings)
-                return (avg_confidence * 0.5 + has_evidence * 0.5) * 0.7  # Conservative score
+                return (avg_confidence * FALLBACK_CONFIDENCE_WEIGHT + has_evidence * FALLBACK_EVIDENCE_WEIGHT) * FALLBACK_SCORE_MULTIPLIER  # Conservative score
 
         # Run the async evaluation
         # Check if there's already an event loop running
         try:
             asyncio.get_running_loop()
             # If we're in an async context, create a new event loop in a thread
-            import concurrent.futures
-
             def run_in_new_loop():
                 new_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(new_loop)
@@ -370,8 +378,7 @@ Return a JSON object with:
         if not output.key_insights:
             return 0.0
 
-        # Use asyncio.run to execute the async evaluation synchronously
-        import asyncio
+        # Use asyncio to execute the async evaluation
 
         async def run_evaluation():
             # Format insights for evaluation
@@ -445,15 +452,13 @@ Remember: This is about QUALITY not RELEVANCE. A relevant but shallow insight sh
                                   if any(kw in insight.lower() for kw in actionable_keywords))
                 actionability_score = actionability / len(output.key_insights)
 
-                return (length_score * 0.5 + actionability_score * 0.5) * 0.6  # Conservative score
+                return (length_score * INSIGHT_DEPTH_WEIGHT + actionability_score * INSIGHT_ACTIONABILITY_WEIGHT) * FALLBACK_INSIGHT_MULTIPLIER  # Conservative score
 
         # Run the async evaluation
         # Check if there's already an event loop running
         try:
             asyncio.get_running_loop()
             # If we're in an async context, create a new event loop in a thread
-            import concurrent.futures
-
             def run_in_new_loop():
                 new_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(new_loop)
