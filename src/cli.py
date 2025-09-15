@@ -213,6 +213,14 @@ class CLIStreamHandler:
                 console.print()
             return
 
+        # Also handle query transformation completion to ensure we're ready for research execution
+        if event.stage == ResearchStage.QUERY_TRANSFORMATION:
+            if self._clarification_active:
+                # Query transformation is part of the three-phase clarification
+                # Make sure we clear the flag so research execution updates can be shown
+                self._clarification_active = False
+            return
+
         # Handle FAILED stage - exit immediately
         if event.stage == ResearchStage.FAILED:
             if self._post_clarification_active:
@@ -226,8 +234,9 @@ class CLIStreamHandler:
             console.print("[dim]Exiting...[/dim]")
             sys.exit(1)
 
-        # For non-clarification stages, reset the post-clarification flag
-        self._post_clarification_active = False
+        # For non-clarification stages, DO NOT reset the post-clarification flag
+        # Keep the progress manager running between stages
+        # self._post_clarification_active = False  # REMOVED - this was causing the issue
 
         # For non-clarification stages
         if not self._research_started:
@@ -272,8 +281,10 @@ class CLIStreamHandler:
             self.progress_manager.stop_and_complete()
             self._clarification_active = False
 
-        # Reset post-clarification flag
-        self._post_clarification_active = False
+        # Also stop post-clarification progress if active
+        if self._post_clarification_active:
+            self.progress_manager.stop_and_complete()
+            self._post_clarification_active = False
 
         # Keep display active for a moment to show completion
         import asyncio

@@ -113,9 +113,13 @@ First, break down the query to identify:
 Input: "Tell me about machine learning"
 Issue: No specific aspect, audience, or depth specified
 Required Questions:
-- "Which aspect of ML interests you most?" [choices: algorithms, applications, theory, impl]
+- "Which aspect of ML interests you most?"
+  [choices: algorithms, applications, theory, implementation, Other (please specify)]
 - "What's your technical background?" [choices: non-technical, beginner, intermediate, expert]
-- "How will you use this information?" [choices: general knowledge, project planning, hands-on]
+- "How will you use this information?"
+  [choices: general knowledge, project planning, hands-on, Other (please specify)]
+NOTE: Do NOT add a separate text question asking "Any specific area of ML?" since the "Other"
+option handles this
 
 **Example 1b: Broad Concept (Should Need Clarification)**
 "What is AI?"
@@ -204,6 +208,9 @@ Reasoning: Related concepts forming a natural learning progression - coherent to
 3. Include 3-5 choices when patterns exist
 4. Order by impact on research quality
 5. Use progressive disclosure (basic → advanced)
+6. **IMPORTANT**: If you include an "Other (please specify)" option in a choice question,
+   DO NOT create a separate text question for the same information. The "Other" option
+   will automatically prompt for free text input when selected
 
 ### Anti-Patterns to Avoid
 - ❌ "What do you want to know about X and how will you use it?"
@@ -214,6 +221,10 @@ Reasoning: Related concepts forming a natural learning progression - coherent to
 - ❌ Asking for information that won't change the research
 - ❌ Technical questions for non-technical queries
 - ❌ More than 5 questions total
+- ❌ Creating both an "Other (please specify)" option AND a separate text question for the same info
+- ✅ Use "Other (please specify)" in choice questions when you have common options but want
+  flexibility
+- ✅ Use standalone text questions ONLY when there are no predefined choices to offer
 
 ## CONVERSATION CONTEXT:
 {conversation_context}
