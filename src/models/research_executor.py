@@ -9,6 +9,12 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from src.utils.validation import (
+    ContradictionSeverityCalculator,
+    RobustScoreValidator,
+    SeverityResult,
+)
+
 
 class ConfidenceLevel(str, Enum):
     """Confidence level categories for research findings."""
@@ -97,9 +103,20 @@ class ResearchSource(BaseModel):
 
     @field_validator("credibility_score", "relevance_score")
     @classmethod
-    def validate_scores(cls, v: float) -> float:
-        """Ensure scores are within valid range."""
-        return max(0.0, min(1.0, v))
+    def validate_scores(cls, v: Any, info: Any) -> float:
+        """Ensure scores are within valid range using robust validation."""
+        try:
+            from src.utils.validation import RobustScoreValidator
+
+            field_name = info.field_name if info else "score"
+            return RobustScoreValidator.validate_probability_score(
+                value=v, field_name=field_name, default_value=0.5
+            )
+        except ImportError:
+            # Fallback validation if utils not available
+            if v is None or math.isnan(v) or math.isinf(v):
+                return 0.5
+            return max(0.0, min(1.0, v))
 
     def overall_quality(self) -> float:
         """Calculate overall source quality score."""
@@ -146,15 +163,33 @@ class HierarchicalFinding(BaseModel):
 
     @field_validator("confidence_score", mode="after")
     @classmethod
-    def sync_confidence_level(cls, v: float) -> float:
-        """Validate confidence score is in range."""
-        return max(0.0, min(1.0, v))
+    def sync_confidence_level(cls, v: Any) -> float:
+        """Validate confidence score is in range using robust validation."""
+        try:
+            from src.utils.validation import RobustScoreValidator
+
+            return RobustScoreValidator.validate_probability_score(
+                value=v, field_name="confidence_score", default_value=0.5
+            )
+        except ImportError:
+            if v is None or math.isnan(v) or math.isinf(v):
+                return 0.5
+            return max(0.0, min(1.0, v))
 
     @field_validator("importance_score", mode="after")
     @classmethod
-    def sync_importance_level(cls, v: float) -> float:
-        """Validate importance score is in range."""
-        return max(0.0, min(1.0, v))
+    def sync_importance_level(cls, v: Any) -> float:
+        """Validate importance score is in range using robust validation."""
+        try:
+            from src.utils.validation import RobustScoreValidator
+
+            return RobustScoreValidator.validate_probability_score(
+                value=v, field_name="importance_score", default_value=0.5
+            )
+        except ImportError:
+            if v is None or math.isnan(v) or math.isinf(v):
+                return 0.5
+            return max(0.0, min(1.0, v))
 
     def hierarchical_score(self) -> float:
         """Calculate combined hierarchical score for ranking."""
@@ -190,7 +225,7 @@ class ThemeCluster(BaseModel):
 
 
 class Contradiction(BaseModel):
-    """Represents a contradiction between findings."""
+    """Represents a contradiction between findings with comprehensive severity analysis."""
 
     finding_1_id: str = Field(description="ID/index of first finding")
     finding_2_id: str = Field(description="ID/index of second finding")
@@ -204,10 +239,169 @@ class Contradiction(BaseModel):
     severity: float = Field(
         ge=0.0, le=1.0, default=0.5, description="Severity of the contradiction"
     )
+    severity_components: SeverityResult | None = Field(
+        default=None, description="Detailed breakdown of severity calculation"
+    )
+    resolution_strategy: dict[str, Any] = Field(
+        default_factory=dict, description="Suggested resolution strategy and actions"
+    )
+    priority: int = Field(
+        ge=1, le=5, default=3, description="Resolution priority (1=highest, 5=lowest)"
+    )
+    severity_level: str = Field(default="medium", description="Categorical severity level")
+    domain_overlap: float = Field(
+        ge=0.0, le=1.0, default=1.0, description="Domain overlap between findings"
+    )
+    temporal_distance_days: float = Field(ge=0.0, default=0.0, description="Days between findings")
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, v: Any) -> float:
+        """Validate severity score with robust handling."""
+        return RobustScoreValidator.validate_probability_score(
+            v, "contradiction_severity", default_value=0.5
+        )
+
+    @field_validator("domain_overlap")
+    @classmethod
+    def validate_domain_overlap(cls, v: Any) -> float:
+        """Validate domain overlap score."""
+        return RobustScoreValidator.validate_probability_score(
+            v, "domain_overlap", default_value=1.0
+        )
+
+    def calculate_comprehensive_severity(
+        self,
+        finding_1_confidence: float,
+        finding_2_confidence: float,
+        source_1_credibility: float,
+        source_2_credibility: float,
+        source_1_type: str | None = None,
+        source_2_type: str | None = None,
+        importance_1: float = 0.5,
+        importance_2: float = 0.5,
+    ) -> None:
+        """
+        Calculate comprehensive severity using all available factors.
+
+        This method updates the severity, severity_components, resolution_strategy,
+        priority, and severity_level fields based on comprehensive analysis.
+
+        Args:
+            finding_1_confidence: Confidence score of first finding
+            finding_2_confidence: Confidence score of second finding
+            source_1_credibility: Credibility score of first source
+            source_2_credibility: Credibility score of second source
+            source_1_type: Type of first source (academic, news, etc.)
+            source_2_type: Type of second source
+            importance_1: Importance score of first finding
+            importance_2: Importance score of second finding
+        """
+        # Calculate severity using comprehensive calculator
+        severity_result = ContradictionSeverityCalculator.calculate_contradiction_severity(
+            contradiction_type=self.contradiction_type,
+            finding_1_confidence=finding_1_confidence,
+            finding_2_confidence=finding_2_confidence,
+            source_1_credibility=source_1_credibility,
+            source_2_credibility=source_2_credibility,
+            source_1_type=source_1_type,
+            source_2_type=source_2_type,
+            domain_overlap=self.domain_overlap,
+            temporal_distance_days=self.temporal_distance_days,
+            importance_1=importance_1,
+            importance_2=importance_2,
+        )
+
+        # Update fields based on calculation
+        self.severity = severity_result["overall_severity"]
+        self.severity_components = severity_result
+        self.severity_level = ContradictionSeverityCalculator.classify_severity_level(self.severity)
+        self.priority = ContradictionSeverityCalculator.get_resolution_priority(
+            self.severity, self.contradiction_type
+        )
+        metadata = severity_result.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        self.resolution_strategy = ContradictionSeverityCalculator.suggest_resolution_strategy(
+            self.contradiction_type, self.severity, metadata
+        )
 
     def needs_immediate_resolution(self) -> bool:
         """Check if contradiction needs immediate resolution."""
-        return self.severity > 0.7 or self.contradiction_type == "direct"
+        return (
+            self.severity > 0.7
+            or self.contradiction_type.lower() == "direct"
+            or self.priority <= 2
+            or self.severity_level in ["critical", "high"]
+        )
+
+    def get_severity_summary(self) -> dict[str, Any]:
+        """Get a comprehensive summary of the contradiction severity."""
+        return {
+            "overall_severity": self.severity,
+            "severity_level": self.severity_level,
+            "priority": self.priority,
+            "contradiction_type": self.contradiction_type,
+            "needs_immediate_resolution": self.needs_immediate_resolution(),
+            "domain_overlap": self.domain_overlap,
+            "temporal_distance_days": self.temporal_distance_days,
+            "resolution_timeline": self.resolution_strategy.get("timeline", "Unknown"),
+            "estimated_effort": self.resolution_strategy.get("estimated_effort", "Unknown"),
+        }
+
+    def get_resolution_actions(self) -> list[str]:
+        """Get prioritized list of resolution actions."""
+        actions = []
+
+        # Add strategy-specific actions
+        if "actions" in self.resolution_strategy:
+            actions.extend(self.resolution_strategy["actions"])
+
+        # Add type-specific actions
+        if "type_specific_actions" in self.resolution_strategy:
+            actions.extend(self.resolution_strategy["type_specific_actions"])
+
+        return actions
+
+    def to_markdown(self) -> str:
+        """Convert contradiction to markdown format for reporting."""
+        lines = [
+            f"### {self.contradiction_type.title()} Contradiction",
+            f"**Severity:** {self.severity:.2f} ({self.severity_level.title()})",
+            f"**Priority:** {self.priority}/5",
+            f"**Findings:** {self.finding_1_id} ↔ {self.finding_2_id}",
+            "",
+            f"**Explanation:** {self.explanation}",
+        ]
+
+        if self.resolution_hint:
+            lines.extend(["", f"**Resolution Hint:** {self.resolution_hint}"])
+
+        if self.resolution_strategy:
+            lines.extend(
+                [
+                    "",
+                    "**Resolution Strategy:**",
+                    f"- **Approach:** {self.resolution_strategy.get('strategy', 'Unknown')}",
+                    f"- **Timeline:** {self.resolution_strategy.get('timeline', 'Unknown')}",
+                    f"- **Effort:** {self.resolution_strategy.get('estimated_effort', 'Unknown')}",
+                ]
+            )
+
+            actions = self.get_resolution_actions()
+            if actions:
+                lines.extend(["", "**Recommended Actions:**"])
+                lines.extend([f"- {action}" for action in actions[:5]])  # Limit to top 5
+
+        # Add severity breakdown if available
+        if self.severity_components and "components" in self.severity_components:
+            lines.extend(["", "**Severity Breakdown:**"])
+            components = self.severity_components["components"]
+            for key, value in components.items():
+                if isinstance(value, float):
+                    lines.append(f"- {key.replace('_', ' ').title()}: {value:.2f}")
+
+        return "\n".join(lines)
 
 
 class ExecutiveSummary(BaseModel):
@@ -436,22 +630,166 @@ class ResearchResults(BaseModel):
         return round(multi_source_findings / len(self.findings), 3)
 
     def get_contradiction_rate(self) -> float:
-        """Calculate percentage of contradictory findings."""
+        """
+        Calculate weighted contradiction rate based on severity.
+
+        Returns:
+            Weighted contradiction rate (0.0-1.0) where severity influences the impact
+        """
         if not self.findings:
             return 0.0
 
-        # Count findings that have contradictions noted
-        contradictory_count = len(self.contradictions)
-        if contradictory_count == 0:
+        if not self.contradictions:
             # Check if any findings mention contradictions in their metadata
-            contradictory_count = sum(
+            metadata_contradictions = sum(
                 1 for f in self.findings if f.metadata.get("has_contradictions", False)
             )
+            return round(metadata_contradictions / len(self.findings), 3)
 
-        return round(contradictory_count / len(self.findings), 3)
+        # Calculate weighted contradiction rate based on severity
+        total_severity_impact = 0.0
+        for contradiction in self.contradictions:
+            # Severity acts as a multiplier for impact
+            severity_weight = contradiction.severity
+            total_severity_impact += severity_weight
+
+        # Normalize by maximum possible impact (if all findings had critical contradictions)
+        max_possible_impact = len(self.findings)
+        if max_possible_impact > 0:
+            weighted_rate = total_severity_impact / max_possible_impact
+        else:
+            weighted_rate = 0.0
+
+        return round(min(weighted_rate, 1.0), 3)
+
+    def calculate_all_contradiction_severities(self) -> None:
+        """
+        Calculate comprehensive severity for all contradictions using available data.
+
+        This method updates all contradictions with proper severity calculations
+        based on the findings and sources they reference.
+        """
+        if not self.contradictions or not self.findings:
+            return
+
+        # Create lookup dictionary for efficient access
+        findings_by_id = {str(i): finding for i, finding in enumerate(self.findings)}
+
+        for contradiction in self.contradictions:
+            try:
+                # Get the referenced findings
+                finding_1 = findings_by_id.get(contradiction.finding_1_id)
+                finding_2 = findings_by_id.get(contradiction.finding_2_id)
+
+                if not finding_1 or not finding_2:
+                    continue
+
+                # Get source information
+                source_1 = finding_1.source if hasattr(finding_1, "source") else None
+                source_2 = finding_2.source if hasattr(finding_2, "source") else None
+
+                # Extract parameters for severity calculation
+                finding_1_confidence = getattr(finding_1, "confidence_score", 0.5)
+                finding_2_confidence = getattr(finding_2, "confidence_score", 0.5)
+
+                source_1_credibility = source_1.credibility_score if source_1 else 0.5
+                source_2_credibility = source_2.credibility_score if source_2 else 0.5
+
+                source_1_type = source_1.source_type if source_1 else None
+                source_2_type = source_2.source_type if source_2 else None
+
+                importance_1 = getattr(finding_1, "importance_score", 0.5)
+                importance_2 = getattr(finding_2, "importance_score", 0.5)
+
+                # Calculate temporal distance if possible
+                temporal_distance = 0.0
+                if source_1 and source_1.date and source_2 and source_2.date:
+                    time_diff = abs((source_1.date - source_2.date).days)
+                    temporal_distance = float(time_diff)
+
+                # Calculate comprehensive severity
+                contradiction.temporal_distance_days = temporal_distance
+                contradiction.calculate_comprehensive_severity(
+                    finding_1_confidence=finding_1_confidence,
+                    finding_2_confidence=finding_2_confidence,
+                    source_1_credibility=source_1_credibility,
+                    source_2_credibility=source_2_credibility,
+                    source_1_type=source_1_type,
+                    source_2_type=source_2_type,
+                    importance_1=importance_1,
+                    importance_2=importance_2,
+                )
+
+            except Exception as e:
+                # Log error but continue processing other contradictions
+                import logfire
+
+                logfire.warning(f"Failed to calculate severity for contradiction: {e}")
+                continue
+
+    def get_contradiction_summary(self) -> dict[str, Any]:
+        """
+        Get comprehensive summary of all contradictions with severity analysis.
+
+        Returns:
+            Dictionary with contradiction statistics and severity breakdown
+        """
+        if not self.contradictions:
+            return {
+                "total_contradictions": 0,
+                "weighted_contradiction_rate": 0.0,
+                "severity_distribution": {},
+                "high_priority_count": 0,
+                "immediate_resolution_needed": 0,
+            }
+
+        # Calculate severity statistics
+        severity_levels = {}
+        priority_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        immediate_resolution_count = 0
+        total_severity = 0.0
+
+        for contradiction in self.contradictions:
+            # Count by severity level
+            level = contradiction.severity_level
+            severity_levels[level] = severity_levels.get(level, 0) + 1
+
+            # Count by priority
+            priority = getattr(contradiction, "priority", 3)
+            priority_counts[priority] = priority_counts.get(priority, 0) + 1
+
+            # Count immediate resolution needs
+            if contradiction.needs_immediate_resolution():
+                immediate_resolution_count += 1
+
+            # Sum total severity
+            total_severity += contradiction.severity
+
+        return {
+            "total_contradictions": len(self.contradictions),
+            "weighted_contradiction_rate": self.get_contradiction_rate(),
+            "average_severity": round(total_severity / len(self.contradictions), 3),
+            "severity_distribution": severity_levels,
+            "priority_distribution": priority_counts,
+            "high_priority_count": priority_counts[1] + priority_counts[2],
+            "immediate_resolution_needed": immediate_resolution_count,
+            "most_severe_contradiction": max(self.contradictions, key=lambda c: c.severity).severity
+            if self.contradictions
+            else 0.0,
+        }
 
     def get_source_diversity(self) -> float:
-        """Calculate Shannon entropy of source domains."""
+        """
+        Calculate normalized Shannon entropy of source domains.
+
+        This method now returns properly normalized Shannon entropy (0.0 to 1.0)
+        instead of raw entropy values that could exceed expected bounds.
+
+        Returns:
+            Normalized Shannon entropy (0.0 to 1.0):
+            - 0.0: All sources from same domain (no diversity)
+            - 1.0: Maximum possible diversity given the number of unique domains
+        """
         if not self.sources:
             return 0.0
 
@@ -469,50 +807,107 @@ class ResearchResults(BaseModel):
         if not domains:
             return 0.0
 
-        # Calculate Shannon entropy
-        domain_counts = Counter(domains)
-        total = sum(domain_counts.values())
+        # Use the robust mathematical validator for proper normalization
+        try:
+            from src.utils.validation import MathematicalValidator
 
+            return MathematicalValidator.calculate_normalized_shannon_entropy(domains)
+        except ImportError:
+            # Fallback to local implementation if utils not available
+            return self._calculate_shannon_entropy_fallback(domains)
+
+    def _calculate_shannon_entropy_fallback(self, domains: list[str]) -> float:
+        """Fallback Shannon entropy calculation with proper normalization."""
+        domain_counts = Counter(domains)
+        total_sources = len(domains)
+        unique_domains = len(domain_counts)
+
+        if unique_domains <= 1:
+            return 0.0
+
+        # Calculate Shannon entropy
         entropy = 0.0
         for count in domain_counts.values():
             if count > 0:
-                probability = count / total
+                probability = count / total_sources
                 entropy -= probability * math.log2(probability)
 
-        return round(entropy, 3)
+        # Theoretical maximum entropy for this dataset
+        max_entropy = math.log2(unique_domains)
+
+        # Normalize to [0, 1] range - THIS IS THE KEY FIX
+        normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+
+        return round(normalized_entropy, 3)
 
     def calculate_comprehensive_quality(self) -> float:
-        """Calculate comprehensive quality score considering multiple factors."""
-        scores = []
-        weights = []
+        """
+        Calculate comprehensive quality score considering multiple factors.
 
-        # Source diversity (Shannon entropy)
+        Uses robust validation to handle edge cases and ensure all components
+        are properly validated before calculation.
+
+        Returns:
+            Quality score between 0.0 and 1.0
+        """
+        scores: list[float] = []
+        weights: list[float] = []
+
+        # Source diversity (Shannon entropy) - now properly normalized 0-1
         diversity_score = self.get_source_diversity()
-        if diversity_score > 0:
-            scores.append(min(diversity_score / 2.0, 1.0))  # Normalize to 0-1
+        convergence_rate = self.get_convergence_rate()
+        contradiction_rate = self.get_contradiction_rate()
+
+        # Calculate pattern strength average
+        pattern_strength = None
+        if self.patterns:
+            pattern_strength = sum(p.strength for p in self.patterns) / len(self.patterns)
+
+        # Calculate confidence average
+        confidence_avg = None
+        if self.findings:
+            confidence_avg = sum(f.confidence_score for f in self.findings) / len(self.findings)
+
+        # Use robust validation for all components
+        try:
+            from src.utils.validation import MathematicalValidator
+
+            validated_components = MathematicalValidator.validate_quality_score_components(
+                diversity_score=diversity_score,
+                convergence_rate=convergence_rate,
+                contradiction_rate=contradiction_rate,
+                pattern_strength=pattern_strength,
+                confidence_avg=confidence_avg,
+            )
+        except ImportError:
+            # Fallback validation if utils not available
+            validated_components = self._validate_components_fallback(
+                diversity_score,
+                convergence_rate,
+                contradiction_rate,
+                pattern_strength,
+                confidence_avg,
+            )
+
+        # Build weighted score components
+        if validated_components["diversity"] > 0:
+            scores.append(validated_components["diversity"])
             weights.append(0.2)
 
-        # Finding convergence rate
-        convergence = self.get_convergence_rate()
-        scores.append(convergence)
+        scores.append(validated_components["convergence"])
         weights.append(0.25)
 
-        # Contradiction resolution rate
-        contradiction_rate = self.get_contradiction_rate()
-        resolution_score = 1.0 - contradiction_rate  # Lower contradiction is better
+        # Resolution score (lower contradiction rate is better)
+        resolution_score = 1.0 - validated_components["contradiction"]
         scores.append(resolution_score)
         weights.append(0.15)
 
-        # Pattern strength average
-        if self.patterns:
-            avg_pattern_strength = sum(p.strength for p in self.patterns) / len(self.patterns)
-            scores.append(avg_pattern_strength)
+        if "pattern_strength" in validated_components:
+            scores.append(validated_components["pattern_strength"])
             weights.append(0.2)
 
-        # Confidence distribution
-        if self.findings:
-            avg_confidence = sum(f.confidence_score for f in self.findings) / len(self.findings)
-            scores.append(avg_confidence)
+        if "confidence" in validated_components:
+            scores.append(validated_components["confidence"])
             weights.append(0.2)
 
         # Calculate weighted average
@@ -521,9 +916,53 @@ class ResearchResults(BaseModel):
             weighted_score = (
                 sum(s * w for s, w in zip(scores, weights, strict=False)) / total_weight
             )
-            return round(weighted_score, 3)
+            return round(max(0.0, min(1.0, weighted_score)), 3)
 
         return 0.0
+
+    def _validate_components_fallback(
+        self,
+        diversity_score: float,
+        convergence_rate: float,
+        contradiction_rate: float,
+        pattern_strength: float | None = None,
+        confidence_avg: float | None = None,
+    ) -> dict[str, float]:
+        """Fallback validation for quality score components."""
+        components = {}
+
+        # Basic validation with clamping
+        components["diversity"] = (
+            max(0.0, min(1.0, diversity_score))
+            if not math.isnan(diversity_score) and not math.isinf(diversity_score)
+            else 0.0
+        )
+        components["convergence"] = (
+            max(0.0, min(1.0, convergence_rate))
+            if not math.isnan(convergence_rate) and not math.isinf(convergence_rate)
+            else 0.0
+        )
+        components["contradiction"] = (
+            max(0.0, min(1.0, contradiction_rate))
+            if not math.isnan(contradiction_rate) and not math.isinf(contradiction_rate)
+            else 0.0
+        )
+
+        if pattern_strength is not None:
+            components["pattern_strength"] = (
+                max(0.0, min(1.0, pattern_strength))
+                if not math.isnan(pattern_strength) and not math.isinf(pattern_strength)
+                else 0.0
+            )
+
+        if confidence_avg is not None:
+            components["confidence"] = (
+                max(0.0, min(1.0, confidence_avg))
+                if not math.isnan(confidence_avg) and not math.isinf(confidence_avg)
+                else 0.0
+            )
+
+        return components
 
     def export_to_json(self) -> str:
         """Export results in structured JSON format."""
@@ -657,9 +1096,9 @@ class ResearchResults(BaseModel):
                 self.theme_clusters, key=lambda t: t.importance_score, reverse=True
             ):
                 sections.append(f"### {theme.theme_name}")
-                sections.append(
-                    f"\n*Coherence: {theme.coherence_score:.1%} | Importance: {theme.importance_score:.1%}*\n"
-                )
+                coherence_text = f"Coherence: {theme.coherence_score:.1%}"
+                importance_text = f"Importance: {theme.importance_score:.1%}"
+                sections.append(f"\n*{coherence_text} | {importance_text}*\n")
                 sections.append(f"{theme.description}\n")
                 sections.append(f"**Related Findings**: {len(theme.findings)} items")
                 sections.append(f"**Average Confidence**: {theme.average_confidence():.1%}\n")
@@ -736,24 +1175,53 @@ class ResearchResults(BaseModel):
         sections.append("## Quality Metrics Summary\n")
         sections.append("| Metric | Value | Status |")
         sections.append("|--------|-------|--------|")
-        sections.append(
-            f"| Overall Quality | {quality_score:.1%} | {'✅ Good' if quality_score > 0.7 else '⚠️ Moderate' if quality_score > 0.4 else '❌ Low'} |"
+        if quality_score > 0.7:
+            quality_status = "✅ Good"
+        elif quality_score > 0.4:
+            quality_status = "⚠️ Moderate"
+        else:
+            quality_status = "❌ Low"
+        sections.append(f"| Overall Quality | {quality_score:.1%} | {quality_status} |")
+        if source_diversity > 1.5:
+            diversity_status = "✅ High"
+        elif source_diversity > 0.5:
+            diversity_status = "⚠️ Medium"
+        else:
+            diversity_status = "❌ Low"
+        sections.append(f"| Source Diversity | {source_diversity:.2f} | {diversity_status} |")
+        if convergence_rate > 0.6:
+            convergence_status = "✅ Strong"
+        elif convergence_rate > 0.3:
+            convergence_status = "⚠️ Moderate"
+        else:
+            convergence_status = "❌ Weak"
+        sections.append(f"| Convergence Rate | {convergence_rate:.1%} | {convergence_status} |")
+        if contradiction_rate < 0.2:
+            contradiction_status = "✅ Low"
+        elif contradiction_rate < 0.4:
+            contradiction_status = "⚠️ Medium"
+        else:
+            contradiction_status = "❌ High"
+        contradiction_line = (
+            f"| Contradiction Rate | {contradiction_rate:.1%} | {contradiction_status} |"
         )
-        sections.append(
-            f"| Source Diversity | {source_diversity:.2f} | {'✅ High' if source_diversity > 1.5 else '⚠️ Medium' if source_diversity > 0.5 else '❌ Low'} |"
-        )
-        sections.append(
-            f"| Convergence Rate | {convergence_rate:.1%} | {'✅ Strong' if convergence_rate > 0.6 else '⚠️ Moderate' if convergence_rate > 0.3 else '❌ Weak'} |"
-        )
-        sections.append(
-            f"| Contradiction Rate | {contradiction_rate:.1%} | {'✅ Low' if contradiction_rate < 0.2 else '⚠️ Medium' if contradiction_rate < 0.4 else '❌ High'} |"
-        )
-        sections.append(
-            f"| Total Findings | {len(self.findings)} | {'✅ Comprehensive' if len(self.findings) > 10 else '⚠️ Adequate' if len(self.findings) > 5 else '❌ Limited'} |"
-        )
-        sections.append(
-            f"| Pattern Count | {len(self.patterns)} | {'✅ Rich' if len(self.patterns) > 5 else '⚠️ Some' if len(self.patterns) > 2 else '❌ Few'} |"
-        )
+        sections.append(contradiction_line)
+        findings_count = len(self.findings)
+        if findings_count > 10:
+            findings_status = "✅ Comprehensive"
+        elif findings_count > 5:
+            findings_status = "⚠️ Adequate"
+        else:
+            findings_status = "❌ Limited"
+        sections.append(f"| Total Findings | {findings_count} | {findings_status} |")
+        patterns_count = len(self.patterns)
+        if patterns_count > 5:
+            patterns_status = "✅ Rich"
+        elif patterns_count > 2:
+            patterns_status = "⚠️ Some"
+        else:
+            patterns_status = "❌ Few"
+        sections.append(f"| Pattern Count | {patterns_count} | {patterns_status} |")
         sections.append("")
 
         # Metadata Footer
