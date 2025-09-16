@@ -7,17 +7,17 @@ import pytest
 from typing import List, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.agents.factory import AgentFactory, AgentType
-from src.agents.base import (
+from agents.factory import AgentFactory, AgentType
+from agents.base import (
     ResearchDependencies,
     AgentConfiguration,
     AgentTimeoutError,
     AgentExecutionError,
     AgentValidationError
 )
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
-from src.models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
+from models.core import ResearchState, ResearchStage
 
 class TestErrorScenarios:
     """Test various error scenarios and agent resilience."""

@@ -28,11 +28,11 @@ load_dotenv()
 
 import httpx
 from pydantic import SecretStr
-from src.agents.clarification import ClarificationAgent
-from src.agents.base import ResearchDependencies
-from src.models.core import ResearchState, ResearchStage
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent
+from agents.base import ResearchDependencies
+from models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
 
 # Import evaluation datasets
 from tests.evals.run_clarification_eval import MultiQuestionClarificationEvaluator

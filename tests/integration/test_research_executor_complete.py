@@ -10,10 +10,10 @@ import os
 import pytest
 from typing import Any, Dict, List
 
-from src.core.research_executor import ResearchExecutor
-from src.models.research import ResearchQuery, ResearchResult
-from src.core.synthesis import SynthesisEngine
-from src.models.synthesis import SynthesisResult
+from core.research_executor import ResearchExecutor
+from models.research import ResearchQuery, ResearchResult
+from core.synthesis import SynthesisEngine
+from models.synthesis import SynthesisResult
 
 
 class TestResearchExecutorComplete:

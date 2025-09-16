@@ -14,9 +14,9 @@ from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.logging import configure_logging
 from core.workflow import workflow
-from src.models.api_models import APIKeys, ConversationMessage
-from src.models.clarification import ClarificationResponse
-from src.models.core import ResearchStage, ResearchState
+from models.api_models import APIKeys, ConversationMessage
+from models.clarification import ClarificationResponse
+from models.core import ResearchStage, ResearchState
 
 
 @asynccontextmanager

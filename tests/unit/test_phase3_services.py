@@ -8,23 +8,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.models.research_executor import (
+from models.research_executor import (
     PatternType,
 )
-from src.services.quality_monitor import (
+from services.quality_monitor import (
     AlertSeverity,
     QualityMetric,
     QualityMonitor,
     QualityThresholds,
 )
-from src.services.search_orchestrator import (
+from services.search_orchestrator import (
     CacheConfig,
     ExecutionStatus,
     QueryExecutionPlan,
     RetryConfig,
     SearchOrchestrator,
 )
-from src.services.synthesis_tools import (
+from services.synthesis_tools import (
     ContradictionConfig,
     HierarchyFactors,
     SynthesisTools,
@@ -522,7 +522,7 @@ class TestSynthesisTools:
 
     def test_synthesis_score_calculation(self, tools):
         """Test overall synthesis score calculation."""
-        from src.services.synthesis_tools import HierarchyScore, ConvergencePoint, Theme, Pattern
+        from services.synthesis_tools import HierarchyScore, ConvergencePoint, Theme, Pattern
 
         hierarchy_scores = [
             HierarchyScore(
@@ -569,7 +569,7 @@ class TestSynthesisTools:
 
     def test_synthesis_recommendations(self, tools):
         """Test generation of synthesis recommendations."""
-        from src.services.synthesis_tools import HierarchyScore
+        from services.synthesis_tools import HierarchyScore
 
         # Poor hierarchy distribution
         hierarchy_scores = [

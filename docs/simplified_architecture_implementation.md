@@ -793,9 +793,9 @@ import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock
 
-from src.agents.query_transformation import EnhancedQueryTransformationAgent
-from src.agents.research_executor import SimplifiedResearchExecutor
-from src.models.query_transformation import TransformedQuery
+from agents.query_transformation import EnhancedQueryTransformationAgent
+from agents.research_executor import SimplifiedResearchExecutor
+from models.query_transformation import TransformedQuery
 
 class TestSimplifiedArchitecture:
     """Test the simplified 5-agent architecture."""
@@ -844,7 +844,7 @@ class TestSimplifiedArchitecture:
     @pytest.mark.asyncio
     async def test_workflow_skip_brief_generator(self):
         """Test that workflow can skip Brief Generator entirely."""
-        from src.core.workflow import SimplifiedResearchWorkflow
+        from core.workflow import SimplifiedResearchWorkflow
 
         workflow = SimplifiedResearchWorkflow()
 

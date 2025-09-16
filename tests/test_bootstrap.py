@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.core.bootstrap import CLIBootstrap, BootstrapError
+from core.bootstrap import CLIBootstrap, BootstrapError
 
 
 class TestCLIBootstrap:
@@ -20,7 +20,7 @@ class TestCLIBootstrap:
     def reset_bootstrap(self) -> None:
         """Reset bootstrap state before each test."""
         # Import the global state variables
-        from src.core import bootstrap
+        from core import bootstrap
 
         # Reset the global state
         bootstrap._initialized = False
@@ -35,7 +35,7 @@ class TestCLIBootstrap:
             with patch("src.core.logging.configure_logging") as mock_configure_logging:
                 await CLIBootstrap.initialize(verbose=True)
 
-            from src.core import bootstrap
+            from core import bootstrap
 
             assert bootstrap._initialized
             mock_configure_logging.assert_called_once()
@@ -50,7 +50,7 @@ class TestCLIBootstrap:
                 await CLIBootstrap.initialize()
                 await CLIBootstrap.initialize()  # Should not initialize again
 
-            from src.core import bootstrap
+            from core import bootstrap
 
             assert bootstrap._initialized
             mock_configure_logging.assert_called_once()  # Only called once
@@ -59,7 +59,7 @@ class TestCLIBootstrap:
     async def test_initialize_failure(self) -> None:
         """Test bootstrap initialization failure handling."""
         # Ensure we start with clean state
-        from src.core import bootstrap
+        from core import bootstrap
 
         bootstrap._initialized = False
 
@@ -76,14 +76,14 @@ class TestCLIBootstrap:
 
     def test_ensure_initialized_success(self) -> None:
         """Test ensure_initialized when CLI is initialized."""
-        from src.core import bootstrap
+        from core import bootstrap
 
         bootstrap._initialized = True
         CLIBootstrap.ensure_initialized()  # Should not raise
 
     def test_ensure_initialized_failure(self) -> None:
         """Test ensure_initialized when CLI is not initialized."""
-        from src.core import bootstrap
+        from core import bootstrap
 
         bootstrap._initialized = False
         with pytest.raises(BootstrapError, match="CLI not initialized"):
@@ -96,7 +96,7 @@ class TestCLIBootstrap:
         with patch("src.core.logging.configure_logging"), patch("src.core.bootstrap.logfire"):
             await CLIBootstrap.initialize()
 
-        from src.core import bootstrap
+        from core import bootstrap
 
         assert bootstrap._initialized
 
@@ -111,7 +111,7 @@ class TestCLIBootstrap:
     async def test_shutdown_when_not_initialized(self) -> None:
         """Test shutdown when not initialized (should be safe)."""
         await CLIBootstrap.shutdown()  # Should not raise
-        from src.core import bootstrap
+        from core import bootstrap
 
         assert not bootstrap._initialized
 
@@ -125,7 +125,7 @@ class TestCLIBootstrap:
             # All should complete without error
             await asyncio.gather(*tasks)
 
-            from src.core import bootstrap
+            from core import bootstrap
 
             assert bootstrap._initialized
 
@@ -147,7 +147,7 @@ class TestCLIBootstrap:
             mock_configure_logging.assert_called_once()
 
             # Reset for next test
-            from src.core import bootstrap
+            from core import bootstrap
 
             bootstrap._initialized = False
 

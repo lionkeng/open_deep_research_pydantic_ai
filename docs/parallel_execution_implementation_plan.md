@@ -1104,8 +1104,8 @@ class AdaptiveResearchWorkflow:
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from src.agents.query_transformation import EnhancedQueryTransformationAgent
-from src.models.search import SearchQueryBatch, SearchQueryType
+from agents.query_transformation import EnhancedQueryTransformationAgent
+from models.search import SearchQueryBatch, SearchQueryType
 
 class TestEnhancedQueryTransformation:
     """Test suite for enhanced query transformation."""
@@ -1162,8 +1162,8 @@ class TestEnhancedQueryTransformation:
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
-from src.agents.research_executor import ParallelResearchExecutor
-from src.models.search import SearchQuery, SearchQueryBatch, ExecutionStrategy
+from agents.research_executor import ParallelResearchExecutor
+from models.search import SearchQuery, SearchQueryBatch, ExecutionStrategy
 
 class TestParallelExecution:
     """Integration tests for parallel search execution."""
@@ -1252,7 +1252,7 @@ class TestParallelExecution:
 import pytest
 import time
 import asyncio
-from src.agents.query_transformation import EnhancedQueryTransformationAgent
+from agents.query_transformation import EnhancedQueryTransformationAgent
 
 class TestQueryGenerationPerformance:
     """Performance benchmarks for query generation."""

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.agents.research_executor import (
+from agents.research_executor import (
     ResearchExecutorDependencies,
     research_executor_agent,
     execute_research,
@@ -17,7 +17,7 @@ from src.agents.research_executor import (
     generate_executive_summary,
     assess_synthesis_quality,
 )
-from src.models.research_executor import (
+from models.research_executor import (
     ConfidenceLevel,
     Contradiction,
     ExecutiveSummary,
@@ -29,10 +29,10 @@ from src.models.research_executor import (
     ResearchSource,
     ThemeCluster,
 )
-from src.services.synthesis_engine import SynthesisEngine
-from src.services.contradiction_detector import ContradictionDetector
-from src.services.pattern_recognizer import PatternRecognizer
-from src.services.confidence_analyzer import ConfidenceAnalyzer
+from services.synthesis_engine import SynthesisEngine
+from services.contradiction_detector import ContradictionDetector
+from services.pattern_recognizer import PatternRecognizer
+from services.confidence_analyzer import ConfidenceAnalyzer
 
 
 @pytest.fixture

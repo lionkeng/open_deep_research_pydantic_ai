@@ -13,11 +13,11 @@ import time
 from typing import Dict, Any, List
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.agents.base import ResearchDependencies
-from src.models.core import ResearchState, ResearchStage
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent, ClarifyWithUser
+from agents.base import ResearchDependencies
+from models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
 from pydantic import SecretStr
 from pydantic_ai.usage import RunUsage
 

@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from src.agents.research_executor import research_executor_agent
+from agents.research_executor import research_executor_agent
 
 
 class TestEnhancedSynthesisPrompt:

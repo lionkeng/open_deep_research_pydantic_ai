@@ -257,7 +257,7 @@ touch src/models/research_executor.py
 uv run pytest tests/unit/agents/test_research_executor.py::test_execute_research_full_pipeline -v
 
 # Check model validation
-uv run python -c "from src.models.research_executor import ResearchResults; print(ResearchResults.model_json_schema())"
+uv run python -c "from models.research_executor import ResearchResults; print(ResearchResults.model_json_schema())"
 
 # Profile performance
 uv run python -m cProfile -o profile.stats -m pytest tests/unit/agents/test_research_executor.py
@@ -271,7 +271,7 @@ uv run pytest tests/unit/agents/test_research_executor.py --cov=src/agents/resea
 ### Issue: Import errors
 ```python
 # Solution: Use absolute imports
-from src.models.research_executor import ResearchResults  # Good
+from models.research_executor import ResearchResults  # Good
 from ..models.research_executor import ResearchResults   # Also good
 from models.research_executor import ResearchResults      # May fail
 ```

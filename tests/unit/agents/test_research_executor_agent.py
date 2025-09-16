@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.agents.research_executor import ResearchExecutorAgent
-from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource
-from src.models.api_models import APIKeys
+from agents.research_executor import ResearchExecutorAgent
+from agents.base import ResearchDependencies, AgentConfiguration
+from models.research_executor import ResearchResults, ResearchFinding, ResearchSource
+from models.api_models import APIKeys
 
 class TestResearchExecutorAgent:
     """Test suite for ResearchExecutorAgent."""

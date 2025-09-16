@@ -1,9 +1,8 @@
 """Integration tests for Research Executor components."""
 
 import pytest
-from datetime import datetime, UTC
 
-from src.models.research_executor import (
+from models.research_executor import (
     ConfidenceLevel,
     ImportanceLevel,
     ResearchSource,
@@ -13,8 +12,8 @@ from src.models.research_executor import (
     ExecutiveSummary,
     ResearchResults,
 )
-from src.services.synthesis_engine import SynthesisEngine
-from src.services.contradiction_detector import ContradictionDetector
+from services.synthesis_engine import SynthesisEngine
+from services.contradiction_detector import ContradictionDetector
 
 
 class TestResearchExecutorIntegration:

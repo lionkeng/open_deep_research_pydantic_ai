@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from src.models.research_executor import (
+from models.research_executor import (
     ConfidenceAnalysis,
     ConfidenceLevel,
     Contradiction,

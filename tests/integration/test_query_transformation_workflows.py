@@ -11,12 +11,12 @@ import time
 from typing import Dict, Any, List
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from src.agents.query_transformation import QueryTransformationAgent
-from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.core import ResearchState, ResearchStage
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
-from src.models.research_plan_models import TransformedQuery
+from agents.query_transformation import QueryTransformationAgent
+from agents.base import ResearchDependencies, AgentConfiguration
+from models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
+from models.research_plan_models import TransformedQuery
 from pydantic import SecretStr
 from pydantic_ai.usage import RunUsage
 import uuid
@@ -75,10 +75,10 @@ class TestQueryTransformationWorkflowIntegration:
 
     def _create_mock_transformed_query(self) -> TransformedQuery:
         """Helper to create a mock TransformedQuery response."""
-        from src.models.research_plan_models import (
+        from models.research_plan_models import (
             ResearchPlan, ResearchObjective, ResearchMethodology
         )
-        from src.models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
+        from models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
 
         # Create objectives
         obj1_id = str(uuid.uuid4())
@@ -371,10 +371,10 @@ class TestQueryTransformationPerformanceIntegration:
             agent.agent = mock_agent_instance
 
             # Fast mock response for performance testing
-            from src.models.research_plan_models import (
+            from models.research_plan_models import (
                 ResearchPlan, ResearchObjective, ResearchMethodology
             )
-            from src.models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
+            from models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
 
             obj_id = str(uuid.uuid4())
             mock_result = MagicMock()
@@ -520,10 +520,10 @@ class TestQueryTransformationWithClarification:
             agent.agent = mock_agent_instance
 
             # Mock response that accounts for clarification
-            from src.models.research_plan_models import (
+            from models.research_plan_models import (
                 ResearchPlan, ResearchObjective, ResearchMethodology
             )
-            from src.models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
+            from models.search_query_models import SearchQuery, SearchQueryBatch, SearchQueryType
 
             obj1_id = str(uuid.uuid4())
             obj2_id = str(uuid.uuid4())
@@ -586,7 +586,7 @@ class TestQueryTransformationWithClarification:
     @pytest.mark.asyncio
     async def test_transformation_with_clarified_query(self, agent_with_clarification: QueryTransformationAgent) -> None:
         """Test transformation when a clarified query is available."""
-        from src.models.clarification import ClarificationResponse, ClarificationAnswer
+        from models.clarification import ClarificationResponse, ClarificationAnswer
 
         # Create dependencies with clarification context
         deps = ResearchDependencies(

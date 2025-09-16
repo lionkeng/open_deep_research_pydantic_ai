@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from src.agents.base import ResearchDependencies
-from src.agents.factory import AgentFactory, AgentType
-from src.core.workflow import ResearchWorkflow
-from src.models.api_models import APIKeys
-from src.models.core import ResearchState
+from agents.base import ResearchDependencies
+from agents.factory import AgentFactory, AgentType
+from core.workflow import ResearchWorkflow
+from models.api_models import APIKeys
+from models.core import ResearchState
 
 
 class TestWorkflowConsolidation:

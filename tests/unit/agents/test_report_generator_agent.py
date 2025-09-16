@@ -7,10 +7,10 @@ import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.agents.report_generator import ReportGeneratorAgent
-from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.report_generator import ResearchReport, ReportSection
-from src.models.api_models import APIKeys
+from agents.report_generator import ReportGeneratorAgent
+from agents.base import ResearchDependencies, AgentConfiguration
+from models.report_generator import ResearchReport, ReportSection
+from models.api_models import APIKeys
 
 class TestReportGeneratorAgent:
     """Test suite for ReportGeneratorAgent."""

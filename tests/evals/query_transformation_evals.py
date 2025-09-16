@@ -18,12 +18,12 @@ from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_evals.reporting import EvaluationReport
 from pydantic_ai import Agent
 
-from src.agents.query_transformation import QueryTransformationAgent
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-from src.models.research_plan_models import TransformedQuery
-from src.models.api_models import APIKeys
+from agents.query_transformation import QueryTransformationAgent
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
+from models.research_plan_models import TransformedQuery
+from models.api_models import APIKeys
 
 
 class QueryTransformationInput(BaseModel):

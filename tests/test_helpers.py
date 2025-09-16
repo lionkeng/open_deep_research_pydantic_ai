@@ -120,13 +120,13 @@ def create_dynamic_query_response(
     Returns:
         A TransformedQuery with contextually appropriate content
     """
-    from src.models.research_plan_models import (
+    from models.research_plan_models import (
         TransformedQuery,
         ResearchPlan,
         ResearchObjective,
         ResearchMethodology,
     )
-    from src.models.search_query_models import (
+    from models.search_query_models import (
         SearchQuery,
         SearchQueryBatch,
         SearchQueryType,
@@ -309,7 +309,7 @@ def assert_valid_clarification_output(output):
     Raises:
         AssertionError: If validation fails
     """
-    from src.agents.clarification import ClarifyWithUser
+    from agents.clarification import ClarifyWithUser
 
     assert isinstance(output, ClarifyWithUser)
     assert isinstance(output.needs_clarification, bool)
@@ -320,7 +320,7 @@ def assert_valid_clarification_output(output):
 
     if output.needs_clarification:
         assert output.request is not None
-        from src.models.clarification import ClarificationRequest
+        from models.clarification import ClarificationRequest
         assert isinstance(output.request, ClarificationRequest)
         assert len(output.request.questions) > 0
     else:

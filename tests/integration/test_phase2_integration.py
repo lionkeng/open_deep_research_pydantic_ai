@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, UTC
 
-from src.models.research_executor import (
+from models.research_executor import (
     ConfidenceLevel,
     ImportanceLevel,
     ResearchSource,
@@ -14,10 +14,10 @@ from src.models.research_executor import (
     PatternType,
     ConfidenceAnalysis,
 )
-from src.services.synthesis_engine import SynthesisEngine
-from src.services.contradiction_detector import ContradictionDetector
-from src.services.pattern_recognizer import PatternRecognizer
-from src.services.confidence_analyzer import ConfidenceAnalyzer
+from services.synthesis_engine import SynthesisEngine
+from services.contradiction_detector import ContradictionDetector
+from services.pattern_recognizer import PatternRecognizer
+from services.confidence_analyzer import ConfidenceAnalyzer
 
 
 class TestPhase2Integration:

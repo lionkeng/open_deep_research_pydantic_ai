@@ -5,7 +5,7 @@ import math
 import pytest
 from datetime import datetime
 
-from src.models.research_executor import (
+from models.research_executor import (
     ResearchResults,
     HierarchicalFinding,
     ThemeCluster,

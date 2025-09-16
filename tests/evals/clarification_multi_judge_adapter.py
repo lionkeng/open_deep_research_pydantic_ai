@@ -11,8 +11,8 @@ from tests.evals.base_multi_judge import (
     EvaluationDimension,
     JudgeExpertise
 )
-from src.agents.clarification import ClarifyWithUser
-from src.models.clarification import ClarificationRequest
+from agents.clarification import ClarifyWithUser
+from models.clarification import ClarificationRequest
 
 
 class ClarificationMultiJudgeAdapter(AgentEvaluationAdapter[str, ClarifyWithUser]):

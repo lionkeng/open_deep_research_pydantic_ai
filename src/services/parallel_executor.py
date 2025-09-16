@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 import logfire
 
-from src.models.research_executor import OptimizationConfig
+from models.research_executor import OptimizationConfig
 
 T = TypeVar("T")
 

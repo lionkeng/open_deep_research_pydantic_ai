@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from src.agents.factory import AgentType
-from src.core.circuit_breaker import (
+from agents.factory import AgentType
+from core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitBreakerError,

@@ -1491,8 +1491,8 @@ from unittest.mock import Mock, patch
 import asyncio
 from datetime import datetime
 
-from src.agents.research_executor import ResearchExecutorAgent
-from src.models.research_executor import (
+from agents.research_executor import ResearchExecutorAgent
+from models.research_executor import (
     ResearchResults, HierarchicalFinding, ThemeCluster,
     Contradiction, ImportanceLevel, ConfidenceLevel
 )

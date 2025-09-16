@@ -16,7 +16,7 @@ from tests.evals.base_multi_judge import (
     EvaluationDimension,
     JudgeExpertise
 )
-from src.models.research_executor import ResearchResults
+from models.research_executor import ResearchResults
 
 
 class ResearchExecutorMultiJudgeAdapter(AgentEvaluationAdapter[str, ResearchResults]):

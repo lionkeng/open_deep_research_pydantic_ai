@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from src.agents.base import AgentConfiguration, ResearchDependencies
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.models.api_models import APIKeys
-from src.models.clarification import ClarificationQuestion, ClarificationRequest
-from src.models.core import ResearchState
+from agents.base import AgentConfiguration, ResearchDependencies
+from agents.clarification import ClarificationAgent, ClarifyWithUser
+from models.api_models import APIKeys
+from models.clarification import ClarificationQuestion, ClarificationRequest
+from models.core import ResearchState
 
 
 @pytest.fixture

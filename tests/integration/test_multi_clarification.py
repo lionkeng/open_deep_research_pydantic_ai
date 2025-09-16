@@ -4,20 +4,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.interfaces.cli_multi_clarification import (
+from interfaces.cli_multi_clarification import (
     ask_choice_question,
     ask_multi_choice_question,
     ask_text_question,
     handle_multi_clarification_cli,
 )
-from src.models.metadata import ResearchMetadata
-from src.models.clarification import (
+from models.metadata import ResearchMetadata
+from models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
 )
-from src.utils.serialization import (
+from utils.serialization import (
     deserialize_clarification_request,
     deserialize_clarification_response,
     format_clarification_for_display,

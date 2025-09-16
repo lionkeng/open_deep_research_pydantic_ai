@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
 
-from src.models.research_executor import (
+from models.research_executor import (
     Contradiction,
     HierarchicalFinding,
     ImportanceLevel,
@@ -80,7 +80,9 @@ class SynthesisEngine:
         # Vectorize the text using TF-IDF
         try:
             X = self.vectorizer.fit_transform(texts)
-            self.last_vectorized_data = X.toarray()
+            # Keep sparse matrix to avoid memory issues with large datasets
+            # Only convert to dense when absolutely necessary for specific operations
+            self.last_vectorized_data = X  # Keep as sparse matrix
         except ValueError:
             # If vectorization fails (e.g., all texts are too similar)
             return [
@@ -220,22 +222,38 @@ class SynthesisEngine:
         if len(cluster_indices) < 2:
             return 1.0  # Single point cluster is perfectly coherent
 
-        # Get cluster points - convert sparse to dense if needed
+        # Get cluster points - keep as sparse matrix for memory efficiency
         cluster_points = X[cluster_indices]
-        if hasattr(cluster_points, "toarray"):
-            cluster_points = cluster_points.toarray()
+        is_sparse = hasattr(cluster_points, "toarray")
 
         # Calculate average pairwise similarity within cluster
         similarities = []
         n_points = cluster_points.shape[0]
-        for i in range(n_points):
-            for j in range(i + 1, n_points):
-                # Cosine similarity
-                similarity = np.dot(cluster_points[i], cluster_points[j])
-                norm_i = np.linalg.norm(cluster_points[i])
-                norm_j = np.linalg.norm(cluster_points[j])
+
+        # Limit pairwise comparisons for large clusters to avoid memory issues
+        max_comparisons = 100
+        step = max(1, n_points * (n_points - 1) // (2 * max_comparisons))
+
+        for i in range(0, n_points, step):
+            for j in range(i + 1, n_points, step):
+                if j >= n_points:
+                    break
+
+                # Get vectors efficiently based on matrix type
+                if is_sparse:
+                    vec_i = cluster_points[i].toarray().flatten()
+                    vec_j = cluster_points[j].toarray().flatten()
+                else:
+                    vec_i = cluster_points[i]
+                    vec_j = cluster_points[j]
+
+                # Cosine similarity calculation
+                dot_product = np.dot(vec_i, vec_j)
+                norm_i = np.linalg.norm(vec_i)
+                norm_j = np.linalg.norm(vec_j)
+
                 if norm_i > 0 and norm_j > 0:
-                    similarity = similarity / (norm_i * norm_j)
+                    similarity = dot_product / (norm_i * norm_j)
                     similarities.append(similarity)
 
         if similarities:
@@ -374,15 +392,16 @@ class SynthesisEngine:
         try:
             # Vectorize findings
             X = self.vectorizer.fit_transform(texts)
-            vectors = X.toarray()
+            # Keep sparse for memory efficiency
+            vectors = X
         except ValueError:
             return []
 
         # Look for findings with high similarity but conflicting sentiment
         for i in range(len(findings)):
             for j in range(i + 1, len(findings)):
-                # Calculate cosine similarity
-                similarity = self._cosine_similarity(vectors[i], vectors[j])
+                # Calculate cosine similarity with sparse matrix support
+                similarity = self._cosine_similarity_sparse(vectors, i, j)
 
                 # High similarity suggests related topics
                 if similarity > 0.5:
@@ -410,6 +429,35 @@ class SynthesisEngine:
         Returns:
             Cosine similarity score
         """
+        norm1 = np.linalg.norm(vec1)
+        norm2 = np.linalg.norm(vec2)
+
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+
+        return float(np.dot(vec1, vec2) / (norm1 * norm2))
+
+    def _cosine_similarity_sparse(self, matrix: Any, i: int, j: int) -> float:
+        """Calculate cosine similarity between two vectors in a sparse matrix.
+
+        Args:
+            matrix: Sparse or dense matrix
+            i: Index of first vector
+            j: Index of second vector
+
+        Returns:
+            Cosine similarity score
+        """
+        # Get vectors efficiently
+        if hasattr(matrix, "toarray"):
+            # Sparse matrix - extract individual rows
+            vec1 = matrix[i].toarray().flatten()
+            vec2 = matrix[j].toarray().flatten()
+        else:
+            # Dense matrix
+            vec1 = matrix[i]
+            vec2 = matrix[j]
+
         norm1 = np.linalg.norm(vec1)
         norm2 = np.linalg.norm(vec2)
 

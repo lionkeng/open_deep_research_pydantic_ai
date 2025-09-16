@@ -12,7 +12,7 @@ from typing import Any
 import logfire
 import psutil
 
-from src.models.research_executor import OptimizationConfig, PerformanceMetrics
+from models.research_executor import OptimizationConfig, PerformanceMetrics
 
 
 @dataclass

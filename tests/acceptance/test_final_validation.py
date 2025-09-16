@@ -17,10 +17,10 @@ import time
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from src.agents.clarification import ClarificationAgent
-from src.agents.base import ResearchDependencies
-from src.models.core import ResearchState
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent
+from agents.base import ResearchDependencies
+from models.core import ResearchState
+from models.api_models import APIKeys
 from pydantic import SecretStr
 import httpx
 
@@ -35,10 +35,10 @@ class TestSystemHealth:
     def test_required_modules_importable(self):
         """Test that all critical modules can be imported."""
         # Core imports
-        from src.agents.clarification import ClarificationAgent
-        from src.agents.base import ResearchDependencies
-        from src.models.core import ResearchState
-        from src.models.api_models import APIKeys
+        from agents.clarification import ClarificationAgent
+        from agents.base import ResearchDependencies
+        from models.core import ResearchState
+        from models.api_models import APIKeys
 
         # Evaluation imports
         from tests.evals.clarification_evals import create_clarification_dataset

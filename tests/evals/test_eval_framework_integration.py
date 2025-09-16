@@ -33,12 +33,12 @@ from tests.evals.query_transformation_multi_judge_adapter import QueryTransforma
 from tests.evals.regression_tracker_fixed import PerformanceTracker
 
 # Import agents and dependencies
-from src.agents.clarification import ClarificationAgent
-from src.agents.query_transformation import QueryTransformationAgent
-from src.agents.base import ResearchDependencies
-from src.models.core import ResearchState, ResearchStage
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent
+from agents.query_transformation import QueryTransformationAgent
+from agents.base import ResearchDependencies
+from models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
 
 
 async def test_clarification_evaluation():

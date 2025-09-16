@@ -15,11 +15,11 @@ os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
 # Note: .env is loaded automatically when importing from src
 
 import httpx
-from src.agents.clarification import ClarificationAgent
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
+from models.api_models import APIKeys
 from pydantic import SecretStr
 
 openai_api_key = os.getenv("OPENAI_API_KEY")

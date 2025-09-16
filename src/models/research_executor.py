@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.utils.validation import (
+from utils.validation import (
     ContradictionSeverityCalculator,
     RobustScoreValidator,
     SeverityResult,
@@ -106,7 +106,7 @@ class ResearchSource(BaseModel):
     def validate_scores(cls, v: Any, info: Any) -> float:
         """Ensure scores are within valid range using robust validation."""
         try:
-            from src.utils.validation import RobustScoreValidator
+            from utils.validation import RobustScoreValidator
 
             field_name = info.field_name if info else "score"
             return RobustScoreValidator.validate_probability_score(
@@ -166,7 +166,7 @@ class HierarchicalFinding(BaseModel):
     def sync_confidence_level(cls, v: Any) -> float:
         """Validate confidence score is in range using robust validation."""
         try:
-            from src.utils.validation import RobustScoreValidator
+            from utils.validation import RobustScoreValidator
 
             return RobustScoreValidator.validate_probability_score(
                 value=v, field_name="confidence_score", default_value=0.5
@@ -181,7 +181,7 @@ class HierarchicalFinding(BaseModel):
     def sync_importance_level(cls, v: Any) -> float:
         """Validate importance score is in range using robust validation."""
         try:
-            from src.utils.validation import RobustScoreValidator
+            from utils.validation import RobustScoreValidator
 
             return RobustScoreValidator.validate_probability_score(
                 value=v, field_name="importance_score", default_value=0.5
@@ -809,7 +809,7 @@ class ResearchResults(BaseModel):
 
         # Use the robust mathematical validator for proper normalization
         try:
-            from src.utils.validation import MathematicalValidator
+            from utils.validation import MathematicalValidator
 
             return MathematicalValidator.calculate_normalized_shannon_entropy(domains)
         except ImportError:
@@ -870,7 +870,7 @@ class ResearchResults(BaseModel):
 
         # Use robust validation for all components
         try:
-            from src.utils.validation import MathematicalValidator
+            from utils.validation import MathematicalValidator
 
             validated_components = MathematicalValidator.validate_quality_score_components(
                 diversity_score=diversity_score,
@@ -1359,6 +1359,163 @@ class OptimizationConfig(BaseModel):
     metrics_export_format: str = Field(
         default="json", description="Metrics export format (json, csv)"
     )
+
+
+# Enhanced Models for Service Integration
+
+class EvidenceItem(BaseModel):
+    """Individual piece of evidence for research synthesis."""
+
+    content: str = Field(description="Content of the evidence")
+    source: ResearchSource | None = Field(default=None, description="Source of the evidence")
+    timestamp: float | None = Field(default=None, description="Timestamp when evidence was collected")
+    confidence_score: float = Field(ge=0.0, le=1.0, default=0.5, description="Confidence in this evidence")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+
+class ResearchQuery(BaseModel):
+    """Research query with parameters."""
+
+    query: str = Field(description="The research query text")
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Query parameters")
+    context: str | None = Field(default=None, description="Additional context for the query")
+
+
+class Pattern(BaseModel):
+    """Detected pattern in research data."""
+
+    id: str = Field(description="Unique pattern identifier")
+    type: PatternType = Field(description="Type of pattern")
+    description: str = Field(description="Description of the pattern")
+    evidence_indices: list[int] = Field(description="Indices of evidence items involved")
+    strength: float = Field(ge=0.0, le=1.0, description="Strength of the pattern")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Pattern metadata")
+
+
+class ContradictionType(str, Enum):
+    """Types of contradictions that can be detected."""
+
+    SEMANTIC = "semantic"
+    FACTUAL = "factual"
+    STATISTICAL = "statistical"
+    TEMPORAL = "temporal"
+
+
+class Contradiction(BaseModel):
+    """Detected contradiction between evidence items."""
+
+    id: str = Field(description="Unique contradiction identifier")
+    type: ContradictionType = Field(description="Type of contradiction")
+    evidence_indices: list[int] = Field(description="Indices of conflicting evidence")
+    description: str = Field(description="Description of the contradiction")
+    confidence_score: float = Field(ge=0.0, le=1.0, description="Confidence in this contradiction")
+    resolution_suggestion: str = Field(description="Suggestion for resolving the contradiction")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Contradiction metadata")
+
+
+class ContradictionAnalysis(BaseModel):
+    """Analysis of contradictions in evidence."""
+
+    evidence_items: list[EvidenceItem] = Field(description="Evidence items analyzed")
+    contradictions: list[Contradiction] = Field(description="Detected contradictions")
+    resolution_strategy: str = Field(description="Strategy for resolving contradictions")
+    confidence_score: float = Field(ge=0.0, le=1.0, description="Overall confidence in analysis")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Analysis metadata")
+
+
+class PatternRecognitionRequest(BaseModel):
+    """Request for pattern recognition analysis."""
+
+    evidence_items: list[EvidenceItem] = Field(description="Evidence items to analyze")
+    patterns: list[Pattern] = Field(description="Detected patterns")
+    pattern_types: list[str] = Field(description="Types of patterns to detect")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Request metadata")
+
+
+class ResearchSynthesis(BaseModel):
+    """Result of research synthesis."""
+
+    summary: str = Field(description="Summary of the synthesis")
+    key_themes: list[dict[str, Any]] = Field(description="Key themes identified")
+    evidence_items: list[EvidenceItem] = Field(description="Evidence items used")
+    confidence_metrics: dict[str, float] = Field(description="Confidence metrics")
+
+
+class SynthesisContext(BaseModel):
+    """Context for synthesis operations."""
+
+    evidence_items: list[EvidenceItem] = Field(description="Evidence items to synthesize")
+    research_query: ResearchQuery | None = Field(default=None, description="Research query")
+    config: "SynthesisConfig | None" = Field(default=None, description="Synthesis configuration")
+
+
+class SynthesisResult(BaseModel):
+    """Result of synthesis operation."""
+
+    synthesis: ResearchSynthesis = Field(description="The synthesis result")
+    confidence_score: float = Field(ge=0.0, le=1.0, description="Confidence in synthesis")
+    processing_time: float = Field(description="Time taken for synthesis")
+    evidence_coverage: float = Field(ge=0.0, le=1.0, description="Coverage of evidence")
+
+
+class SynthesisConfig(BaseModel):
+    """Configuration for synthesis engine."""
+
+    max_features: int = Field(default=5000, description="Maximum TF-IDF features")
+    similarity_threshold: float = Field(default=0.7, description="Similarity threshold")
+    max_themes: int = Field(default=10, description="Maximum themes to extract")
+    max_evidence_items: int = Field(default=100, description="Maximum evidence items to process")
+
+
+class CacheConfig(BaseModel):
+    """Configuration for cache manager."""
+
+    max_memory_mb: int = Field(default=100, description="Maximum memory usage in MB")
+    default_ttl: float = Field(default=3600, description="Default TTL in seconds")
+    cleanup_interval: int = Field(default=300, description="Cleanup interval in seconds")
+
+
+class CacheStats(BaseModel):
+    """Cache statistics."""
+
+    hits: int = Field(default=0, description="Cache hits")
+    misses: int = Field(default=0, description="Cache misses")
+    sets: int = Field(default=0, description="Cache sets")
+    evictions: int = Field(default=0, description="Cache evictions")
+    expired_entries: int = Field(default=0, description="Expired entries")
+    deletions: int = Field(default=0, description="Deletions")
+    cleared_entries: int = Field(default=0, description="Cleared entries")
+
+
+class CacheMetrics(BaseModel):
+    """Cache performance metrics."""
+
+    hit_rate: float = Field(description="Cache hit rate")
+    total_entries: int = Field(description="Total cache entries")
+    memory_usage_mb: float = Field(description="Memory usage in MB")
+    total_hits: int = Field(description="Total hits")
+    total_misses: int = Field(description="Total misses")
+    total_sets: int = Field(description="Total sets")
+    total_evictions: int = Field(description="Total evictions")
+
+
+class ResearchExecutorConfig(BaseModel):
+    """Configuration for research executor."""
+
+    synthesis_config: SynthesisConfig = Field(default_factory=SynthesisConfig)
+    cache_config: CacheConfig = Field(default_factory=CacheConfig)
+    enable_parallel_processing: bool = Field(default=True)
+    max_concurrent_tasks: int = Field(default=4)
+
+
+class ResearchExecutorDeps(BaseModel):
+    """Dependencies for research executor."""
+
+    config: ResearchExecutorConfig = Field(description="Executor configuration")
+    cache_manager: Any = Field(description="Cache manager instance")
+    synthesis_engine: Any = Field(description="Synthesis engine instance")
+    pattern_recognizer: Any = Field(description="Pattern recognizer instance")
+    contradiction_detector: Any = Field(description="Contradiction detector instance")
 
 
 # Phase 2 Models for Pattern Analysis

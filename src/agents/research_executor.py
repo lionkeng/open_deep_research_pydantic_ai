@@ -5,14 +5,14 @@ the research process using advanced synthesis with GPT-5 optimized prompts and
 Tree of Thoughts methodology.
 """
 
+import hashlib
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 import logfire
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 
-from src.models.research_executor import (
+from models.research_executor import (
     ConfidenceLevel,
     Contradiction,
     ExecutiveSummary,
@@ -20,18 +20,19 @@ from src.models.research_executor import (
     ImportanceLevel,
     PatternAnalysis,
     PatternType,
+    ResearchExecutorConfig,
     ResearchResults,
     ResearchSource,
     ThemeCluster,
 )
-from src.services.cache_manager import CacheManager
-from src.services.confidence_analyzer import ConfidenceAnalyzer
-from src.services.contradiction_detector import ContradictionDetector
-from src.services.metrics_collector import MetricsCollector
-from src.services.optimization_manager import OptimizationManager
-from src.services.parallel_executor import ParallelExecutor
-from src.services.pattern_recognizer import PatternRecognizer
-from src.services.synthesis_engine import SynthesisEngine
+from services.cache_manager import CacheManager
+from services.confidence_analyzer import ConfidenceAnalyzer
+from services.contradiction_detector import ContradictionDetector
+from services.metrics_collector import MetricsCollector
+from services.optimization_manager import OptimizationManager
+from services.parallel_executor import ParallelExecutor
+from services.pattern_recognizer import PatternRecognizer
+from services.synthesis_engine import SynthesisEngine
 
 
 @dataclass
@@ -68,7 +69,6 @@ class ResearchExecutorDependencies:
 research_executor_agent = Agent(
     model="openai:gpt-4o",  # Will be "openai:gpt-5" when available
     deps_type=ResearchExecutorDependencies,
-    output_type=ResearchResults,
     system_prompt="""# Role: Advanced Research Synthesis Expert (GPT-5 Optimized)
 
 You are a Senior Research Synthesis Specialist with expertise in pattern recognition,
@@ -87,379 +87,30 @@ enhanced reasoning capabilities.
 5. Ensure comprehensive quality verification
 
 ## Output Requirements
-Generate a complete ResearchResults object with all required fields properly populated.""",
+Generate a complete ResearchResults object with all required fields properly populated.
+
+## Processing Instructions
+1. Use the available tools to extract and analyze findings
+2. Apply proper confidence and importance scoring
+3. Identify patterns and contradictions systematically
+4. Generate comprehensive executive summaries
+5. Ensure quality metrics are calculated
+
+## Quality Standards
+- All findings must have proper confidence and importance scores
+- Contradictions must be identified and analyzed
+- Patterns must be validated with supporting evidence
+- Executive summaries must be actionable and comprehensive
+- Source attribution must be complete and accurate
+
+Always use the provided tools for analysis and maintain high standards for
+research quality and integrity.""",
 )
 
 
-@research_executor_agent.instructions
-async def add_synthesis_context(ctx: RunContext[ResearchExecutorDependencies]) -> str:
-    """Add comprehensive synthesis instructions with Tree of Thoughts methodology.
-
-    This dynamic instruction injection provides the full 665-line synthesis
-    system prompt optimized for GPT-5 capabilities.
-    """
-
-    search_count = len(ctx.deps.search_results) if ctx.deps.search_results else 0
-
-    return f"""
-# ENHANCED SYNTHESIS SYSTEM PROMPT (GPT-5 OPTIMIZED)
-
-## Current Research Context
-- Original Query: {ctx.deps.original_query}
-- Search Results Available: {search_count} sources
-- Execution Timestamp: {datetime.now(UTC).isoformat()}
-
-## Process Overview: Tree of Thoughts Methodology
-
-You will execute a comprehensive 3-phase synthesis process using Tree of Thoughts reasoning:
-
-```
-Research Synthesis Process
-├── Phase 1: Pattern Recognition
-│   ├── Convergence Analysis (agreement across sources)
-│   ├── Divergence Mapping (contradictions/conflicts)
-│   └── Emergence Detection (new trends/signals)
-├── Phase 2: Insight Extraction
-│   ├── Primary Insights (directly address query)
-│   ├── Secondary Insights (related discoveries)
-│   └── Meta-Insights (patterns about patterns)
-└── Phase 3: Quality Verification
-    ├── Completeness Check
-    ├── Coherence Validation
-    └── Confidence Calibration
-```
-
-## PHASE 1: PATTERN RECOGNITION
-
-### Task 1.1: Convergence Analysis
-**OBJECTIVE**: Identify findings that support each other across sources
-
-**EXECUTION STEPS**:
-1. Group findings by semantic similarity (>70% overlap threshold)
-2. Count supporting sources for each finding group
-3. Calculate convergence_score = (supporting_sources / total_sources)
-4. Classify convergence strength:
-   - Strong (>0.8): Multiple independent sources agree
-   - Moderate (0.5-0.8): Majority agreement with some variation
-   - Weak (<0.5): Limited agreement, consider as preliminary
-
-**EXAMPLE**:
-- Input: 5 sources report "40-60% efficiency improvement with new caching"
-- Analysis: High semantic overlap (numbers + "efficiency improvement")
-- Output: convergence_score=1.0, strength="strong", confidence_boost=+0.2
-- Synthesis: "Strong consensus on 40-60% efficiency improvement from caching implementation"
-
-### Task 1.2: Divergence Mapping
-**OBJECTIVE**: Identify contradictory or conflicting information
-
-**EXECUTION STEPS**:
-1. Compare all finding pairs for contradiction indicators
-2. Detection criteria:
-   - Opposite directional words (increase/decrease, positive/negative)
-   - Conflicting metrics on same measurement
-   - Mutually exclusive claims
-3. Classify contradiction type and severity:
-   - Direct: Opposite claims about same fact (severity=high)
-   - Partial: Different scope or conditions (severity=medium)
-   - Contextual: True in different contexts (severity=low)
-   - Methodological: Different methods lead to different conclusions (severity=medium)
-4. Generate resolution hypotheses
-
-**EXAMPLE**:
-- Finding A: "AI increases job opportunities"
-- Finding B: "AI reduces employment"
-- Analysis: Contextual contradiction - sector-specific effects
-- Resolution: "AI impact on employment varies by sector - creating tech jobs while
-  reducing manufacturing roles"
-- Confidence adjustment: Medium (0.5) due to conflicting evidence
-
-### Task 1.3: Emergence Detection
-**OBJECTIVE**: Spot new trends, patterns, or signals not explicitly stated
-
-**EXECUTION STEPS**:
-1. Scan for temporal markers: "recently", "emerging", "new", dates
-2. Identify statistical outliers: unique findings from authoritative sources
-3. Detect pattern breaks: sudden changes in metrics or consensus
-4. Flag innovation indicators: novel methods, breakthrough claims
-5. Output emergence_signals[] with confidence scores
-
-**EXAMPLE**:
-- Input: Single authoritative source provides novel framework not seen elsewhere
-- Analysis: Unique insight from credible source, no corroboration yet
-- Output: emergence_signal with confidence=0.6 (single source limitation)
-- Synthesis: "Novel framework for understanding X (single source, requires validation)"
-
-## PHASE 2: INSIGHT EXTRACTION
-
-### Task 2.1: Primary Insights (Critical findings only)
-**FILTER**: importance_score >= 0.9
-**PROCESS**:
-1. Link each critical finding to original research questions
-2. Merge convergent findings into unified statements
-3. Preserve ALL numerical data and source attribution
-4. Generate 3-5 bullet points maximum
-
-**TEMPLATE**: "[INSIGHT] based on [N sources] showing [convergence_level] agreement"
-
-### Task 2.2: Secondary Insights (Important findings)
-**FILTER**: importance_score 0.7-0.89
-**PROCESS**:
-1. Group by theme cluster
-2. Extract patterns that contextualize primary insights
-3. Identify surprising connections
-4. Generate 3-5 supporting points
-
-### Task 2.3: Meta-Insights (Pattern analysis)
-**REQUIRES**: Completed Tasks 1.1-1.3 and 2.1-2.2
-**PROCESS**:
-1. Analyze finding distribution across categories
-2. Identify systematic gaps in research coverage
-3. Assess methodology trends and biases
-4. Evaluate temporal evolution of consensus
-
-## PHASE 3: QUALITY VERIFICATION
-
-### Check 3.1: Completeness Verification
-□ All search results analyzed? (REQUIRED: 100%)
-□ Critical findings preserved? (REQUIRED: 100%)
-□ Source attribution complete? (REQUIRED: 100%)
-□ Contradictions documented? (REQUIRED: 100%)
-FAIL → Return to Phase 1 with gap list
-
-### Check 3.2: Coherence Validation
-□ Logical flow from evidence to conclusions?
-□ Confidence justified by evidence strength?
-□ Temporal consistency maintained?
-□ Causal claims properly qualified?
-FAIL → Flag specific issues for correction
-
-### Check 3.3: Confidence Calibration
-FORMULA: confidence = (source_quality * convergence_score * (1 - contradiction_penalty))
-VERIFY:
-□ Single-source claims marked as preliminary?
-□ Contradictions reduce confidence appropriately?
-□ Distribution reasonable (not all high/low)?
-FAIL → Recalibrate using formula
-
-## INFORMATION HIERARCHY FRAMEWORK
-
-Apply this scoring to EVERY finding:
-
-### Critical (0.9-1.0)
-**DEFINITION**: Core facts, primary conclusions, unique insights that directly answer
-the research question
-**CRITERIA**:
-- Directly answers research question
-- Unique insight not found elsewhere
-- High-confidence breakthrough finding
-- Safety/risk critical information
-
-**EXAMPLE**:
-- Finding: "GPT-4 achieves 86.4% on MMLU benchmark, surpassing human expert performance"
-- Score: 0.95
-- Rationale: Direct answer to AI performance query, specific metric, authoritative source
-
-### Important (0.7-0.89)
-**DEFINITION**: Supporting evidence, methodologies, key patterns that provide context
-**CRITERIA**:
-- Provides essential context
-- Validates/challenges critical findings
-- Methodology and approach details
-- Strong supporting evidence
-
-**EXAMPLE**:
-- Finding: "The benchmark was conducted using zero-shot prompting across 57 subjects"
-- Score: 0.75
-- Rationale: Methodology detail that validates the critical finding
-
-### Supplementary (0.4-0.69)
-**DEFINITION**: Background information, elaborations, secondary examples
-**CRITERIA**:
-- Additional examples and cases
-- Extended background information
-- Alternative perspectives
-- Historical context
-
-### Contextual (0.0-0.39)
-**DEFINITION**: Tangential information, general background
-**CRITERIA**:
-- General background
-- Tangentially related information
-- Common knowledge
-- Redundant details
-
-## PRESERVATION RULES
-
-### Must ALWAYS Preserve
-✓ All numerical data and statistics with sources
-✓ Contradictions and conflicting viewpoints
-✓ Unique insights not found elsewhere
-✓ Methodological limitations and caveats
-✓ Confidence intervals and uncertainty measures
-✓ Source attribution for all claims
-
-### Safe to Consolidate
-- Similar findings from multiple sources (note convergence)
-- Redundant examples (keep most representative)
-- Extended background information
-- Detailed process descriptions (summarize key steps)
-
-### Never Omit
-✗ Contradictory evidence (even if minority view)
-✗ Methodological flaws or limitations
-✗ Recent updates that override older information
-✗ Safety, ethical, or legal concerns
-✗ Uncertainty or low confidence indicators
-
-## SELF-VERIFICATION CHECKLIST
-
-Before finalizing synthesis, verify:
-□ Phase 1 (Pattern Recognition) - All three tasks completed?
-□ Phase 2 (Insight Extraction) - Findings processed by importance?
-□ Phase 3 (Quality Verification) - All checks passed?
-□ All search results addressed (100% required)?
-□ Information hierarchy correctly applied to all findings?
-□ Contradictions explicitly identified and analyzed?
-□ Confidence scores justified by evidence and convergence?
-□ Source attribution complete for all claims?
-□ Executive summary captures essence without losing critical details?
-□ Theme clusters logically organized with consensus levels?
-□ Gaps and limitations clearly documented?
-□ No critical information lost in synthesis?
-□ Output follows exact structure requirements?
-
-## ANTI-PATTERNS TO AVOID
-
-✗ Cherry-picking evidence that supports a single narrative
-✗ Hiding or minimizing contradictions
-✗ Over-generalizing from limited sources
-✗ Conflating correlation with causation
-✗ Ignoring source credibility differences
-✗ Creating false consensus where none exists
-✗ Losing nuance through oversimplification
-✗ Failing to acknowledge uncertainty
-
-## OUTPUT STRUCTURE REQUIREMENTS
-
-Generate synthesis with these EXACT sections in the ResearchResults object:
-
-### 1. Executive Summary
-- key_findings: 3-5 most important findings
-- confidence_assessment: Overall confidence in the research
-- critical_gaps: Critical information gaps identified
-- recommended_actions: Recommended next steps or actions
-- risk_factors: Identified risks or concerns
-
-### 2. Hierarchical Findings
-Create HierarchicalFinding objects with:
-- finding: The core finding text
-- supporting_evidence: List of evidence
-- confidence: ConfidenceLevel enum
-- confidence_score: Numeric score (0.0-1.0)
-- importance: ImportanceLevel enum
-- importance_score: Numeric score (0.0-1.0)
-- source: ResearchSource object when available
-- category: Category or topic
-- temporal_relevance: Time period or context
-
-### 3. Theme Clusters
-Create ThemeCluster objects with:
-- theme_name: Descriptive name
-- description: What this theme represents
-- findings: Related HierarchicalFinding objects
-- coherence_score: How coherent/related (0.0-1.0)
-- importance_score: Overall importance (0.0-1.0)
-
-### 4. Contradictions
-Create Contradiction objects with:
-- finding_1_id: ID/index of first finding
-- finding_2_id: ID/index of second finding
-- contradiction_type: Type (direct/partial/contextual/methodological)
-- explanation: Explanation of the contradiction
-- resolution_hint: Hint for resolving
-- severity: Severity score (0.0-1.0)
-
-### 5. Pattern Analysis
-Identify patterns and create appropriate pattern analysis metadata
-
-### 6. Quality Metrics
-Track and report synthesis quality metrics
-
-## DOMAIN ADAPTATION PROTOCOL
-
-Detect domain from query content and apply appropriate focus:
-
-### Technical/Scientific Research:
-- Preserve ALL version numbers, specifications, and technical details
-- Maintain precision in terminology (no paraphrasing technical terms)
-- Emphasize reproducibility and methodology
-- Track compatibility constraints and dependencies
-- Weight peer-reviewed and official documentation higher
-
-### Business/Market Research:
-- Extract ROI, cost implications, and business metrics
-- Highlight competitive advantages and market positioning
-- Focus on actionable recommendations and strategic insights
-- Emphasize timing and market readiness
-- Consider source recency more heavily
-
-### Academic/Theoretical Research:
-- Maintain citation standards and attribution
-- Track theoretical frameworks and schools of thought
-- Document methodology details and research design
-- Preserve academic debates and opposing viewpoints
-- Note publication venues and impact factors
-
-### Emerging Technology Research:
-- Flag uncertainty and speculation clearly
-- Distinguish proven vs. experimental/theoretical
-- Track hype indicators vs. actual deployments
-- Monitor patent filings and investment signals
-- Note early adopters and pilot programs
-
-## GPT-5 SPECIFIC OPTIMIZATIONS
-
-### Enhanced Reasoning Capabilities
-- Leverage GPT-5's improved logical reasoning for complex pattern detection
-- Utilize advanced context understanding for nuanced synthesis
-- Apply enhanced instruction following for precise protocol execution
-- Take advantage of improved factual accuracy for reliable findings
-
-### Advanced Synthesis Features
-- Multi-level abstraction reasoning for hierarchical insights
-- Cross-domain knowledge integration for comprehensive analysis
-- Temporal reasoning for trend identification
-- Causal reasoning for relationship mapping
-
-### Quality Assurance Enhancements
-- Self-consistency checking across synthesis phases
-- Automatic bias detection and correction
-- Enhanced uncertainty quantification
-- Improved source credibility assessment
-
-Remember: Your synthesis will be used for decision-making. Accuracy, completeness, and
-transparency are paramount. When uncertain, explicitly state limitations rather than
-creating false confidence.
-
-## FINAL EXECUTION NOTES
-
-1. Process ALL available search results - no cherry-picking
-2. Apply the full 3-phase synthesis process systematically
-3. Use the provided tools to enhance synthesis quality
-4. Generate comprehensive ResearchResults object with all fields
-5. Ensure all findings have proper confidence and importance scoring
-6. Document all contradictions and uncertainties
-7. Provide actionable insights in the executive summary
-
-The quality of your synthesis directly impacts research outcomes. Execute with precision
-and thoroughness befitting GPT-5's advanced capabilities.
-"""
-
-
-# Tool 1: Extract Hierarchical Findings
-@research_executor_agent.tool
+# Helper functions for the research executor
 async def extract_hierarchical_findings(
-    ctx: RunContext[ResearchExecutorDependencies],
+    deps: ResearchExecutorDependencies,
     source_content: str,
     source_metadata: dict[str, Any] | None = None,
 ) -> list[HierarchicalFinding]:
@@ -478,44 +129,63 @@ async def extract_hierarchical_findings(
     """
     logfire.info("Extracting hierarchical findings from source content")
 
-    # Use the synthesis engine to extract findings
-    _ = ctx.deps.synthesis_engine.cluster_findings([])  # Placeholder for ML extraction
+    try:
+        # Generate cache key for this extraction
+        cache_key = _generate_cache_key("extract_findings", source_content, source_metadata)
 
-    # For now, create sample findings based on content analysis
-    # In production, this would use NLP/ML to extract actual findings
-    hierarchical_findings = []
+        # Check cache first if available
+        if deps.cache_manager:
+            cached_result = await deps.cache_manager.get(cache_key)
+            if cached_result:
+                logfire.debug("Using cached hierarchical findings")
+                return cached_result
 
-    # Simulate finding extraction (would be ML-based in production)
-    if source_content:
-        # Create a sample finding
-        finding = HierarchicalFinding(
-            finding="Sample finding extracted from source",
-            supporting_evidence=[source_content[:200]],
-            confidence=ConfidenceLevel.MEDIUM,
-            confidence_score=0.7,
-            importance=ImportanceLevel.MEDIUM,
-            importance_score=0.75,
-            source=ResearchSource(
-                title=source_metadata.get("title", "Unknown") if source_metadata else "Unknown",
-                url=source_metadata.get("url") if source_metadata else None,
-                source_type=source_metadata.get("type", "unknown")
+        # Use the synthesis engine to extract findings
+        if hasattr(deps.synthesis_engine, 'extract_themes'):
+            findings_data = await deps.synthesis_engine.extract_themes(source_content)
+        else:
+            # Fallback to basic extraction
+            findings_data = _extract_findings_fallback(source_content, source_metadata)
+
+        # Convert to HierarchicalFinding objects
+        hierarchical_findings = []
+        for finding_data in findings_data:
+            finding = HierarchicalFinding(
+                finding=finding_data.get("text", source_content[:200]),
+                supporting_evidence=[source_content[:200]],
+                confidence=ConfidenceLevel.MEDIUM,
+                confidence_score=finding_data.get("confidence", 0.7),
+                importance=ImportanceLevel.MEDIUM,
+                importance_score=finding_data.get("importance", 0.75),
+                source=ResearchSource(
+                    title=source_metadata.get("title", "Unknown") if source_metadata else "Unknown",
+                    url=source_metadata.get("url") if source_metadata else None,
+                    source_type=source_metadata.get("type", "unknown")
+                    if source_metadata
+                    else "unknown",
+                )
                 if source_metadata
-                else "unknown",
+                else None,
+                category="research",
+                temporal_relevance="current",
             )
-            if source_metadata
-            else None,
-            category="research",
-            temporal_relevance="current",
-        )
-        hierarchical_findings.append(finding)
+            hierarchical_findings.append(finding)
 
-    return hierarchical_findings
+        # Cache results if cache manager available
+        if deps.cache_manager:
+            await deps.cache_manager.set(cache_key, hierarchical_findings)
+
+        logfire.info(f"Extracted {len(hierarchical_findings)} hierarchical findings")
+        return hierarchical_findings
+
+    except Exception as e:
+        logfire.error(f"Failed to extract hierarchical findings: {e}")
+        # Return fallback findings
+        return _extract_findings_fallback(source_content, source_metadata)
 
 
-# Tool 2: Identify Theme Clusters
-@research_executor_agent.tool
 async def identify_theme_clusters(
-    ctx: RunContext[ResearchExecutorDependencies],
+    deps: ResearchExecutorDependencies,
     findings: list[HierarchicalFinding],
     min_cluster_size: int = 2,
 ) -> list[ThemeCluster]:
@@ -536,33 +206,73 @@ async def identify_theme_clusters(
     if not findings:
         return []
 
-    # Use synthesis engine for ML-based clustering
-    clusters = ctx.deps.synthesis_engine.cluster_findings(findings)
+    try:
+        # Generate cache key for clustering
+        cache_key = _generate_cache_key("identify_clusters", findings, min_cluster_size)
 
-    # Convert to ThemeCluster objects
-    theme_clusters = []
-    for cluster in clusters:
-        theme_clusters.append(cluster)
+        # Check cache first if available
+        if deps.cache_manager:
+            cached_result = await deps.cache_manager.get(cache_key)
+            if cached_result:
+                logfire.debug("Using cached theme clusters")
+                return cached_result
 
-    # If no clusters formed, create a general cluster
-    if not theme_clusters and len(findings) >= min_cluster_size:
-        theme_clusters.append(
+        # Use synthesis engine for ML-based clustering
+        clusters = deps.synthesis_engine.cluster_findings(findings)
+
+        # Convert to ThemeCluster objects if needed
+        theme_clusters = []
+        if clusters and isinstance(clusters[0], ThemeCluster):
+            theme_clusters = clusters
+        else:
+            # Convert raw clusters to ThemeCluster objects
+            for i, cluster in enumerate(clusters):
+                if isinstance(cluster, dict):
+                    theme_clusters.append(
+                        ThemeCluster(
+                            theme_name=cluster.get("name", f"Theme {i+1}"),
+                            description=cluster.get("description", "Clustered findings"),
+                            findings=cluster.get("findings", []),
+                            coherence_score=cluster.get("coherence", 0.5),
+                            importance_score=cluster.get("importance", 0.5),
+                        )
+                    )
+
+        # If no clusters formed, create a general cluster
+        if not theme_clusters and len(findings) >= min_cluster_size:
+            theme_clusters.append(
+                ThemeCluster(
+                    theme_name="General Research Findings",
+                    description="Unclustered research findings",
+                    findings=findings,
+                    coherence_score=0.5,
+                    importance_score=sum(f.importance_score for f in findings) / len(findings),
+                )
+            )
+
+        # Cache results if cache manager available
+        if deps.cache_manager:
+            await deps.cache_manager.set(cache_key, theme_clusters)
+
+        logfire.info(f"Identified {len(theme_clusters)} theme clusters")
+        return theme_clusters
+
+    except Exception as e:
+        logfire.error(f"Failed to identify theme clusters: {e}")
+        # Return fallback cluster
+        return [
             ThemeCluster(
-                theme_name="General Research Findings",
-                description="Unclustered research findings",
+                theme_name="Research Findings",
+                description="All available findings",
                 findings=findings,
                 coherence_score=0.5,
-                importance_score=sum(f.importance_score for f in findings) / len(findings),
+                importance_score=0.5,
             )
-        )
-
-    return theme_clusters
+        ]
 
 
-# Tool 3: Detect Contradictions
-@research_executor_agent.tool
 async def detect_contradictions(
-    ctx: RunContext[ResearchExecutorDependencies], findings: list[HierarchicalFinding]
+    deps: ResearchExecutorDependencies, findings: list[HierarchicalFinding]
 ) -> list[Contradiction]:
     """Detect contradictions between findings using advanced analysis.
 
@@ -580,16 +290,34 @@ async def detect_contradictions(
     if not findings or len(findings) < 2:
         return []
 
-    # Use contradiction detector service
-    contradictions = ctx.deps.contradiction_detector.detect_contradictions(findings)
+    try:
+        # Generate cache key for contradiction detection
+        cache_key = _generate_cache_key("detect_contradictions", findings)
 
-    return contradictions
+        # Check cache first if available
+        if deps.cache_manager:
+            cached_result = await deps.cache_manager.get(cache_key)
+            if cached_result:
+                logfire.debug("Using cached contradiction analysis")
+                return cached_result
+
+        # Use contradiction detector service
+        contradictions = deps.contradiction_detector.detect_contradictions(findings)
+
+        # Cache results if cache manager available
+        if deps.cache_manager:
+            await deps.cache_manager.set(cache_key, contradictions)
+
+        logfire.info(f"Detected {len(contradictions)} contradictions")
+        return contradictions
+
+    except Exception as e:
+        logfire.error(f"Failed to detect contradictions: {e}")
+        return []
 
 
-# Tool 4: Analyze Patterns
-@research_executor_agent.tool
 async def analyze_patterns(
-    ctx: RunContext[ResearchExecutorDependencies],
+    deps: ResearchExecutorDependencies,
     findings: list[HierarchicalFinding],
     clusters: list[ThemeCluster],
 ) -> list[PatternAnalysis]:
@@ -612,48 +340,78 @@ async def analyze_patterns(
     if not findings:
         return patterns
 
-    # Use pattern recognizer service
-    # This would normally use the actual pattern recognizer service
-    # For now, create sample patterns
+    try:
+        # Generate cache key for pattern analysis
+        cache_key = _generate_cache_key("analyze_patterns", findings, clusters)
 
-    # Analyze convergence
-    if len(findings) > 3:
-        high_confidence_findings = [f for f in findings if f.confidence_score > 0.8]
-        if len(high_confidence_findings) > len(findings) * 0.6:
+        # Check cache first if available
+        if deps.cache_manager:
+            cached_result = await deps.cache_manager.get(cache_key)
+            if cached_result:
+                logfire.debug("Using cached pattern analysis")
+                return cached_result
+
+        # Use pattern recognizer service
+        detected_patterns = deps.pattern_recognizer.detect_patterns(findings)
+
+        # Convert to PatternAnalysis objects
+        for pattern in detected_patterns:
+            pattern_analysis = PatternAnalysis(
+                pattern_type=pattern.get("type", PatternType.CONVERGENCE),
+                pattern_name=pattern.get("name", "Detected Pattern"),
+                description=pattern.get("description", "Pattern in research data"),
+                strength=pattern.get("strength", 0.5),
+                finding_ids=[str(i) for i in pattern.get("finding_indices", [])],
+                implications=pattern.get("implications", ["Pattern detected in data"]),
+                confidence_factors=pattern.get("confidence_factors", {"detection": 0.5}),
+            )
+            patterns.append(pattern_analysis)
+
+        # Add basic convergence pattern if high confidence findings exist
+        if len(findings) > 3:
+            high_confidence_findings = [f for f in findings if f.confidence_score > 0.8]
+            if len(high_confidence_findings) > len(findings) * 0.6:
+                patterns.append(
+                    PatternAnalysis(
+                        pattern_type=PatternType.CONVERGENCE,
+                        pattern_name="High Confidence Convergence",
+                        description="Majority of findings show high confidence convergence",
+                        strength=0.8,
+                        finding_ids=[str(i) for i in range(len(high_confidence_findings))],
+                        implications=["Strong consensus in research findings"],
+                        confidence_factors={"source_agreement": 0.8, "data_consistency": 0.75},
+                    )
+                )
+
+        # Add temporal patterns if temporal data exists
+        temporal_findings = [f for f in findings if f.temporal_relevance]
+        if temporal_findings:
             patterns.append(
                 PatternAnalysis(
-                    pattern_type=PatternType.CONVERGENCE,
-                    pattern_name="High Confidence Convergence",
-                    description="Majority of findings show high confidence convergence",
-                    strength=0.8,
-                    finding_ids=[str(i) for i in range(len(high_confidence_findings))],
-                    implications=["Strong consensus in research findings"],
-                    confidence_factors={"source_agreement": 0.8, "data_consistency": 0.75},
+                    pattern_type=PatternType.TEMPORAL,
+                    pattern_name="Temporal Evolution",
+                    description="Findings show temporal progression",
+                    strength=0.6,
+                    finding_ids=[str(i) for i in range(len(temporal_findings))],
+                    temporal_span="recent",
+                    implications=["Research shows evolution over time"],
                 )
             )
 
-    # Analyze temporal patterns if temporal data exists
-    temporal_findings = [f for f in findings if f.temporal_relevance]
-    if temporal_findings:
-        patterns.append(
-            PatternAnalysis(
-                pattern_type=PatternType.TEMPORAL,
-                pattern_name="Temporal Evolution",
-                description="Findings show temporal progression",
-                strength=0.6,
-                finding_ids=[str(i) for i in range(len(temporal_findings))],
-                temporal_span="recent",
-                implications=["Research shows evolution over time"],
-            )
-        )
+        # Cache results if cache manager available
+        if deps.cache_manager:
+            await deps.cache_manager.set(cache_key, patterns)
 
-    return patterns
+        logfire.info(f"Analyzed {len(patterns)} patterns")
+        return patterns
+
+    except Exception as e:
+        logfire.error(f"Failed to analyze patterns: {e}")
+        return []
 
 
-# Tool 5: Generate Executive Summary
-@research_executor_agent.tool
 async def generate_executive_summary(
-    ctx: RunContext[ResearchExecutorDependencies],
+    deps: ResearchExecutorDependencies,
     findings: list[HierarchicalFinding],
     contradictions: list[Contradiction],
     patterns: list[PatternAnalysis],
@@ -673,61 +431,74 @@ async def generate_executive_summary(
     """
     logfire.info("Generating executive summary")
 
-    # Extract key findings (top 5 by importance)
-    sorted_findings = sorted(findings, key=lambda f: f.importance_score, reverse=True)
-    key_findings = [f.finding for f in sorted_findings[:5]]
+    try:
+        # Extract key findings (top 5 by importance)
+        sorted_findings = sorted(findings, key=lambda f: f.importance_score, reverse=True)
+        key_findings = [f.finding for f in sorted_findings[:5]]
 
-    # Assess overall confidence
-    avg_confidence = sum(f.confidence_score for f in findings) / len(findings) if findings else 0
-    confidence_assessment = f"Overall confidence: {avg_confidence:.2f} - "
-    if avg_confidence > 0.8:
-        confidence_assessment += "High confidence in research findings"
-    elif avg_confidence > 0.6:
-        confidence_assessment += "Moderate confidence with some uncertainties"
-    else:
-        confidence_assessment += "Low confidence, further research recommended"
+        # Assess overall confidence
+        avg_confidence = (
+            sum(f.confidence_score for f in findings) / len(findings) if findings else 0
+        )
+        confidence_assessment = f"Overall confidence: {avg_confidence:.2f} - "
+        if avg_confidence > 0.8:
+            confidence_assessment += "High confidence in research findings"
+        elif avg_confidence > 0.6:
+            confidence_assessment += "Moderate confidence with some uncertainties"
+        else:
+            confidence_assessment += "Low confidence, further research recommended"
 
-    # Identify critical gaps
-    critical_gaps = []
-    if not findings:
-        critical_gaps.append("No findings extracted from available sources")
-    if len(contradictions) > 3:
-        critical_gaps.append(f"Multiple contradictions ({len(contradictions)}) require resolution")
-    if avg_confidence < 0.6:
-        critical_gaps.append("Low overall confidence in findings")
+        # Identify critical gaps
+        critical_gaps = []
+        if not findings:
+            critical_gaps.append("No findings extracted from available sources")
+        if len(contradictions) > 3:
+            critical_gaps.append(
+                f"Multiple contradictions ({len(contradictions)}) require resolution"
+            )
+        if avg_confidence < 0.6:
+            critical_gaps.append("Low overall confidence in findings")
 
-    # Generate recommendations
-    recommended_actions = []
-    if critical_gaps:
-        recommended_actions.append("Address identified gaps through additional research")
-    if contradictions:
-        recommended_actions.append("Investigate and resolve contradictory findings")
-    if patterns:
-        for pattern in patterns[:2]:  # Top 2 patterns
-            if pattern.implications:
-                recommended_actions.append(f"Consider implications: {pattern.implications[0]}")
+        # Generate recommendations
+        recommended_actions = []
+        if critical_gaps:
+            recommended_actions.append("Address identified gaps through additional research")
+        if contradictions:
+            recommended_actions.append("Investigate and resolve contradictory findings")
+        if patterns:
+            for pattern in patterns[:2]:  # Top 2 patterns
+                if pattern.implications:
+                    recommended_actions.append(f"Consider implications: {pattern.implications[0]}")
 
-    # Identify risk factors
-    risk_factors = []
-    if contradictions:
-        risk_factors.append(f"{len(contradictions)} unresolved contradictions")
-    low_confidence = [f for f in findings if f.confidence_score < 0.5]
-    if low_confidence:
-        risk_factors.append(f"{len(low_confidence)} low-confidence findings")
+        # Identify risk factors
+        risk_factors = []
+        if contradictions:
+            risk_factors.append(f"{len(contradictions)} unresolved contradictions")
+        low_confidence = [f for f in findings if f.confidence_score < 0.5]
+        if low_confidence:
+            risk_factors.append(f"{len(low_confidence)} low-confidence findings")
 
-    return ExecutiveSummary(
-        key_findings=key_findings,
-        confidence_assessment=confidence_assessment,
-        critical_gaps=critical_gaps,
-        recommended_actions=recommended_actions,
-        risk_factors=risk_factors,
-    )
+        return ExecutiveSummary(
+            key_findings=key_findings,
+            confidence_assessment=confidence_assessment,
+            critical_gaps=critical_gaps,
+            recommended_actions=recommended_actions,
+            risk_factors=risk_factors,
+        )
+
+    except Exception as e:
+        logfire.error(f"Failed to generate executive summary: {e}")
+        return ExecutiveSummary(
+            key_findings=["Error generating summary"],
+            confidence_assessment="Unable to assess confidence",
+            critical_gaps=["Summary generation failed"],
+            recommended_actions=["Review and retry analysis"],
+            risk_factors=["Analysis incomplete"],
+        )
 
 
-# Tool 6: Assess Synthesis Quality
-@research_executor_agent.tool
 async def assess_synthesis_quality(
-    ctx: RunContext[ResearchExecutorDependencies],
+    deps: ResearchExecutorDependencies,
     findings: list[HierarchicalFinding],
     clusters: list[ThemeCluster],
     contradictions: list[Contradiction],
@@ -747,51 +518,100 @@ async def assess_synthesis_quality(
     """
     logfire.info("Assessing synthesis quality")
 
-    metrics = {}
+    try:
+        metrics = {}
 
-    # Completeness score
-    search_count = len(ctx.deps.search_results) if ctx.deps.search_results else 0
-    expected_findings = max(10, search_count * 2)
-    completeness = min(1.0, len(findings) / expected_findings)
-    metrics["completeness"] = completeness
+        # Completeness score
+        search_count = len(deps.search_results) if deps.search_results else 0
+        expected_findings = max(10, search_count * 2)
+        completeness = min(1.0, len(findings) / expected_findings)
+        metrics["completeness"] = completeness
 
-    # Coherence score
-    if clusters:
-        avg_coherence = sum(c.coherence_score for c in clusters) / len(clusters)
-        metrics["coherence"] = avg_coherence
-    else:
-        metrics["coherence"] = 0.5
+        # Coherence score
+        if clusters:
+            avg_coherence = sum(c.coherence_score for c in clusters) / len(clusters)
+            metrics["coherence"] = avg_coherence
+        else:
+            metrics["coherence"] = 0.5
 
-    # Confidence distribution
-    if findings:
-        avg_confidence = sum(f.confidence_score for f in findings) / len(findings)
-        metrics["average_confidence"] = avg_confidence
-    else:
-        metrics["average_confidence"] = 0.0
+        # Confidence distribution
+        if findings:
+            avg_confidence = sum(f.confidence_score for f in findings) / len(findings)
+            metrics["average_confidence"] = avg_confidence
+        else:
+            metrics["average_confidence"] = 0.0
 
-    # Contradiction impact
-    contradiction_penalty = min(0.3, len(contradictions) * 0.05)
-    metrics["reliability"] = max(0.0, 1.0 - contradiction_penalty)
+        # Contradiction impact
+        contradiction_penalty = min(0.3, len(contradictions) * 0.05)
+        metrics["reliability"] = max(0.0, 1.0 - contradiction_penalty)
 
-    # Overall quality
-    metrics["overall_quality"] = (
-        metrics["completeness"] * 0.25
-        + metrics["coherence"] * 0.25
-        + metrics["average_confidence"] * 0.25
-        + metrics["reliability"] * 0.25
+        # Overall quality
+        metrics["overall_quality"] = (
+            metrics["completeness"] * 0.25
+            + metrics["coherence"] * 0.25
+            + metrics["average_confidence"] * 0.25
+            + metrics["reliability"] * 0.25
+        )
+
+        # Record metrics if collector available
+        if deps.metrics_collector:
+            await deps.metrics_collector.record_synthesis_metrics(metrics)
+
+        return metrics
+
+    except Exception as e:
+        logfire.error(f"Failed to assess synthesis quality: {e}")
+        return {
+            "completeness": 0.0,
+            "coherence": 0.0,
+            "average_confidence": 0.0,
+            "reliability": 0.0,
+            "overall_quality": 0.0,
+        }
+
+
+def _generate_cache_key(*args: Any) -> str:
+    """Generate cache key from arguments."""
+    key_string = str(args)
+    return hashlib.md5(key_string.encode()).hexdigest()[:16]
+
+
+def _extract_findings_fallback(
+    source_content: str, source_metadata: dict[str, Any] | None = None
+) -> list[HierarchicalFinding]:
+    """Fallback method for extracting findings when services are unavailable."""
+    # Simple fallback - extract basic finding from content
+    source = ResearchSource(
+        title=source_metadata.get("title", "Unknown") if source_metadata else "Unknown",
+        url=source_metadata.get("url") if source_metadata else None,
+        source_type=source_metadata.get("type", "unknown") if source_metadata else "unknown",
     )
 
-    return metrics
+    finding = HierarchicalFinding(
+        finding=f"Finding from source: {source_content[:100]}...",
+        supporting_evidence=[source_content[:200]],
+        confidence=ConfidenceLevel.MEDIUM,
+        confidence_score=0.6,
+        importance=ImportanceLevel.MEDIUM,
+        importance_score=0.6,
+        source=source,
+        category="research",
+        temporal_relevance="current",
+    )
+    return [finding]
 
 
 async def execute_research(
-    query: str, search_results: list[dict[str, Any]], **kwargs: Any
+    query: str,
+    search_results: list[dict[str, Any]],
+    **kwargs: Any
 ) -> ResearchResults:
     """Execute research synthesis using the Enhanced Research Executor Agent.
 
     Args:
         query: The research query
         search_results: Raw search results to synthesize
+        config: Optional configuration for the executor
         **kwargs: Additional configuration options
 
     Returns:
@@ -827,7 +647,7 @@ class ResearchExecutorAgent:
     the ResearchExecutorAgent class interface.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config: ResearchExecutorConfig | None = None):
         """Initialize the compatibility wrapper."""
         self.config = config
 

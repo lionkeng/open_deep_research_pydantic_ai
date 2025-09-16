@@ -10,7 +10,7 @@ from typing import Any, TypeVar
 import logfire
 from pydantic import BaseModel
 
-from src.models.research_executor import CacheMetadata, OptimizationConfig
+from models.research_executor import CacheMetadata, OptimizationConfig
 
 T = TypeVar("T")
 

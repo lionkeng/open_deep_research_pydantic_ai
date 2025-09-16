@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from src.models.research_executor import Contradiction, HierarchicalFinding
+from models.research_executor import Contradiction, HierarchicalFinding
 
 
 class ContradictionDetector:
@@ -473,7 +473,7 @@ class ContradictionDetector:
 
         # Compare importance levels
         if finding1.importance != finding2.importance:
-            from src.models.research_executor import ImportanceLevel
+            from models.research_executor import ImportanceLevel
 
             importance_order = [
                 ImportanceLevel.CRITICAL,

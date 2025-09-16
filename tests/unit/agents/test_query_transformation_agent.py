@@ -10,15 +10,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from src.agents.base import AgentConfiguration, ResearchDependencies
-from src.agents.query_transformation import QueryTransformationAgent
-from src.models.api_models import APIKeys
-from src.models.core import ResearchState
-from src.models.metadata import ResearchMetadata
-from src.models.research_plan_models import (
+from agents.base import AgentConfiguration, ResearchDependencies
+from agents.query_transformation import QueryTransformationAgent
+from models.api_models import APIKeys
+from models.core import ResearchState
+from models.metadata import ResearchMetadata
+from models.research_plan_models import (
     TransformedQuery,
 )
-from src.models.search_query_models import SearchQueryType
+from models.search_query_models import SearchQueryType
 from tests.test_helpers import (
     create_dynamic_query_response,
     create_mock_llm_response,

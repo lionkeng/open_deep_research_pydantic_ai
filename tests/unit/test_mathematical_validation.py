@@ -10,7 +10,7 @@ from collections import Counter
 from hypothesis import given, strategies as st, assume, settings
 from typing import Any
 
-from src.utils.validation import RobustScoreValidator, MathematicalValidator
+from utils.validation import RobustScoreValidator, MathematicalValidator
 
 
 class TestRobustScoreValidator:

@@ -21,13 +21,13 @@ from tests.evals.query_transformation_enhanced_evals import (
     ConfidenceCalibrationEvaluator,
     ExecutionStrategyEvaluator,
 )
-from src.models.research_plan_models import (
+from models.research_plan_models import (
     TransformedQuery,
     ResearchPlan,
     ResearchObjective,
     ResearchMethodology,
 )
-from src.models.search_query_models import (
+from models.search_query_models import (
     SearchQueryBatch,
     SearchQuery,
     ExecutionStrategy,

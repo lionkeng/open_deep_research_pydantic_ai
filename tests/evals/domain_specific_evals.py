@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from pydantic_evals import Evaluator
 from pydantic_ai import Agent
 
-from src.agents.clarification import ClarifyWithUser
+from agents.clarification import ClarifyWithUser
 
 
 class Domain(Enum):
@@ -571,7 +571,7 @@ class DomainDetector:
 async def demo_domain_specific_evaluation():
     """Demonstrate domain-specific evaluation capabilities."""
 
-    from src.models.clarification import ClarificationRequest, ClarificationQuestion
+    from models.clarification import ClarificationRequest, ClarificationQuestion
 
     # Technical query example
     technical_output = ClarifyWithUser(

@@ -11,7 +11,7 @@ from collections import Counter
 
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
-from src.models.research_plan_models import TransformedQuery
+from models.research_plan_models import TransformedQuery
 
 
 class AssumptionQualityEvaluator(Evaluator):

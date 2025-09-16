@@ -17,11 +17,11 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_evals import Evaluator
 
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.agents.base import ResearchDependencies
-from src.models.core import ResearchState, ResearchStage
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent, ClarifyWithUser
+from agents.base import ResearchDependencies
+from models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
 from pydantic import SecretStr
 
 
@@ -575,7 +575,7 @@ async def run_advanced_evaluation_demo():
     evaluator = AdvancedMultiJudgeEvaluator()
 
     # Mock clarification output for demo
-    from src.models.clarification import ClarificationRequest, ClarificationQuestion
+    from models.clarification import ClarificationRequest, ClarificationQuestion
 
     mock_output = ClarifyWithUser(
         needs_clarification=True,

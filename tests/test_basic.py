@@ -2,13 +2,13 @@
 
 import pytest
 
-from src.core.events import (
+from core.events import (
     ResearchStartedEvent,
     emit_research_started,
     research_event_bus,
 )
-from src.models.core import ResearchStage, ResearchState
-from src.models.research_executor import ResearchFinding, ResearchSource
+from models.core import ResearchStage, ResearchState
+from models.research_executor import ResearchFinding, ResearchSource
 
 
 def test_research_state():

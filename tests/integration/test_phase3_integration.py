@@ -6,16 +6,16 @@ import time
 
 import pytest
 
-from src.models.research_executor import (
+from models.research_executor import (
     ConfidenceLevel,
     HierarchicalFinding,
     ImportanceLevel,
     OptimizationConfig,
 )
-from src.services.cache_manager import CacheManager
-from src.services.metrics_collector import MetricsCollector
-from src.services.optimization_manager import OptimizationManager
-from src.services.parallel_executor import CircuitBreaker, ParallelExecutor
+from services.cache_manager import CacheManager
+from services.metrics_collector import MetricsCollector
+from services.optimization_manager import OptimizationManager
+from services.parallel_executor import CircuitBreaker, ParallelExecutor
 
 
 class TestCacheManager:

@@ -6,15 +6,15 @@ import pytest
 from typing import Dict, Any
 from unittest.mock import MagicMock, patch
 
-from src.agents.factory import AgentFactory, AgentType
-from src.agents.base import (
+from agents.factory import AgentFactory, AgentType
+from agents.base import (
     BaseResearchAgent,
     ResearchDependencies,
     AgentConfiguration
 )
-from src.models.api_models import APIKeys
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
+from models.api_models import APIKeys
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
 
 
 class TestAgentFactory:
@@ -317,7 +317,7 @@ class TestAgentFactory:
 
 
 # Import convenience functions for testing
-from src.agents.factory import (
+from agents.factory import (
     create_clarification_agent,
     create_query_transformation_agent,
     create_research_executor_agent,

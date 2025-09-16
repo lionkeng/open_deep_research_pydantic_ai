@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from src.agents.base import ResearchDependencies
-from src.agents.factory import AgentFactory, AgentType
-from src.models.api_models import APIKeys
-from src.models.compression import CompressedContent
-from src.models.core import ResearchStage, ResearchState
-from src.models.metadata import ResearchMetadata
-from src.models.report_generator import ReportSection, ResearchReport
-from src.models.research_executor import ResearchFinding, ResearchResults, ResearchSource
-from src.models.research_plan_models import TransformedQuery
+from agents.base import ResearchDependencies
+from agents.factory import AgentFactory, AgentType
+from models.api_models import APIKeys
+from models.compression import CompressedContent
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
+from models.report_generator import ReportSection, ResearchReport
+from models.research_executor import ResearchFinding, ResearchResults, ResearchSource
+from models.research_plan_models import TransformedQuery
 
 
 class TestAgentPipelineIntegration:

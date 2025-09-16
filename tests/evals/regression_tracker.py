@@ -35,7 +35,7 @@ from tests.evals.clarification_evals import (
     ClarificationInput,
     ClarificationExpectedOutput
 )
-from src.agents.clarification import ClarificationAgent
+from agents.clarification import ClarificationAgent
 
 # Import multi-judge evaluator if available
 try:
@@ -456,10 +456,10 @@ class PerformanceTracker:
         # Create dependencies for agent
         import httpx
         from pydantic import SecretStr
-        from src.agents.base import ResearchDependencies
-        from src.models.core import ResearchState, ResearchStage
-        from src.models.metadata import ResearchMetadata
-        from src.models.api_models import APIKeys
+        from agents.base import ResearchDependencies
+        from models.core import ResearchState, ResearchStage
+        from models.metadata import ResearchMetadata
+        from models.api_models import APIKeys
 
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             # Run evaluation on each test case

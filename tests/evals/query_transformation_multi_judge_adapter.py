@@ -11,7 +11,7 @@ from tests.evals.base_multi_judge import (
     EvaluationDimension,
     JudgeExpertise
 )
-from src.models.research_plan_models import TransformedQuery
+from models.research_plan_models import TransformedQuery
 
 
 class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, TransformedQuery]):

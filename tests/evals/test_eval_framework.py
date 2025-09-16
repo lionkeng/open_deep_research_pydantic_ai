@@ -18,13 +18,13 @@ from tests.evals.query_transformation_evals import (
     ObjectiveCoverageEvaluator,
     TransformationAccuracyEvaluator
 )
-from src.models.research_plan_models import (
+from models.research_plan_models import (
     ResearchObjective,
     ResearchPlan,
     ResearchMethodology,
     TransformedQuery,
 )
-from src.models.search_query_models import (
+from models.search_query_models import (
     SearchQuery,
     SearchQueryBatch,
     SearchQueryType,

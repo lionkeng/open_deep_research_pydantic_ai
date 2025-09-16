@@ -31,12 +31,12 @@ from pydantic_evals import Dataset, Case
 from pydantic_evals.evaluators import EvaluatorContext
 from pydantic_evals.reporting import EvaluationReport
 
-from src.agents.query_transformation import QueryTransformationAgent
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-from src.models.api_models import APIKeys
-from src.models.research_plan_models import TransformedQuery
+from agents.query_transformation import QueryTransformationAgent
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
+from models.api_models import APIKeys
+from models.research_plan_models import TransformedQuery
 
 from tests.evals.query_transformation_evals import (
     QueryTransformationInput,

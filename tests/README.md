@@ -75,8 +75,8 @@ Track performance over time and detect regressions:
 source .env && uv run python -c "
 import asyncio
 from tests.evals.regression_tracker import establish_new_baseline
-from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys
+from agents.base import ResearchDependencies
+from models.api_models import APIKeys
 from pydantic import SecretStr
 import os
 
@@ -95,8 +95,8 @@ asyncio.run(main())
 source .env && uv run python -c "
 import asyncio
 from tests.evals.regression_tracker import run_quick_regression_check
-from src.agents.base import ResearchDependencies
-from src.models.api_models import APIKeys
+from agents.base import ResearchDependencies
+from models.api_models import APIKeys
 from pydantic import SecretStr
 import os
 

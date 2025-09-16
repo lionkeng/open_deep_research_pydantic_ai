@@ -7,7 +7,7 @@ from typing import Any
 import logfire
 import psutil
 
-from src.models.research_executor import HierarchicalFinding, OptimizationConfig
+from models.research_executor import HierarchicalFinding, OptimizationConfig
 
 
 class OptimizationManager:

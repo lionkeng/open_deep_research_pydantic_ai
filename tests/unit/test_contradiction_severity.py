@@ -5,8 +5,8 @@ import pytest
 from datetime import datetime, timedelta
 from hypothesis import given, strategies as st
 
-from src.utils.validation import ContradictionSeverityCalculator
-from src.models.research_executor import (
+from utils.validation import ContradictionSeverityCalculator
+from models.research_executor import (
     Contradiction,
     ResearchResults,
     HierarchicalFinding,

@@ -14,7 +14,7 @@ from tests.evals.research_executor_evals import (
     MultiJudgeConsensusEvaluator,
     ResearchExecutorExpectedOutput
 )
-from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource
+from models.research_executor import ResearchResults, ResearchFinding, ResearchSource
 from pydantic_evals.evaluators import EvaluatorContext
 from datetime import datetime, timezone
 

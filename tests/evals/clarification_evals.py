@@ -17,12 +17,12 @@ from pydantic_evals import Dataset, Case
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_ai import Agent
 
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-from src.models.clarification import ClarificationQuestion, ClarificationRequest
-from src.models.api_models import APIKeys
+from agents.clarification import ClarificationAgent, ClarifyWithUser
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
+from models.clarification import ClarificationQuestion, ClarificationRequest
+from models.api_models import APIKeys
 
 
 class ClarificationInput(BaseModel):

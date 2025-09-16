@@ -30,12 +30,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRe
 from rich.panel import Panel
 from rich import print as rprint
 
-from src.agents.research_executor import ResearchExecutorAgent
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-from src.models.research_executor import ResearchResults
-from src.models.api_models import APIKeys
+from agents.research_executor import ResearchExecutorAgent
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
+from models.research_executor import ResearchResults
+from models.api_models import APIKeys
 from tests.evals.research_executor_evals import (
     ResearchExecutorInput,
     ResearchExecutorExpectedOutput,

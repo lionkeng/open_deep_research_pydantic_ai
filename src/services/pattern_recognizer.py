@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from src.models.research_executor import (
+from models.research_executor import (
     HierarchicalFinding,
     PatternAnalysis,
     PatternType,

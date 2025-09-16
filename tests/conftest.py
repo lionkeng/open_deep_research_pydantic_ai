@@ -24,9 +24,9 @@ except ImportError:
     os.environ.setdefault('OPENAI_API_KEY', 'test-key')
     os.environ.setdefault('LOGFIRE_IGNORE_NO_CONFIG', '1')
 
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
 
 
 @pytest.fixture

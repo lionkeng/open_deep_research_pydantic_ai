@@ -24,12 +24,12 @@ from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_evals.reporting import EvaluationReport
 from pydantic_ai import Agent
 
-from src.agents.research_executor import ResearchExecutorAgent
-from src.agents.base import ResearchDependencies
-from src.models.metadata import ResearchMetadata
-from src.models.core import ResearchState, ResearchStage
-from src.models.research_executor import ResearchResults, ResearchFinding, ResearchSource
-from src.models.api_models import APIKeys
+from agents.research_executor import ResearchExecutorAgent
+from agents.base import ResearchDependencies
+from models.metadata import ResearchMetadata
+from models.core import ResearchState, ResearchStage
+from models.research_executor import ResearchResults, ResearchFinding, ResearchSource
+from models.api_models import APIKeys
 
 # Constants for evaluation scoring weights
 LLM_RELEVANCE_WEIGHT = 0.8

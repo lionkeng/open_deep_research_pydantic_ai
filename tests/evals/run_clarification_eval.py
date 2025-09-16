@@ -29,11 +29,11 @@ os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
 import httpx
 from pydantic import SecretStr
 
-from src.agents.base import ResearchDependencies
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.models.api_models import APIKeys, ConversationMessage
-from src.models.core import ResearchStage, ResearchState
-from src.models.metadata import ResearchMetadata
+from agents.base import ResearchDependencies
+from agents.clarification import ClarificationAgent, ClarifyWithUser
+from models.api_models import APIKeys, ConversationMessage
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
 
 
 class MultiQuestionClarificationEvaluator:

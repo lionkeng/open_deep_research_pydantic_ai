@@ -33,13 +33,13 @@ from tests.evals.base_multi_judge import (
 from tests.evals.clarification_multi_judge_adapter import ClarificationMultiJudgeAdapter
 from tests.evals.query_transformation_multi_judge_adapter import QueryTransformationMultiJudgeAdapter
 
-from src.agents.clarification import ClarificationAgent, ClarifyWithUser
-from src.agents.query_transformation import QueryTransformationAgent
-from src.agents.base import ResearchDependencies
-from src.models.core import ResearchState, ResearchStage
-from src.models.metadata import ResearchMetadata
-from src.models.api_models import APIKeys
-from src.models.research_plan_models import TransformedQuery
+from agents.clarification import ClarificationAgent, ClarifyWithUser
+from agents.query_transformation import QueryTransformationAgent
+from agents.base import ResearchDependencies
+from models.core import ResearchState, ResearchStage
+from models.metadata import ResearchMetadata
+from models.api_models import APIKeys
+from models.research_plan_models import TransformedQuery
 
 
 async def evaluate_clarification_agent():
