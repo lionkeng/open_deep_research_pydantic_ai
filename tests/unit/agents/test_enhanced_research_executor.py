@@ -1,7 +1,8 @@
 """Tests for the enhanced research executor implementation."""
 
 import pytest
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 from typing import List, Dict, Any
 
 import httpx
@@ -9,9 +10,11 @@ import httpx
 from agents.research_executor import (
     ResearchExecutorAgent,
     execute_research,
+)
+from agents.research_executor_tools import (
     ResearchExecutorDependencies,
     _generate_cache_key,
-    _extract_findings_fallback
+    _extract_findings_fallback,
 )
 from models.research_executor import (
     ResearchResults,
@@ -172,6 +175,51 @@ class TestEnhancedResearchExecutor:
         assert isinstance(result, ResearchResults)
         assert result.query == "test query"
         assert result.findings  # Should extract fallback findings
+
+    def test_research_executor_tools_registered(self):
+        """Ensure research executor exposes the expected tool wrappers."""
+        agent = ResearchExecutorAgent()
+        tool_names = set(agent.agent._function_toolset.tools.keys())
+        expected = {
+            "tool_extract_hierarchical_findings",
+            "tool_identify_theme_clusters",
+            "tool_detect_contradictions",
+            "tool_analyze_patterns",
+            "tool_generate_executive_summary",
+            "tool_assess_synthesis_quality",
+        }
+        assert expected.issubset(tool_names)
+
+    @pytest.mark.asyncio
+    async def test_research_executor_dynamic_instructions(self):
+        """Verify instructions summarize context using research dependencies."""
+        agent = ResearchExecutorAgent()
+
+        research_state = ResearchState(
+            request_id=ResearchState.generate_request_id(),
+            user_query="instruction test",
+            current_stage=ResearchStage.RESEARCH_EXECUTION,
+            metadata=ResearchMetadata(),
+        )
+
+        async with httpx.AsyncClient() as http_client:
+            deps = ResearchDependencies(
+                http_client=http_client,
+                api_keys=APIKeys(),
+                research_state=research_state,
+            )
+            setattr(deps, "search_results", [{"title": "Src", "content": "Example content"}])
+            deps.search_queries = SimpleNamespace(queries=[1, 2, 3])
+
+            instruction_runners = agent.agent._instructions_functions
+            assert instruction_runners, "Expected dynamic instructions to be registered"
+
+            ctx = SimpleNamespace(deps=deps)
+            rendered = await instruction_runners[0].function(ctx)
+
+            assert "Original Query: instruction test" in rendered
+            assert "Search Queries Provided: 3" in rendered
+            assert "Search Results Available: 1" in rendered
 
     def test_research_executor_dependencies_creation(self):
         """Test creation of ResearchExecutorDependencies."""
