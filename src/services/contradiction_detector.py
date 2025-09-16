@@ -486,15 +486,14 @@ class ContradictionDetector:
 
             if idx1 < idx2:
                 return f"Prioritize the {finding1.importance} importance finding"
-            else:
-                return f"Prioritize the {finding2.importance} importance finding"
+            return f"Prioritize the {finding2.importance} importance finding"
 
         # Check source dates if available
         if finding1.source and finding2.source:
             if finding1.source.date and finding2.source.date:
                 if finding1.source.date > finding2.source.date:
                     return "Consider the more recent finding"
-                elif finding2.source.date > finding1.source.date:
+                if finding2.source.date > finding1.source.date:
                     return "Consider the more recent finding"
 
         return "Further investigation needed - check original sources and context"

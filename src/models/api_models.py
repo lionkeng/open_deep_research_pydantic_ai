@@ -55,12 +55,12 @@ class APIKeys(BaseModel):
         field_name = info.field_name
         if field_name == "openai" and not key_str.startswith(("sk-", "test-", "demo-")):
             raise ValueError("Invalid OpenAI API key format")
-        elif field_name == "anthropic" and not key_str.startswith(
+        if field_name == "anthropic" and not key_str.startswith(
             ("anthropic-", "sk-", "test-", "demo-")
         ):
             # Allow sk- prefix for compatibility with DeepSeek and other providers
             raise ValueError("Invalid Anthropic API key format")
-        elif field_name == "tavily" and not key_str.startswith(("tvly-", "test-", "demo-")):
+        if field_name == "tavily" and not key_str.startswith(("tvly-", "test-", "demo-")):
             raise ValueError("Invalid Tavily API key format")
 
         # Return as SecretStr

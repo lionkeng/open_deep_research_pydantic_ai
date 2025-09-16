@@ -158,10 +158,10 @@ class SearchQueryBatch(BaseModel):
         if self.execution_strategy == ExecutionStrategy.SEQUENTIAL:
             # Each query is its own group
             return [[q] for q in self.queries]
-        elif self.execution_strategy == ExecutionStrategy.PARALLEL:
+        if self.execution_strategy == ExecutionStrategy.PARALLEL:
             # All queries in one group
             return [self.queries]
-        elif self.execution_strategy == ExecutionStrategy.HIERARCHICAL:
+        if self.execution_strategy == ExecutionStrategy.HIERARCHICAL:
             # Group by priority
             groups = {}
             for q in self.queries:
@@ -169,15 +169,15 @@ class SearchQueryBatch(BaseModel):
                     groups[q.priority] = []
                 groups[q.priority].append(q)
             return [groups[p] for p in sorted(groups.keys())]
-        else:  # ADAPTIVE
-            # Default to priority groups with max parallel limit
-            groups = []
-            current_group = []
-            for q in sorted(self.queries, key=lambda x: x.priority):
-                current_group.append(q)
-                if len(current_group) >= self.max_parallel:
-                    groups.append(current_group)
-                    current_group = []
-            if current_group:
+        # ADAPTIVE
+        # Default to priority groups with max parallel limit
+        groups = []
+        current_group = []
+        for q in sorted(self.queries, key=lambda x: x.priority):
+            current_group.append(q)
+            if len(current_group) >= self.max_parallel:
                 groups.append(current_group)
-            return groups
+                current_group = []
+        if current_group:
+            groups.append(current_group)
+        return groups

@@ -606,12 +606,12 @@ class ResearchWorkflow:
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
-                elif current_stage == ResearchStage.QUERY_TRANSFORMATION:
+                if current_stage == ResearchStage.QUERY_TRANSFORMATION:
                     # Query transformation should complete in two-phase
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
-                elif current_stage in [
+                if current_stage in [
                     ResearchStage.RESEARCH_EXECUTION,
                     ResearchStage.COMPRESSION,
                     ResearchStage.REPORT_GENERATION,
@@ -625,13 +625,12 @@ class ResearchWorkflow:
 
                     return research_state
 
-                elif current_stage == ResearchStage.COMPLETED:
+                if current_stage == ResearchStage.COMPLETED:
                     logfire.info("Research already completed")
                     return research_state
 
-                else:
-                    logfire.warning(f"Unknown stage: {current_stage}")
-                    return research_state
+                logfire.warning(f"Unknown stage: {current_stage}")
+                return research_state
 
             except Exception as e:
                 logfire.error(f"Resume failed: {e}", exc_info=True)

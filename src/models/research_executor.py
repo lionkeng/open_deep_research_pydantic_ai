@@ -39,12 +39,11 @@ class ConfidenceLevel(str, Enum):
         """Convert numeric score to confidence level."""
         if score >= 0.8:
             return cls.HIGH
-        elif score >= 0.6:
+        if score >= 0.6:
             return cls.MEDIUM
-        elif score >= 0.3:
+        if score >= 0.3:
             return cls.LOW
-        else:
-            return cls.UNCERTAIN
+        return cls.UNCERTAIN
 
 
 class ImportanceLevel(str, Enum):
@@ -70,12 +69,11 @@ class ImportanceLevel(str, Enum):
         """Convert numeric score to importance level."""
         if score >= 0.9:
             return cls.CRITICAL
-        elif score >= 0.7:
+        if score >= 0.7:
             return cls.HIGH
-        elif score >= 0.4:
+        if score >= 0.4:
             return cls.MEDIUM
-        else:
-            return cls.LOW
+        return cls.LOW
 
 
 class ResearchSource(BaseModel):
@@ -1363,13 +1361,18 @@ class OptimizationConfig(BaseModel):
 
 # Enhanced Models for Service Integration
 
+
 class EvidenceItem(BaseModel):
     """Individual piece of evidence for research synthesis."""
 
     content: str = Field(description="Content of the evidence")
     source: ResearchSource | None = Field(default=None, description="Source of the evidence")
-    timestamp: float | None = Field(default=None, description="Timestamp when evidence was collected")
-    confidence_score: float = Field(ge=0.0, le=1.0, default=0.5, description="Confidence in this evidence")
+    timestamp: float | None = Field(
+        default=None, description="Timestamp when evidence was collected"
+    )
+    confidence_score: float = Field(
+        ge=0.0, le=1.0, default=0.5, description="Confidence in this evidence"
+    )
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 

@@ -184,10 +184,9 @@ class OptimizationManager:
 
         if memory_ratio > 0.9 or usage["cpu_percent"] > 90:
             return "critical"
-        elif memory_ratio > 0.7 or cpu_high:
+        if memory_ratio > 0.7 or cpu_high:
             return "high"
-        else:
-            return "normal"
+        return "normal"
 
     async def optimize_async_operations(self, operations: list[asyncio.Task]) -> list[Any]:
         """Optimize async operations execution.
@@ -218,9 +217,8 @@ class OptimizationManager:
                     self.logger.error(f"Operation failed: {e}")
                     results.append(None)
             return results
-        else:
-            # Normal parallel execution
-            return await asyncio.gather(*operations, return_exceptions=True)
+        # Normal parallel execution
+        return await asyncio.gather(*operations, return_exceptions=True)
 
     def get_optimization_status(self) -> dict[str, Any]:
         """Get current optimization status.

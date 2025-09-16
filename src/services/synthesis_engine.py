@@ -526,11 +526,10 @@ class SynthesisEngine:
         if finding1.confidence_score > finding2.confidence_score + 0.2:
             conf = finding1.confidence_score
             return f"Consider prioritizing the first finding (confidence: {conf:.2f})"
-        elif finding2.confidence_score > finding1.confidence_score + 0.2:
+        if finding2.confidence_score > finding1.confidence_score + 0.2:
             conf = finding2.confidence_score
             return f"Consider prioritizing the second finding (confidence: {conf:.2f})"
-        else:
-            return "Further investigation needed to resolve this contradiction"
+        return "Further investigation needed to resolve this contradiction"
 
     def calculate_synthesis_metrics(self, clusters: list[ThemeCluster]) -> dict[str, float]:
         """Calculate overall synthesis quality metrics.

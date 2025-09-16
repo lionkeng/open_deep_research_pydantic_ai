@@ -199,12 +199,6 @@ class PerformanceMonitoringMixin:
     def __init__(self):
         self.metrics = PerformanceMetrics()
         self._execution_start_time: float | None = None
-        # self._hooks: dict[str, list[Callable[[dict[str, Any]], Any]]] = {
-        #     "before_execution": [],
-        #     "after_execution": [],
-        #     "on_error": [],
-        #     "on_retry": [],
-        # }
 
     def start_execution_timer(self) -> None:
         """Start timing execution."""
@@ -215,22 +209,6 @@ class PerformanceMonitoringMixin:
         if self._execution_start_time:
             self.metrics.update_execution_time(self._execution_start_time)
             self._execution_start_time = None
-
-    # def add_hook(self, event: str, hook: Callable[[dict[str, Any]], Any]) -> None:
-    #     """Add a lifecycle hook."""
-    #     if event in self._hooks:
-    #         self._hooks[event].append(hook)
-
-    # async def execute_hooks(self, event: str, context: dict[str, Any] | None = None) -> None:
-    #     """Execute hooks for a given event."""
-    #     for hook in self._hooks.get(event, []):
-    #         try:
-    #             if asyncio.iscoroutinefunction(hook):
-    #                 await hook(context or {})
-    #             else:
-    #                 hook(context or {})
-    #         except Exception as e:
-    #             logfire.error(f"Hook execution failed: {e}")
 
 
 class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
@@ -393,12 +371,6 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.status = AgentStatus.RUNNING
         self.start_execution_timer()
 
-        # Execute before_execution hooks
-        # await self.execute_hooks(
-        #     "before_execution",
-        #     {"user_prompt": self.get_conversation_context()[-1]},
-        # )
-
         try:
             # Emit streaming update if callback provided
             if actual_deps.stream_callback and stream:
@@ -430,23 +402,22 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
                 if "rate limit" in str(e).lower():
                     self.metrics.record_retry()
                     raise ModelRetry(f"Rate limit hit, retrying: {e}") from e
-                elif "timeout" in str(e).lower():
+                if "timeout" in str(e).lower():
                     self.metrics.record_retry()
                     raise ModelRetry(f"Request timeout, retrying: {e}") from e
-                else:
-                    self.status = AgentStatus.FAILED
-                    raise AgentExecutionError(
-                        f"Agent execution failed: {e}",
-                        agent_name=self.name,
-                        context={
-                            "user_prompt": (
-                                self.get_conversation_context()[-1]
-                                if self.get_conversation_context()
-                                else None
-                            ),
-                            "error": str(e),
-                        },
-                    ) from e
+                self.status = AgentStatus.FAILED
+                raise AgentExecutionError(
+                    f"Agent execution failed: {e}",
+                    agent_name=self.name,
+                    context={
+                        "user_prompt": (
+                            self.get_conversation_context()[-1]
+                            if self.get_conversation_context()
+                            else None
+                        ),
+                        "error": str(e),
+                    },
+                ) from e
 
             # Log completion and update conversation history
             logfire.info(
@@ -498,10 +469,3 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         finally:
             # Always complete monitoring and execute after hooks
             self.end_execution_timer()
-            # await self.execute_hooks(
-            #     "after_execution",
-            #     {
-            #         "status": self.status.name,
-            #         "metrics": self.metrics.model_dump(),
-            #     },
-            # )

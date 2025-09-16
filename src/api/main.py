@@ -314,8 +314,7 @@ async def get_clarification_question(request_id: str):
             "original_query": state.user_query,
             "awaiting_response": True,
         }
-    else:
-        raise HTTPException(status_code=404, detail="No pending clarification questions")
+    raise HTTPException(status_code=404, detail="No pending clarification questions")
 
 
 @app.post("/research/{request_id}/clarification")

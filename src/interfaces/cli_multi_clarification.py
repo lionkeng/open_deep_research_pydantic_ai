@@ -149,11 +149,10 @@ def ask_text_question(question: ClarificationQuestion, console: Console) -> str 
                 # Response will be a string when a default of ... is used
                 if isinstance(response, str) and response.strip():
                     break
-                else:
-                    error_msg = (
-                        "[red]⚠️  This question requires an answer. Please provide a response.[/red]"
-                    )
-                    console.print(error_msg)
+                error_msg = (
+                    "[red]⚠️  This question requires an answer. Please provide a response.[/red]"
+                )
+                console.print(error_msg)
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Question cancelled by user[/yellow]")
         # Re-raise to terminate the workflow

@@ -141,7 +141,7 @@ async def extract_hierarchical_findings(
                 return cached_result
 
         # Use the synthesis engine to extract findings
-        if hasattr(deps.synthesis_engine, 'extract_themes'):
+        if hasattr(deps.synthesis_engine, "extract_themes"):
             findings_data = await deps.synthesis_engine.extract_themes(source_content)
         else:
             # Fallback to basic extraction
@@ -230,7 +230,7 @@ async def identify_theme_clusters(
                 if isinstance(cluster, dict):
                     theme_clusters.append(
                         ThemeCluster(
-                            theme_name=cluster.get("name", f"Theme {i+1}"),
+                            theme_name=cluster.get("name", f"Theme {i + 1}"),
                             description=cluster.get("description", "Clustered findings"),
                             findings=cluster.get("findings", []),
                             coherence_score=cluster.get("coherence", 0.5),
@@ -602,9 +602,7 @@ def _extract_findings_fallback(
 
 
 async def execute_research(
-    query: str,
-    search_results: list[dict[str, Any]],
-    **kwargs: Any
+    query: str, search_results: list[dict[str, Any]], **kwargs: Any
 ) -> ResearchResults:
     """Execute research synthesis using the Enhanced Research Executor Agent.
 

@@ -236,7 +236,6 @@ class CLIStreamHandler:
 
         # For non-clarification stages, DO NOT reset the post-clarification flag
         # Keep the progress manager running between stages
-        # self._post_clarification_active = False  # REMOVED - this was causing the issue
 
         # For non-clarification stages
         if not self._research_started:
@@ -306,18 +305,17 @@ class CLIStreamHandler:
 
         if any(word in content_lower for word in ["analyzing", "analyzing", "examining"]):
             return "analyzing"
-        elif any(word in content_lower for word in ["searching", "finding", "looking"]):
+        if any(word in content_lower for word in ["searching", "finding", "looking"]):
             return "searching"
-        elif any(word in content_lower for word in ["writing", "generating", "creating"]):
+        if any(word in content_lower for word in ["writing", "generating", "creating"]):
             return "writing"
-        elif any(word in content_lower for word in ["processing", "compressing", "organizing"]):
+        if any(word in content_lower for word in ["processing", "compressing", "organizing"]):
             return "synthesizing"
-        elif any(word in content_lower for word in ["validating", "checking", "verifying"]):
+        if any(word in content_lower for word in ["validating", "checking", "verifying"]):
             return "validating"
-        elif any(word in content_lower for word in ["thinking", "considering", "evaluating"]):
+        if any(word in content_lower for word in ["thinking", "considering", "evaluating"]):
             return "reasoning"
-        else:
-            return "thinking"
+        return "thinking"
 
     def _extract_progress(self, content: str) -> float | None:
         """Extract progress information from content if available.
@@ -1130,7 +1128,7 @@ def interactive(mode: str, server_url: str):
                     if query.lower() in ["exit", "quit", "q"]:
                         console.print("[yellow]Goodbye![/yellow]")
                         break
-                    elif query.lower() == "help":
+                    if query.lower() == "help":
                         console.print("""
 [bold]Available commands:[/bold]
   • Enter any research query to start research

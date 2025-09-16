@@ -24,12 +24,12 @@ class ClarificationJSONEncoder(json.JSONEncoder):
         """
         if isinstance(o, UUID):
             return str(o)
-        elif isinstance(o, datetime):
+        if isinstance(o, datetime):
             return o.isoformat()
-        elif hasattr(o, "model_dump"):
+        if hasattr(o, "model_dump"):
             # Handle Pydantic models
             return o.model_dump()
-        elif hasattr(o, "__dict__"):
+        if hasattr(o, "__dict__"):
             # Handle regular classes
             return o.__dict__
 

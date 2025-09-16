@@ -158,19 +158,18 @@ def parse_sse_message(data: str) -> SSEMessage:
 
     if msg_type == SSEDataType.CONNECTED:
         return ConnectionMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.UPDATE:
+    if msg_type == SSEDataType.UPDATE:
         return UpdateMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.STAGE_COMPLETED:
+    if msg_type == SSEDataType.STAGE_COMPLETED:
         return StageCompletedMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.ERROR:
+    if msg_type == SSEDataType.ERROR:
         return ErrorMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.COMPLETED:
+    if msg_type == SSEDataType.COMPLETED:
         return CompletedMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.STREAM_ERROR:
+    if msg_type == SSEDataType.STREAM_ERROR:
         return StreamErrorMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.HEARTBEAT:
+    if msg_type == SSEDataType.HEARTBEAT:
         return HeartbeatMessage.model_validate(parsed)
-    elif msg_type == SSEDataType.PING:
+    if msg_type == SSEDataType.PING:
         return PingMessage.model_validate(parsed)
-    else:
-        raise ValueError(f"Unknown message type: {msg_type}")
+    raise ValueError(f"Unknown message type: {msg_type}")

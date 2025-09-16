@@ -418,7 +418,7 @@ class ReviewInterface:
                 answer=answer_text,
                 skipped=False,
             )
-        elif not question.is_required:
+        if not question.is_required:
             return ClarificationAnswer(
                 question_id=question.id,
                 skipped=True,
@@ -446,9 +446,9 @@ class ReviewInterface:
         """
         if key in ("q", "Q"):  # Quit with 'q'
             return False
-        elif key == "\x03":  # Ctrl+C
+        if key == "\x03":  # Ctrl+C
             raise KeyboardInterrupt("User interrupted with Ctrl+C")
-        elif key in ("\x1b[A", "k"):  # Up arrow
+        if key in ("\x1b[A", "k"):  # Up arrow
             self.state.current_index = (self.state.current_index - 1) % total_questions
         elif key in ("\x1b[B", "j"):  # Down arrow
             self.state.current_index = (self.state.current_index + 1) % total_questions
@@ -572,8 +572,7 @@ class ReviewInterface:
                             return await self.review_answers(
                                 request, working_response, original_query
                             )
-                        else:
-                            self.console.print("[yellow]Maximum retry attempts reached.[/yellow]")
+                        self.console.print("[yellow]Maximum retry attempts reached.[/yellow]")
                     return None
 
                 # Show confirmation

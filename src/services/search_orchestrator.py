@@ -190,10 +190,9 @@ class SearchOrchestrator:
                     self._cache_order.remove(cache_key)
                     self._cache_order.append(cache_key)
                     return result
-                else:
-                    # Expired
-                    del self._cache[cache_key]
-                    self._cache_order.remove(cache_key)
+                # Expired
+                del self._cache[cache_key]
+                self._cache_order.remove(cache_key)
 
         return None
 

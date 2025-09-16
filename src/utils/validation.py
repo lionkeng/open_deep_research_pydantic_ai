@@ -501,14 +501,13 @@ class ContradictionSeverityCalculator:
 
         if severity_score >= 0.8:
             return "critical"
-        elif severity_score >= 0.6:
+        if severity_score >= 0.6:
             return "high"
-        elif severity_score >= 0.4:
+        if severity_score >= 0.4:
             return "medium"
-        elif severity_score >= 0.2:
+        if severity_score >= 0.2:
             return "low"
-        else:
-            return "minimal"
+        return "minimal"
 
     @staticmethod
     def get_resolution_priority(severity_score: float, contradiction_type: str) -> int:
@@ -537,14 +536,13 @@ class ContradictionSeverityCalculator:
 
         if severity_score >= 0.8 or contradiction_type.lower() in high_priority_types:
             return 1  # Immediate attention required
-        elif severity_score >= 0.6:
+        if severity_score >= 0.6:
             return 2  # High priority
-        elif severity_score >= 0.4:
+        if severity_score >= 0.4:
             return 3  # Medium priority
-        elif severity_score >= 0.2:
+        if severity_score >= 0.2:
             return 4  # Low priority
-        else:
-            return 5  # Monitor only
+        return 5  # Monitor only
 
     @staticmethod
     def suggest_resolution_strategy(
