@@ -1,17 +1,22 @@
-"""Enhanced Research Executor Agent with GPT-5 synthesis capabilities.
-
-This module implements the core Enhanced Research Executor Agent that orchestrates
-the research process using advanced synthesis with GPT-5 optimized prompts and
-Tree of Thoughts methodology.
-"""
+"""Research executor agent implementation."""
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 import logfire
-from pydantic_ai import Agent
 
+from agents.base import (
+    AgentConfiguration,
+    AgentConfigurationError,
+    AgentExecutionError,
+    AgentStatus,
+    BaseResearchAgent,
+    ResearchDependencies,
+)
+from models.api_models import APIKeys
+from models.core import ResearchMetadata, ResearchStage, ResearchState
 from models.research_executor import (
     ConfidenceLevel,
     Contradiction,
@@ -20,9 +25,10 @@ from models.research_executor import (
     ImportanceLevel,
     PatternAnalysis,
     PatternType,
-    ResearchExecutorConfig,
+    ResearchFinding,
     ResearchResults,
     ResearchSource,
+    SynthesisMetadata,
     ThemeCluster,
 )
 from services.cache_manager import CacheManager
@@ -44,10 +50,10 @@ class ResearchExecutorDependencies:
     """
 
     # Core services
-    synthesis_engine: SynthesisEngine
-    contradiction_detector: ContradictionDetector
-    pattern_recognizer: PatternRecognizer
-    confidence_analyzer: ConfidenceAnalyzer
+    synthesis_engine: SynthesisEngine = field(default_factory=SynthesisEngine)
+    contradiction_detector: ContradictionDetector = field(default_factory=ContradictionDetector)
+    pattern_recognizer: PatternRecognizer = field(default_factory=PatternRecognizer)
+    confidence_analyzer: ConfidenceAnalyzer = field(default_factory=ConfidenceAnalyzer)
 
     # Optional optimization services
     cache_manager: CacheManager | None = None
@@ -57,55 +63,7 @@ class ResearchExecutorDependencies:
 
     # Research context
     original_query: str = ""
-    search_results: list[dict[str, Any]] | None = None
-
-    def __post_init__(self):
-        """Initialize default values for mutable fields."""
-        if self.search_results is None:
-            self.search_results = []
-
-
-# Create the Enhanced Research Executor Agent with GPT-5 optimization
-research_executor_agent = Agent(
-    model="openai:gpt-4o",  # Will be "openai:gpt-5" when available
-    deps_type=ResearchExecutorDependencies,
-    system_prompt="""# Role: Advanced Research Synthesis Expert (GPT-5 Optimized)
-
-You are a Senior Research Synthesis Specialist with expertise in pattern recognition,
-evidence evaluation, and systematic analysis across diverse information sources.
-
-## Core Mission
-Transform raw search results into actionable research insights through systematic
-synthesis, advanced pattern recognition, and quality-assured analysis using GPT-5's
-enhanced reasoning capabilities.
-
-## Primary Responsibilities
-1. Extract hierarchical findings with confidence scoring
-2. Identify theme clusters and patterns
-3. Detect and analyze contradictions
-4. Generate executive summaries with actionable insights
-5. Ensure comprehensive quality verification
-
-## Output Requirements
-Generate a complete ResearchResults object with all required fields properly populated.
-
-## Processing Instructions
-1. Use the available tools to extract and analyze findings
-2. Apply proper confidence and importance scoring
-3. Identify patterns and contradictions systematically
-4. Generate comprehensive executive summaries
-5. Ensure quality metrics are calculated
-
-## Quality Standards
-- All findings must have proper confidence and importance scores
-- Contradictions must be identified and analyzed
-- Patterns must be validated with supporting evidence
-- Executive summaries must be actionable and comprehensive
-- Source attribution must be complete and accurate
-
-Always use the provided tools for analysis and maintain high standards for
-research quality and integrity.""",
-)
+    search_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 # Helper functions for the research executor
@@ -601,56 +559,203 @@ def _extract_findings_fallback(
     return [finding]
 
 
+class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
+    """Base research agent wrapper around the synthesis helpers."""
+
+    def __init__(
+        self,
+        config: AgentConfiguration | None = None,
+        dependencies: ResearchDependencies | None = None,
+    ):
+        if config is None:
+            config = AgentConfiguration(
+                agent_name="research_executor",
+                agent_type="synthesis",
+            )
+        super().__init__(config=config, dependencies=dependencies)
+
+    def _get_default_system_prompt(self) -> str:
+        """Return a concise system prompt describing the agent role."""
+        return (
+            "You are a hybrid research synthesis agent that combines deterministic "
+            "query execution with structured analysis. Use available findings to "
+            "produce organized outputs that the downstream report generator can consume."
+        )
+
+    def _get_output_type(self) -> type[ResearchResults]:
+        return ResearchResults
+
+    def _register_tools(self) -> None:
+        """No LLM tool registration in the transitional implementation."""
+        return None
+
+    async def run(
+        self,
+        deps: ResearchDependencies | None = None,
+        message_history: list[Any] | None = None,
+        stream: bool = False,
+    ) -> ResearchResults:
+        actual_deps = deps or self.dependencies
+        if not actual_deps:
+            raise AgentConfigurationError("Research executor requires dependencies")
+
+        self.status = AgentStatus.RUNNING
+        self.start_execution_timer()
+
+        try:
+            executor_deps = self._build_executor_dependencies(actual_deps)
+            result = await self._generate_structured_result(actual_deps, executor_deps)
+            self.metrics.record_success()
+            self.status = AgentStatus.COMPLETED
+            return result
+        except Exception as exc:  # pragma: no cover - unexpected runtime errors
+            self.metrics.record_failure()
+            self.status = AgentStatus.FAILED
+            raise AgentExecutionError("Research executor failed", agent_name=self.name) from exc
+        finally:
+            self.end_execution_timer()
+
+    def _build_executor_dependencies(
+        self, deps: ResearchDependencies
+    ) -> ResearchExecutorDependencies:
+        search_results = getattr(deps, "search_results", None) or []
+        return ResearchExecutorDependencies(
+            cache_manager=getattr(deps, "cache_manager", None),
+            parallel_executor=getattr(deps, "parallel_executor", None),
+            metrics_collector=getattr(deps, "metrics_collector", None),
+            optimization_manager=getattr(deps, "optimization_manager", None),
+            original_query=deps.research_state.user_query,
+            search_results=search_results,
+        )
+
+    async def _generate_structured_result(
+        self,
+        deps: ResearchDependencies,
+        executor_deps: ResearchExecutorDependencies,
+    ) -> ResearchResults:
+        query = deps.research_state.user_query
+        findings: list[HierarchicalFinding] = []
+
+        # Convert raw search results into hierarchical findings using fallbacks when needed
+        for result in executor_deps.search_results:
+            content = result.get("content") or result.get("snippet") or ""
+            if not content.strip():
+                continue
+            metadata = {
+                "title": result.get("title", "Unknown"),
+                "url": result.get("url"),
+                "type": result.get("type") or result.get("source_type", "unknown"),
+            }
+            extracted = await extract_hierarchical_findings(executor_deps, content, metadata)
+            findings.extend(extracted)
+
+        clusters = await identify_theme_clusters(executor_deps, findings)
+        contradictions = await detect_contradictions(executor_deps, findings)
+        patterns = await analyze_patterns(executor_deps, findings, clusters)
+        summary = await generate_executive_summary(
+            executor_deps, findings, contradictions, patterns
+        )
+        quality_metrics = await assess_synthesis_quality(
+            executor_deps,
+            findings,
+            clusters,
+            contradictions,
+        )
+
+        overall_quality = quality_metrics.get("overall_quality", 0.0) if quality_metrics else 0.0
+
+        sources: list[ResearchSource] = [
+            finding.source for finding in findings if finding.source is not None
+        ]
+
+        synthesis_metadata = SynthesisMetadata(
+            synthesis_method="fallback_pipeline",
+            total_sources_analyzed=len(executor_deps.search_results),
+            total_findings_extracted=len(findings),
+            quality_metrics=quality_metrics,
+        )
+
+        key_insights = list((summary.key_findings if summary else [])[:5])
+        data_gaps: list[str] = []
+        if not findings:
+            data_gaps.append("No findings were generated from the available search results.")
+        if contradictions:
+            data_gaps.append("Detected contradictions require follow-up analysis.")
+
+        content_hierarchy = {
+            "critical": [f.finding for f in findings if f.importance == ImportanceLevel.CRITICAL],
+            "important": [f.finding for f in findings if f.importance == ImportanceLevel.HIGH],
+            "supplementary": [
+                f.finding for f in findings if f.importance == ImportanceLevel.MEDIUM
+            ],
+            "contextual": [f.finding for f in findings if f.importance == ImportanceLevel.LOW],
+        }
+
+        metadata = {
+            "search_query_count": len(getattr(deps, "search_queries", []) or []),
+            "generation_mode": "structured_fallback",
+        }
+
+        return ResearchResults(
+            query=query,
+            findings=findings,
+            theme_clusters=clusters,
+            contradictions=contradictions,
+            executive_summary=summary,
+            patterns=patterns,
+            sources=[source for source in sources if source],
+            synthesis_metadata=synthesis_metadata,
+            overall_quality_score=overall_quality,
+            content_hierarchy=content_hierarchy,
+            key_insights=key_insights,
+            data_gaps=data_gaps,
+            metadata=metadata,
+        )
+
+
+_research_executor_agent_instance: ResearchExecutorAgent | None = None
+
+
+def get_research_executor_agent() -> ResearchExecutorAgent:
+    """Return a lazily instantiated research executor agent."""
+    global _research_executor_agent_instance
+    if _research_executor_agent_instance is None:
+        _research_executor_agent_instance = ResearchExecutorAgent()
+        logfire.info("Initialized research executor agent")
+    return _research_executor_agent_instance
+
+
+research_executor_agent = get_research_executor_agent()
+
+
 async def execute_research(
-    query: str, search_results: list[dict[str, Any]], **kwargs: Any
+    query: str,
+    search_results: list[dict[str, Any]] | None = None,
+    *,
+    agent: ResearchExecutorAgent | None = None,
 ) -> ResearchResults:
-    """Execute research synthesis using the Enhanced Research Executor Agent.
+    """Convenience entry point for executing research outside the workflow."""
+    logfire.info("Executing research for query", query=query)
 
-    Args:
-        query: The research query
-        search_results: Raw search results to synthesize
-        config: Optional configuration for the executor
-        **kwargs: Additional configuration options
+    agent_instance = agent or get_research_executor_agent()
 
-    Returns:
-        Complete research results with synthesis
-    """
-    logfire.info(f"Executing enhanced research synthesis for: {query}")
-
-    # Create dependencies
-    deps = ResearchExecutorDependencies(
-        synthesis_engine=SynthesisEngine(),
-        contradiction_detector=ContradictionDetector(),
-        pattern_recognizer=PatternRecognizer(),
-        confidence_analyzer=ConfidenceAnalyzer(),
-        cache_manager=kwargs.get("cache_manager"),
-        parallel_executor=kwargs.get("parallel_executor"),
-        metrics_collector=kwargs.get("metrics_collector"),
-        optimization_manager=kwargs.get("optimization_manager"),
-        original_query=query,
-        search_results=search_results,
+    research_state = ResearchState(
+        request_id=ResearchState.generate_request_id(),
+        user_query=query,
+        current_stage=ResearchStage.RESEARCH_EXECUTION,
+        metadata=ResearchMetadata(),
     )
 
-    # Run the agent
-    result = await research_executor_agent.run(f"Synthesize research for: {query}", deps=deps)
-
-    return result.output
-
-
-# Compatibility wrapper for existing code
-class ResearchExecutorAgent:
-    """Compatibility wrapper for the Enhanced Research Executor Agent.
-
-    This class provides backward compatibility with existing code that expects
-    the ResearchExecutorAgent class interface.
-    """
-
-    def __init__(self, config: ResearchExecutorConfig | None = None):
-        """Initialize the compatibility wrapper."""
-        self.config = config
-
-    async def execute_research(
-        self, query: str, search_results: list[dict[str, Any]], **kwargs: Any
-    ) -> ResearchResults:
-        """Execute research using the enhanced agent."""
-        return await execute_research(query, search_results, **kwargs)
+    async with httpx.AsyncClient() as http_client:
+        deps = ResearchDependencies(
+            http_client=http_client,
+            api_keys=APIKeys(),
+            research_state=research_state,
+        )
+        deps.search_results = search_results or []
+        result = await agent_instance.run(deps)
+        research_state.research_results = result
+        research_state.findings = [
+            ResearchFinding.from_hierarchical(finding) for finding in result.findings
+        ]
+        return result

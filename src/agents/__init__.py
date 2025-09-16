@@ -40,7 +40,11 @@ from .factory import (
 )
 from .query_transformation import query_transformation_agent
 from .report_generator import report_generator_agent
-from .research_executor import research_executor_agent
+from .research_executor import (
+    ResearchExecutorAgent,
+    get_research_executor_agent,
+    research_executor_agent,
+)
 
 __all__ = [
     # Enhanced base agent system
@@ -68,6 +72,8 @@ __all__ = [
     # Phase 2 agents
     "query_transformation_agent",
     "research_executor_agent",
+    "get_research_executor_agent",
+    "ResearchExecutorAgent",
     "compression_agent",
     "report_generator_agent",
 ]

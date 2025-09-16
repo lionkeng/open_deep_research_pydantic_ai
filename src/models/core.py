@@ -12,7 +12,7 @@ from .compression import CompressedContent
 from .metadata import ResearchMetadata
 from .report_generator import ReportSection as ResearchSection
 from .report_generator import ResearchReport
-from .research_executor import ResearchFinding
+from .research_executor import ResearchFinding, ResearchResults
 
 if TYPE_CHECKING:
     pass  # For future type checking imports
@@ -119,6 +119,9 @@ class ResearchState(BaseModel):
         default=None, description="Research plan from query transformation"
     )
     findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")
+    research_results: ResearchResults | None = Field(
+        default=None, description="Structured research results from the executor"
+    )
     compressed_findings: CompressedContent | None = Field(
         default=None, description="Compressed and synthesized findings"
     )
@@ -196,6 +199,7 @@ __all__ = [
     "ResearchState",
     "ResearchMetadata",
     "ResearchFinding",
+    "ResearchResults",
     "ResearchSection",
     "ResearchReport",
     "CompressedContent",

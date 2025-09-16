@@ -1,8 +1,10 @@
 """Tests for the enhanced research executor implementation."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from typing import List, Dict, Any
+
+import httpx
 
 from agents.research_executor import (
     ResearchExecutorAgent,
@@ -22,8 +24,10 @@ from models.research_executor import (
     ConfidenceLevel,
     ImportanceLevel,
     PatternType,
-    ResearchExecutorConfig
 )
+from models.api_models import APIKeys
+from models.core import ResearchMetadata, ResearchStage, ResearchState
+from agents.base import ResearchDependencies
 
 
 class TestEnhancedResearchExecutor:
@@ -99,13 +103,6 @@ class TestEnhancedResearchExecutor:
             search_results=[]
         )
 
-    def test_research_executor_agent_initialization(self):
-        """Test that ResearchExecutorAgent initializes correctly."""
-        config = ResearchExecutorConfig()
-        agent = ResearchExecutorAgent(config=config)
-
-        assert agent.config == config
-
     def test_cache_key_generation(self):
         """Test cache key generation function."""
         key1 = _generate_cache_key("test", "data", {"key": "value"})
@@ -144,65 +141,37 @@ class TestEnhancedResearchExecutor:
         """Test basic research execution functionality."""
         query = "test research query"
 
-        # Mock the agent and its dependencies
-        with patch('agents.research_executor.research_executor_agent') as mock_agent:
-            mock_result = MagicMock()
-            mock_result.output = ResearchResults(
-                query="test research query",
-                findings=[],
-                theme_clusters=[],
-                contradictions=[],
-                patterns=[],
-                executive_summary=ExecutiveSummary(
-                    key_findings=["Test finding"],
-                    confidence_assessment="High confidence",
-                    critical_gaps=[],
-                    recommended_actions=["Test action"],
-                    risk_factors=[]
-                ),
-                overall_quality_score=0.8,
-                synthesis_metadata={}
-            )
-            mock_agent.run = AsyncMock(return_value=mock_result)
+        result = await execute_research(query, sample_search_results)
 
-            # Execute research
-            result = await execute_research(query, sample_search_results)
-
-            # Verify the agent was called
-            mock_agent.run.assert_called_once()
-            call_args = mock_agent.run.call_args
-            assert "Synthesize research for: test research query" in call_args[0][0]
+        assert isinstance(result, ResearchResults)
+        assert result.query == query
+        assert result.synthesis_metadata is not None
+        assert result.metadata["generation_mode"] == "structured_fallback"
 
     @pytest.mark.asyncio
     async def test_research_executor_agent_execute_research(self, sample_search_results):
         """Test ResearchExecutorAgent execute_research method."""
-        config = ResearchExecutorConfig()
-        agent = ResearchExecutorAgent(config=config)
+        agent = ResearchExecutorAgent()
 
-        query = "test query"
+        research_state = ResearchState(
+            request_id=ResearchState.generate_request_id(),
+            user_query="test query",
+            current_stage=ResearchStage.RESEARCH_EXECUTION,
+            metadata=ResearchMetadata(),
+        )
 
-        with patch('agents.research_executor.execute_research') as mock_execute:
-            mock_execute.return_value = ResearchResults(
-                query="test query",
-                findings=[],
-                theme_clusters=[],
-                contradictions=[],
-                patterns=[],
-                executive_summary=ExecutiveSummary(
-                    key_findings=["Test finding"],
-                    confidence_assessment="High confidence",
-                    critical_gaps=[],
-                    recommended_actions=["Test action"],
-                    risk_factors=[]
-                ),
-                overall_quality_score=0.8,
-                synthesis_metadata={}
+        async with httpx.AsyncClient() as http_client:
+            deps = ResearchDependencies(
+                http_client=http_client,
+                api_keys=APIKeys(),
+                research_state=research_state,
             )
+            setattr(deps, "search_results", sample_search_results)
+            result = await agent.run(deps)
 
-            result = await agent.execute_research(query, sample_search_results)
-
-            mock_execute.assert_called_once_with(query, sample_search_results)
-            assert isinstance(result, ResearchResults)
+        assert isinstance(result, ResearchResults)
+        assert result.query == "test query"
+        assert result.findings  # Should extract fallback findings
 
     def test_research_executor_dependencies_creation(self):
         """Test creation of ResearchExecutorDependencies."""
@@ -231,15 +200,6 @@ class TestEnhancedResearchExecutor:
         )
 
         assert deps.search_results == []
-
-    def test_research_executor_config_defaults(self):
-        """Test ResearchExecutorConfig default values."""
-        config = ResearchExecutorConfig()
-
-        assert config.enable_parallel_processing is True
-        assert config.max_concurrent_tasks == 4
-        assert config.synthesis_config is not None
-        assert config.cache_config is not None
 
     @pytest.mark.parametrize("confidence_level,expected_score", [
         (ConfidenceLevel.HIGH, 0.9),

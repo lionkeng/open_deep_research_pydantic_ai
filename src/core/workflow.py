@@ -23,6 +23,7 @@ from models.core import (
     ResearchStage,
     ResearchState,
 )
+from models.research_executor import ResearchFinding
 
 
 class ResearchWorkflow:
@@ -473,18 +474,22 @@ class ResearchWorkflow:
 
         try:
             # Research executor now receives SearchQueryBatch directly
-            findings = await self._run_agent_with_circuit_breaker(AgentType.RESEARCH_EXECUTOR, deps)
-            research_state.findings = findings
+            results = await self._run_agent_with_circuit_breaker(AgentType.RESEARCH_EXECUTOR, deps)
+
+            if isinstance(results, list):
+                research_state.findings = results
+            else:
+                research_state.research_results = results
+                hierarchical = list(getattr(results, "findings", []))
+                research_state.findings = [
+                    ResearchFinding.from_hierarchical(finding) for finding in hierarchical
+                ]
 
             await emit_stage_completed(
                 research_state.request_id,
                 ResearchStage.RESEARCH_EXECUTION,
                 True,
-                {
-                    "findings_count": len(findings.key_findings)
-                    if hasattr(findings, "key_findings")
-                    else 0
-                },
+                {"findings_count": len(getattr(results, "findings", []))},
             )
 
             research_state.advance_stage()  # Move to COMPRESSION
