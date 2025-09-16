@@ -388,7 +388,7 @@ class TestCircuitBreakerFeatures:
         assert cb.get_state(AgentType.RESEARCH_EXECUTOR) == CircuitState.CLOSED
 
         # Open multiple circuits
-        for agent_type in [AgentType.QUERY_TRANSFORMATION, AgentType.COMPRESSION]:
+        for agent_type in [AgentType.QUERY_TRANSFORMATION, AgentType.REPORT_GENERATOR]:
             with pytest.raises(ValueError):
                 await cb.call(agent_type, lambda: (_ for _ in ()).throw(ValueError()))
             assert cb.is_open(agent_type)
@@ -396,7 +396,7 @@ class TestCircuitBreakerFeatures:
         # Reset all
         await cb.reset()
         assert cb.is_closed(AgentType.QUERY_TRANSFORMATION)
-        assert cb.is_closed(AgentType.COMPRESSION)
+        assert cb.is_closed(AgentType.REPORT_GENERATOR)
 
     @pytest.mark.asyncio
     async def test_context_manager(self):

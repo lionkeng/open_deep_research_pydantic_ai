@@ -25,15 +25,11 @@ from .base import (
     ToolMixin,
 )
 
-# Phase 2 agent imports
-from .compression import compression_agent
-
 # Factory system for agent creation and management
 from .factory import (
     AgentFactory,
     AgentType,
     create_clarification_agent,
-    create_compression_agent,
     create_query_transformation_agent,
     create_report_generator_agent,
     create_research_executor_agent,
@@ -67,13 +63,11 @@ __all__ = [
     "create_clarification_agent",
     "create_query_transformation_agent",
     "create_research_executor_agent",
-    "create_compression_agent",
     "create_report_generator_agent",
     # Phase 2 agents
     "query_transformation_agent",
     "research_executor_agent",
     "get_research_executor_agent",
     "ResearchExecutorAgent",
-    "compression_agent",
     "report_generator_agent",
 ]

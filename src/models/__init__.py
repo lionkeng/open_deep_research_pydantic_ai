@@ -8,7 +8,6 @@ from .clarification import (
     ClarificationRequest,
     ClarificationResponse,
 )
-from .compression import CompressedContent, CompressedSection
 from .core import (
     ClarificationResult,
     ResearchPriority,
@@ -33,9 +32,6 @@ __all__ = [
     "ResearchSource",
     "ResearchFinding",
     "ResearchResults",
-    # Compression models
-    "CompressedSection",
-    "CompressedContent",
     # Report generator models
     "ReportSection",
     "ReportMetadata",

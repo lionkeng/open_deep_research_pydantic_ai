@@ -7,7 +7,6 @@ import logfire
 
 from .base import AgentConfiguration, BaseResearchAgent, ResearchDependencies
 from .clarification import ClarificationAgent
-from .compression import CompressionAgent
 from .query_transformation import QueryTransformationAgent
 from .report_generator import ReportGeneratorAgent
 from .research_executor import ResearchExecutorAgent
@@ -19,7 +18,6 @@ class AgentType(str, Enum):
     CLARIFICATION = "clarification"
     QUERY_TRANSFORMATION = "query_transformation"
     RESEARCH_EXECUTOR = "research_executor"
-    COMPRESSION = "compression"
     REPORT_GENERATOR = "report_generator"
 
 
@@ -35,7 +33,6 @@ class AgentFactory:
         AgentType.CLARIFICATION: ClarificationAgent,
         AgentType.QUERY_TRANSFORMATION: QueryTransformationAgent,
         AgentType.RESEARCH_EXECUTOR: ResearchExecutorAgent,
-        AgentType.COMPRESSION: CompressionAgent,
         AgentType.REPORT_GENERATOR: ReportGeneratorAgent,
     }
 
@@ -194,15 +191,6 @@ def create_research_executor_agent(
     return cast(
         ResearchExecutorAgent,
         AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, dependencies, config),
-    )
-
-
-def create_compression_agent(
-    dependencies: ResearchDependencies, config: AgentConfiguration | None = None
-) -> CompressionAgent:
-    """Create a compression agent."""
-    return cast(
-        CompressionAgent, AgentFactory.create_agent(AgentType.COMPRESSION, dependencies, config)
     )
 
 

@@ -269,7 +269,14 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
             report_format = (
                 getattr(metadata, "report_format", "standard") if metadata else "standard"
             )
-            key_findings = metadata.compression.summary if metadata and metadata.compression else ""
+            research_results = ctx.deps.research_state.research_results
+            if research_results and research_results.executive_summary:
+                summary_findings = research_results.executive_summary.key_findings or []
+            elif research_results:
+                summary_findings = research_results.key_insights
+            else:
+                summary_findings = []
+            key_findings = "; ".join(summary_findings[:3]) if summary_findings else ""
 
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)

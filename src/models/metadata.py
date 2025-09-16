@@ -132,17 +132,6 @@ class BriefMetadata(BaseModel):
     )
 
 
-class CompressionMetadata(BaseModel):
-    """Metadata specific to the compression agent."""
-
-    model_config = ConfigDict(validate_assignment=True)
-
-    summary: dict[str, Any] | None = Field(
-        default=None, description="Summary of compressed research findings"
-    )
-    full: dict[str, Any] | None = Field(default=None, description="Full compressed findings object")
-
-
 class ExecutionMetadata(BaseModel):
     """Metadata specific to the research executor agent."""
 
@@ -176,7 +165,6 @@ class ResearchMetadata(BaseModel):
     clarification: ClarificationMetadata = Field(default_factory=ClarificationMetadata)
     query: QueryMetadata = Field(default_factory=QueryMetadata)
     brief: BriefMetadata = Field(default_factory=BriefMetadata)
-    compression: CompressionMetadata = Field(default_factory=CompressionMetadata)
     execution: ExecutionMetadata = Field(default_factory=ExecutionMetadata)
     report: ReportMetadata = Field(default_factory=ReportMetadata)
 

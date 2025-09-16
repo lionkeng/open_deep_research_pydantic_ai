@@ -1,4 +1,4 @@
-"""Main workflow orchestrator for the streamlined 5-agent research system."""
+"""Main workflow orchestrator for the streamlined 4-agent research system."""
 
 from datetime import datetime
 from typing import Any
@@ -27,10 +27,10 @@ from models.research_executor import ResearchFinding
 
 
 class ResearchWorkflow:
-    """Orchestrator for the streamlined 5-agent research workflow.
+    """Orchestrator for the streamlined 4-agent research workflow.
 
     Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
-              COMPRESSION → REPORT_GENERATION
+              REPORT_GENERATION
 
     The Query Transformation Agent now produces both SearchQueryBatch (for search execution)
     and ResearchPlan (for report structure), eliminating the need for a separate Brief Generator.
@@ -59,7 +59,7 @@ class ResearchWorkflow:
             fallback_factory=self._create_fallback,
         )
 
-        # Per-agent circuit breaker configurations (no Brief Generator)
+        # Per-agent circuit breaker configurations
         self.agent_configs = self._create_agent_configs()
 
         # Legacy attributes for backward compatibility
@@ -73,7 +73,7 @@ class ResearchWorkflow:
             # Agents are auto-registered when imported
             self._initialized = True
             logfire.info(
-                "Streamlined 5-agent workflow initialized",
+                "Streamlined research workflow initialized",
                 agents=[agent.value for agent in AgentType],
                 max_concurrent_tasks=self._max_concurrent_tasks,
             )
@@ -125,16 +125,6 @@ class ResearchWorkflow:
                     name="support_clarification",
                 ),
             },
-            AgentType.COMPRESSION: {
-                "critical": False,
-                "config": CircuitBreakerConfig(
-                    failure_threshold=3,
-                    success_threshold=2,
-                    timeout_seconds=30.0,
-                    half_open_max_attempts=2,
-                    name="support_compression",
-                ),
-            },
         }
 
     def _create_fallback(self, agent_type: AgentType) -> dict[str, Any]:
@@ -153,11 +143,6 @@ class ResearchWorkflow:
             AgentType.RESEARCH_EXECUTOR: {
                 "results": [],
                 "from_cache": True,
-                "fallback": True,
-            },
-            AgentType.COMPRESSION: {
-                "compressed_text": "",
-                "ratio": 1.0,
                 "fallback": True,
             },
             AgentType.REPORT_GENERATOR: {
@@ -211,9 +196,6 @@ class ResearchWorkflow:
                     result = await agent.run(deps)
                 else:
                     raise ValueError("No transformed query available for research execution")
-            elif agent_type == AgentType.COMPRESSION:
-                # Compression agent can access research plan from metadata if needed
-                result = await agent.run(deps)
             elif agent_type == AgentType.REPORT_GENERATOR:
                 # Report generator can access research plan from metadata if needed
                 result = await agent.run(deps)
@@ -383,7 +365,7 @@ class ResearchWorkflow:
         """Execute the complete research workflow.
 
         Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
-              COMPRESSION → REPORT_GENERATION
+              REPORT_GENERATION
 
         Args:
             user_query: The user's research query
@@ -492,7 +474,7 @@ class ResearchWorkflow:
                 {"findings_count": len(getattr(results, "findings", []))},
             )
 
-            research_state.advance_stage()  # Move to COMPRESSION
+            research_state.advance_stage()  # Move to REPORT_GENERATION
 
         except Exception as e:
             logfire.error(f"Research execution failed: {e}")
@@ -505,37 +487,7 @@ class ResearchWorkflow:
             )
             raise
 
-        # Stage 2: Compression
-        await emit_stage_started(research_state.request_id, ResearchStage.COMPRESSION)
-        await emit_streaming_update(
-            research_state.request_id,
-            "Compressing and organizing research findings...",
-            ResearchStage.COMPRESSION,
-        )
-
-        try:
-            compressed = await self._run_agent_with_circuit_breaker(AgentType.COMPRESSION, deps)
-            research_state.compressed_findings = compressed
-
-            if research_state.metadata:
-                research_state.metadata.compression.full = compressed
-
-            await emit_stage_completed(
-                research_state.request_id,
-                ResearchStage.COMPRESSION,
-                True,
-                {"compression_ratio": getattr(compressed, "compression_ratio", 0.5)},
-            )
-
-            research_state.advance_stage()  # Move to REPORT_GENERATION
-
-        except Exception as e:
-            logfire.error(f"Compression failed: {e}")
-            # Compression is not critical, continue with uncompressed findings
-            # compressed_findings remains None if compression fails
-            research_state.advance_stage()
-
-        # Stage 3: Report Generation
+        # Stage 2: Report Generation
         await emit_stage_started(research_state.request_id, ResearchStage.REPORT_GENERATION)
         await emit_streaming_update(
             research_state.request_id,
@@ -618,7 +570,6 @@ class ResearchWorkflow:
 
                 if current_stage in [
                     ResearchStage.RESEARCH_EXECUTION,
-                    ResearchStage.COMPRESSION,
                     ResearchStage.REPORT_GENERATION,
                 ]:
                     # Execute remaining stages

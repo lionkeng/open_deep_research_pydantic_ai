@@ -46,15 +46,14 @@ flowchart LR
    `QueryTransformationAgent` produces a `TransformedQuery` whose
    `search_queries` payload is cached in metadata and rehydrated for later stages.
 3. **Research Execution** – The workflow passes the `SearchQueryBatch` to the
-   research executor. The current implementation wraps the helper
-   `execute_research` coroutine in `src/agents/research_executor.py`, which in turn
-   prepares `ResearchExecutorDependencies` and calls a Pydantic-AI agent configured
-   with synthesis helpers. (As of this commit the compatibility wrapper does not yet
-   expose a `run()` method, so the workflow integration is incomplete and flagged
-   in remediation plans.)
+   research executor. `ResearchExecutorAgent` orchestrates tool calls for
+   extraction, clustering, contradiction analysis, and quality scoring before
+   emitting a structured `ResearchResults` object stored on the
+   `ResearchState`.
 4. **Report Generation** – `ReportGeneratorAgent` assembles the final
-   `ResearchReport` using structured tools that convert compressed content into
-   sections, generate executive summaries, and format references.
+   `ResearchReport` using the synthesized results (findings, clusters,
+   contradictions, executive summary) and formats citations for downstream
+   consumption.
 
 ## Orchestration Layer
 

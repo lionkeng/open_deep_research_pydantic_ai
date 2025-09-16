@@ -148,7 +148,7 @@ class TestClarificationWorkflowIntegration:
         stages = [
             ResearchStage.CLARIFICATION,
             ResearchStage.RESEARCH_EXECUTION,
-            ResearchStage.COMPRESSION,
+            ResearchStage.REPORT_GENERATION,
         ]
 
         for stage in stages:

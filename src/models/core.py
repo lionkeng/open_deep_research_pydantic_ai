@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 # Import Phase 2 models
-from .compression import CompressedContent
 from .metadata import ResearchMetadata
 from .report_generator import ReportSection as ResearchSection
 from .report_generator import ResearchReport
@@ -25,7 +24,6 @@ class ResearchStage(str, Enum):
     CLARIFICATION = "clarification"
     QUERY_TRANSFORMATION = "query_transformation"  # Transform query based on clarification
     RESEARCH_EXECUTION = "research_execution"
-    COMPRESSION = "compression"
     REPORT_GENERATION = "report_generation"
     COMPLETED = "completed"
     FAILED = "failed"  # Terminal state for failed research
@@ -122,9 +120,6 @@ class ResearchState(BaseModel):
     research_results: ResearchResults | None = Field(
         default=None, description="Structured research results from the executor"
     )
-    compressed_findings: CompressedContent | None = Field(
-        default=None, description="Compressed and synthesized findings"
-    )
     final_report: ResearchReport | None = Field(default=None, description="Final report")
     error_message: str | None = Field(default=None, description="Error message if any")
     started_at: datetime = Field(default_factory=datetime.now)
@@ -202,5 +197,4 @@ __all__ = [
     "ResearchResults",
     "ResearchSection",
     "ResearchReport",
-    "CompressedContent",
 ]
