@@ -24,6 +24,29 @@ from models.core import (
     ResearchState,
 )
 from models.research_executor import ResearchFinding
+from models.search_query_models import (
+    ExecutionStrategy as BatchExecutionStrategy,
+)
+from models.search_query_models import (
+    SearchQueryBatch,
+)
+from services.search import WebSearchService
+from services.search_orchestrator import (
+    ExecutionStrategy as SearchExecutionStrategy,
+)
+from services.search_orchestrator import (
+    QueryExecutionPlan,
+    SearchOrchestrator,
+)
+from services.search_orchestrator import (
+    QueryPriority as SearchQueryPriority,
+)
+from services.search_orchestrator import (
+    SearchQuery as OrchestratorQuery,
+)
+from services.search_orchestrator import (
+    SearchResult as OrchestratorResult,
+)
 
 
 class ResearchWorkflow:
@@ -40,6 +63,7 @@ class ResearchWorkflow:
         """Initialize the research workflow."""
         self.agent_factory = AgentFactory
         self._initialized = False
+        self._search_service = WebSearchService()
 
         # Concurrent processing configuration
         self._max_concurrent_tasks = 5
@@ -456,6 +480,9 @@ class ResearchWorkflow:
 
         try:
             # Research executor now receives SearchQueryBatch directly
+            if not getattr(deps, "search_results", None):
+                deps.search_results = await self._execute_search_queries(deps)
+
             results = await self._run_agent_with_circuit_breaker(AgentType.RESEARCH_EXECUTOR, deps)
 
             if isinstance(results, list):
@@ -516,6 +543,118 @@ class ResearchWorkflow:
                 recoverable=False,
             )
             raise
+
+    async def _execute_search_queries(self, deps: ResearchDependencies) -> list[dict[str, Any]]:
+        """Execute search queries for the current research state."""
+
+        batch = getattr(deps, "search_queries", None)
+        if not batch or not getattr(batch, "queries", None):
+            logfire.info("No search queries provided for execution")
+            return []
+
+        plan = self._build_query_execution_plan(batch)
+
+        orchestrator = SearchOrchestrator(search_fn=self._orchestrated_search)
+        query_results, report = await orchestrator.execute_plan(plan)
+
+        aggregated: list[dict[str, Any]] = []
+        for query, result in query_results:
+            if not result:
+                continue
+            for item in result.results:
+                if hasattr(item, "model_dump"):
+                    data = item.model_dump()
+                elif isinstance(item, dict):
+                    data = item
+                else:
+                    data = {"content": str(item)}
+
+                content = data.get("content") or data.get("snippet") or ""
+                aggregated.append(
+                    {
+                        "query": query.query,
+                        "title": data.get("title", ""),
+                        "url": data.get("url", ""),
+                        "snippet": data.get("snippet", ""),
+                        "content": content,
+                        "score": data.get("score", 0.0),
+                        "metadata": data.get("metadata", {}),
+                    }
+                )
+
+        # Record execution metadata if available
+        execution_meta = getattr(deps.research_state.metadata, "execution", None)
+        if execution_meta is not None:
+            execution_meta.results = aggregated
+            execution_meta.status = "completed"
+
+        return aggregated
+
+    def _build_query_execution_plan(self, batch: SearchQueryBatch) -> QueryExecutionPlan:
+        """Convert `SearchQueryBatch` to orchestrator execution plan."""
+
+        strategy_map = {
+            BatchExecutionStrategy.SEQUENTIAL: SearchExecutionStrategy.SEQUENTIAL,
+            BatchExecutionStrategy.PARALLEL: SearchExecutionStrategy.PARALLEL,
+            BatchExecutionStrategy.HIERARCHICAL: SearchExecutionStrategy.HIERARCHICAL,
+            BatchExecutionStrategy.ADAPTIVE: SearchExecutionStrategy.SEQUENTIAL,
+        }
+
+        orchestrator_queries: list[OrchestratorQuery] = []
+        for query in batch.queries:
+            priority = self._map_query_priority(query.priority)
+            context: dict[str, Any] = {
+                "max_results": query.max_results,
+                "search_sources": [source.value for source in query.search_sources],
+                "expected_result_type": query.expected_result_type,
+            }
+            if query.temporal_context:
+                context["temporal_context"] = query.temporal_context.model_dump()
+
+            orchestrator_queries.append(
+                OrchestratorQuery(
+                    id=query.id,
+                    query=query.query,
+                    priority=priority,
+                    context=context,
+                )
+            )
+
+        return QueryExecutionPlan(
+            queries=orchestrator_queries,
+            strategy=strategy_map.get(batch.execution_strategy, SearchExecutionStrategy.SEQUENTIAL),
+        )
+
+    def _map_query_priority(self, priority: int | None) -> SearchQueryPriority:
+        """Map numeric priority to orchestrator priority enum."""
+
+        if priority is None or priority <= 2:
+            return SearchQueryPriority.HIGH
+        if priority <= 4:
+            return SearchQueryPriority.MEDIUM
+        return SearchQueryPriority.LOW
+
+    async def _orchestrated_search(self, query: OrchestratorQuery) -> OrchestratorResult:
+        """Bridge function that executes a query through WebSearchService."""
+
+        context = query.context or {}
+        max_results = context.get("max_results", 5)
+        provider = context.get("provider")
+
+        response = await self._search_service.search(
+            query.query,
+            num_results=max_results,
+            provider=provider,
+        )
+
+        return OrchestratorResult(
+            query=query.query,
+            results=[res.model_dump() for res in response.results],
+            metadata={
+                "source": response.source,
+                "total_results": response.total_results,
+            },
+        )
 
     async def resume_research(
         self,

@@ -3,7 +3,7 @@
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -139,6 +139,7 @@ class ResearchDependencies:
     stream_callback: Any | None = None
     # Optional field for passing search queries to Research Executor
     search_queries: "SearchQueryBatch | None" = None
+    search_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 DepsT = TypeVar("DepsT", bound=ResearchDependencies)
