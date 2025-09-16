@@ -169,7 +169,7 @@ class TestEnhancedResearchExecutor:
                 api_keys=APIKeys(),
                 research_state=research_state,
             )
-            setattr(deps, "search_results", sample_search_results)
+            deps.search_results = sample_search_results
             result = await agent.run(deps)
 
         assert isinstance(result, ResearchResults)
@@ -190,6 +190,14 @@ class TestEnhancedResearchExecutor:
         }
         assert expected.issubset(tool_names)
 
+    def test_research_executor_system_prompt(self):
+        """Default system prompt should include Tree-of-Thought guidance."""
+        agent = ResearchExecutorAgent()
+        system_prompt = agent._get_default_system_prompt()
+
+        assert "Hybrid Research Synthesis Orchestrator" in system_prompt
+        assert "Tree-of-Thought" in system_prompt
+
     @pytest.mark.asyncio
     async def test_research_executor_dynamic_instructions(self):
         """Verify instructions summarize context using research dependencies."""
@@ -208,7 +216,7 @@ class TestEnhancedResearchExecutor:
                 api_keys=APIKeys(),
                 research_state=research_state,
             )
-            setattr(deps, "search_results", [{"title": "Src", "content": "Example content"}])
+            deps.search_results = [{"title": "Src", "content": "Example content"}]
             deps.search_queries = SimpleNamespace(queries=[1, 2, 3])
 
             instruction_runners = agent.agent._instructions_functions
@@ -217,9 +225,12 @@ class TestEnhancedResearchExecutor:
             ctx = SimpleNamespace(deps=deps)
             rendered = await instruction_runners[0].function(ctx)
 
-            assert "Original Query: instruction test" in rendered
-            assert "Search Queries Provided: 3" in rendered
-            assert "Search Results Available: 1" in rendered
+            assert "## Dynamic Research Context" in rendered
+            assert "- Stage: research_execution" in rendered
+            assert "- Query: instruction test" in rendered
+            assert "- Search Queries: 3" in rendered
+            assert "- Search Results: 1" in rendered
+            assert "### Search Results Snapshot" in rendered
 
     def test_research_executor_dependencies_creation(self):
         """Test creation of ResearchExecutorDependencies."""

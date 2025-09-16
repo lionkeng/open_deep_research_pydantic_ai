@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from textwrap import dedent
 from typing import Any
 
 import httpx
@@ -40,6 +41,33 @@ from .research_executor_tools import (
     identify_theme_clusters,
 )
 
+RESEARCH_EXECUTOR_SYSTEM_PROMPT = dedent(
+    """
+    # Role: Hybrid Research Synthesis Orchestrator
+
+    You coordinate deterministic web research with deep synthesis. Use the
+    registered tools to inspect findings, cluster themes, probe for
+    contradictions, and assess quality before finalizing outputs.
+
+    ## Tree-of-Thought Workflow
+    1. Pattern Discovery
+       - Map convergent, divergent, emergent, and temporal signals.
+       - Use clustering to understand topical structure.
+    2. Insight Formation
+       - Distill the most decision-relevant findings.
+       - Resolve or flag contradictions explicitly.
+    3. Quality Verification
+       - Evaluate completeness, coherence, confidence, and reliability.
+       - Call the quality tool to numerically score the synthesis.
+
+    ## Operational Guidelines
+    - Prefer tool calls over internal speculation when data is required.
+    - Always tie insights back to specific findings and sources.
+    - Surface meaningful gaps, risks, and recommended next actions.
+    - Produce a fully populated `ResearchResults` instance.
+    """
+)
+
 
 class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResults]):
     """Base research agent wrapper around the synthesis helpers."""
@@ -64,19 +92,31 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             query = deps.research_state.user_query
             stage = deps.research_state.current_stage.value
             search_queries = getattr(deps, "search_queries", None)
-            query_count = len(search_queries.queries) if search_queries else 0
             search_results = getattr(deps, "search_results", []) or []
-            search_result_count = len(search_results)
 
-            return (
-                "# RESEARCH EXECUTION CONTEXT\n"
-                f"Current Stage: {stage}\n"
-                f"Original Query: {query}\n"
-                f"Search Queries Provided: {query_count}\n"
-                f"Search Results Available: {search_result_count}\n"
-                "Use the registered synthesis tools to extract findings, cluster themes, "
-                "detect contradictions, and assess quality before generating the summary."
-            )
+            query_summary = self._summarize_search_queries(search_queries)
+            result_summary = self._summarize_search_results(search_results)
+
+            return dedent(
+                f"""
+                ## Dynamic Research Context
+                - Stage: {stage}
+                - Query: {query}
+                - Search Queries: {len(getattr(search_queries, 'queries', []) or [])}
+                - Search Results: {len(search_results)}
+
+                ### Search Queries Overview
+                {query_summary}
+
+                ### Search Results Snapshot
+                {result_summary}
+
+                ### Tooling Checklist
+                - Extract findings before clustering themes.
+                - Examine contradictions and patterns from findings.
+                - Run quality assessment prior to finalizing results.
+                """
+            ).strip()
 
         @self.agent.tool
         async def tool_extract_hierarchical_findings(
@@ -226,14 +266,47 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
                 contradictions,
             )
 
+    def _summarize_search_queries(self, search_queries: Any) -> str:
+        """Create a compact summary of provided search queries."""
+
+        if not search_queries or not getattr(search_queries, "queries", None):
+            return "- No query details provided."
+
+        snippets: list[str] = []
+        for query in search_queries.queries[:3]:
+            if hasattr(query, "query"):
+                text = getattr(query, "query", "").strip()
+                priority = getattr(query, "priority", "?")
+                snippets.append(f"- {text} (priority: {priority})")
+            else:
+                snippets.append(f"- {str(query)}")
+        if len(search_queries.queries) > 3:
+            snippets.append("- …")
+        return "\n".join(snippets)
+
+    def _summarize_search_results(self, search_results: list[dict[str, Any]]) -> str:
+        """Provide a snapshot of available search results."""
+
+        if not search_results:
+            return "- No search results available."
+
+        snippets: list[str] = []
+        for result in search_results[:3]:
+            title = result.get("title") or "Untitled"
+            url = result.get("url") or "no-url"
+            snippet = result.get("content") or result.get("snippet") or ""
+            snippet = " ".join(snippet.split())
+            if len(snippet) > 160:
+                snippet = f"{snippet[:157]}…"
+            snippets.append(f"- {title} ({url}) — {snippet}")
+        if len(search_results) > 3:
+            snippets.append("- …")
+        return "\n".join(snippets)
+
     def _get_default_system_prompt(self) -> str:
         """Return a concise system prompt describing the agent role."""
 
-        return (
-            "You are a hybrid research synthesis agent that combines deterministic "
-            "query execution with structured analysis. Use available findings to "
-            "produce organized outputs that the downstream report generator can consume."
-        )
+        return RESEARCH_EXECUTOR_SYSTEM_PROMPT
 
     def _get_output_type(self) -> type[ResearchResults]:
         return ResearchResults
