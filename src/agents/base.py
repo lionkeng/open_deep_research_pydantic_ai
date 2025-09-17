@@ -8,6 +8,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
+    from models.research_plan_models import TransformedQuery
     from models.search_query_models import SearchQueryBatch
 
 import httpx
@@ -137,9 +138,20 @@ class ResearchDependencies:
     # Removed redundant metadata field - access via research_state.metadata
     usage: RunUsage | None = None
     stream_callback: Any | None = None
-    # Optional field for passing search queries to Research Executor
-    search_queries: "SearchQueryBatch | None" = None
     search_results: list[dict[str, Any]] = field(default_factory=list)
+
+    def get_transformed_query(self) -> "TransformedQuery | None":
+        """Return the transformed query stored on metadata, if any."""
+
+        return getattr(self.research_state.metadata.query, "transformed_query", None)
+
+    def get_search_query_batch(self) -> "SearchQueryBatch | None":
+        """Return the stored search query batch without copying."""
+
+        transformed_query = self.get_transformed_query()
+        if transformed_query is None:
+            return None
+        return transformed_query.search_queries
 
 
 DepsT = TypeVar("DepsT", bound=ResearchDependencies)

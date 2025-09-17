@@ -17,6 +17,7 @@ from .clarification import (
     ClarificationRequest,
     ClarificationResponse,
 )
+from .research_plan_models import TransformedQuery
 
 
 class ClarificationMetadata(BaseModel):
@@ -114,10 +115,9 @@ class QueryMetadata(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True)
 
-    transformed_query: dict[str, Any] | None = Field(
+    transformed_query: TransformedQuery | None = Field(
         default=None, description="Query transformation results"
     )
-    search_queries: list[str] = Field(default_factory=list, description="Search queries executed")
 
 
 class BriefMetadata(BaseModel):

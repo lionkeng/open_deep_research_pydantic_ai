@@ -91,7 +91,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             deps = ctx.deps
             query = deps.research_state.user_query
             stage = deps.research_state.current_stage.value
-            search_queries = getattr(deps, "search_queries", None)
+            search_queries = deps.get_search_query_batch()
             search_results = getattr(deps, "search_results", []) or []
 
             query_summary = self._summarize_search_queries(search_queries)
@@ -440,7 +440,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         }
 
         metadata = {
-            "search_query_count": len(getattr(deps, "search_queries", []) or []),
+            "search_query_count": len(getattr(deps.get_search_query_batch(), "queries", []) or []),
             "generation_mode": "structured_fallback",
         }
 

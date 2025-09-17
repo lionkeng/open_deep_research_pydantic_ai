@@ -31,6 +31,13 @@ from models.research_executor import (
 from models.api_models import APIKeys
 from models.core import ResearchMetadata, ResearchStage, ResearchState
 from agents.base import ResearchDependencies
+from models.search_query_models import SearchQuery, SearchQueryBatch
+from models.research_plan_models import (
+    ResearchMethodology,
+    ResearchObjective,
+    ResearchPlan,
+    TransformedQuery,
+)
 
 
 class TestEnhancedResearchExecutor:
@@ -217,7 +224,41 @@ class TestEnhancedResearchExecutor:
                 research_state=research_state,
             )
             deps.search_results = [{"title": "Src", "content": "Example content"}]
-            deps.search_queries = SimpleNamespace(queries=[1, 2, 3])
+
+            batch = SearchQueryBatch(
+                queries=[
+                    SearchQuery(
+                        id=f"q{i}",
+                        query=f"test query {i}",
+                        rationale="test rationale",
+                        objective_id="obj-1",
+                    )
+                    for i in range(1, 4)
+                ]
+            )
+            plan = ResearchPlan(
+                objectives=[
+                    ResearchObjective(
+                        id="obj-1",
+                        objective="Investigate testing workflow",
+                        priority="PRIMARY",
+                        success_criteria="Document dynamic instruction behavior",
+                        key_questions=["What should instructions include?"],
+                    )
+                ],
+                methodology=ResearchMethodology(
+                    approach="desk_research",
+                    data_sources=["web"],
+                    analysis_methods=["synthesis"],
+                ),
+                expected_deliverables=["summary"],
+                scope_definition="Test scope",
+            )
+            deps.research_state.metadata.query.transformed_query = TransformedQuery(
+                original_query=research_state.user_query,
+                search_queries=batch,
+                research_plan=plan,
+            )
 
             instruction_runners = agent.agent._instructions_functions
             assert instruction_runners, "Expected dynamic instructions to be registered"

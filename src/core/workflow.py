@@ -198,28 +198,17 @@ class ResearchWorkflow:
                 # Run query transformation to get TransformedQuery
                 result = await agent.run(deps)
             elif agent_type == AgentType.RESEARCH_EXECUTOR:
-                # Retrieve transformed query from metadata and pass search queries via dependencies
-                if (
-                    deps.research_state.metadata
-                    and deps.research_state.metadata.query.transformed_query
-                ):
-                    transformed_query_data = deps.research_state.metadata.query.transformed_query
-                    # Reconstruct SearchQueryBatch from the stored data
-                    from models.search_query_models import SearchQueryBatch
-
-                    search_queries_data = transformed_query_data.get("search_queries", {})
-                    search_queries = SearchQueryBatch.model_validate(search_queries_data)
-                    # Pass search queries to the Research Executor via dependencies
-                    # for debugging purposes, we log the queries here
-                    logfire.info(
-                        "Passing search queries to Research Executor",
-                        queries=[q.query for q in search_queries.queries],
-                        num_queries=len(search_queries.queries),
-                    )
-                    deps.search_queries = search_queries
-                    result = await agent.run(deps)
-                else:
+                transformed_query = deps.get_transformed_query()
+                if transformed_query is None:
                     raise ValueError("No transformed query available for research execution")
+
+                logfire.info(
+                    "Passing search queries to Research Executor",
+                    queries=[q.query for q in transformed_query.search_queries.queries],
+                    num_queries=len(transformed_query.search_queries.queries),
+                )
+
+                result = await agent.run(deps)
             elif agent_type == AgentType.REPORT_GENERATOR:
                 # Report generator can access research plan from metadata if needed
                 result = await agent.run(deps)
@@ -328,14 +317,8 @@ class ResearchWorkflow:
                     AgentType.QUERY_TRANSFORMATION, deps
                 )
 
-                # Store the entire TransformedQuery in metadata for inter-agent communication
-                research_state.metadata.query.transformed_query = {
-                    "original_query": enhanced_query.original_query,
-                    "search_queries": enhanced_query.search_queries.model_dump(),
-                    "research_plan": enhanced_query.research_plan.model_dump(),
-                    "transformation_rationale": enhanced_query.transformation_rationale,
-                    "confidence_score": enhanced_query.confidence_score,
-                }
+                # Store the TransformedQuery object directly for downstream access
+                research_state.metadata.query.transformed_query = enhanced_query
 
                 await emit_stage_completed(
                     research_state.request_id,
@@ -436,7 +419,7 @@ class ResearchWorkflow:
                 research_state.advance_stage()  # Move to RESEARCH_EXECUTION
 
                 # Execute remaining stages with concurrent processing where possible
-                await self._execute_research_stages(research_state, deps, stream_callback)
+                await self._execute_research_stages(deps, stream_callback)
 
                 # Mark as complete
                 research_state.current_stage = ResearchStage.COMPLETED
@@ -463,12 +446,11 @@ class ResearchWorkflow:
                 return research_state
 
     async def _execute_research_stages(
-        self,
-        research_state: ResearchState,
-        deps: ResearchDependencies,
-        stream_callback: Any | None = None,
+        self, deps: ResearchDependencies, stream_callback: Any | None = None
     ) -> None:
         """Execute the main research stages after clarification and transformation."""
+
+        research_state = deps.research_state
 
         # Stage 1: Research Execution
         await emit_stage_started(research_state.request_id, ResearchStage.RESEARCH_EXECUTION)
@@ -480,8 +462,11 @@ class ResearchWorkflow:
 
         try:
             # Research executor now receives SearchQueryBatch directly
-            if not getattr(deps, "search_results", None):
-                deps.search_results = await self._execute_search_queries(deps)
+            if not deps.search_results:
+                batch = deps.get_search_query_batch()
+                if batch is None:
+                    raise ValueError("Missing SearchQueryBatch prior to search execution")
+                deps.search_results = await self._execute_search_queries(batch, deps)
 
             results = await self._run_agent_with_circuit_breaker(AgentType.RESEARCH_EXECUTOR, deps)
 
@@ -544,18 +529,19 @@ class ResearchWorkflow:
             )
             raise
 
-    async def _execute_search_queries(self, deps: ResearchDependencies) -> list[dict[str, Any]]:
+    async def _execute_search_queries(
+        self, batch: SearchQueryBatch, deps: ResearchDependencies
+    ) -> list[dict[str, Any]]:
         """Execute search queries for the current research state."""
 
-        batch = getattr(deps, "search_queries", None)
-        if not batch or not getattr(batch, "queries", None):
+        if not batch.queries:
             logfire.info("No search queries provided for execution")
             return []
 
         plan = self._build_query_execution_plan(batch)
 
         orchestrator = SearchOrchestrator(search_fn=self._orchestrated_search)
-        query_results, report = await orchestrator.execute_plan(plan)
+        query_results, _ = await orchestrator.execute_plan(plan)
 
         aggregated: list[dict[str, Any]] = []
         for query, result in query_results:
@@ -712,7 +698,7 @@ class ResearchWorkflow:
                     ResearchStage.REPORT_GENERATION,
                 ]:
                     # Execute remaining stages
-                    await self._execute_research_stages(research_state, deps, stream_callback)
+                    await self._execute_research_stages(deps, stream_callback)
 
                     # Mark as complete
                     research_state.current_stage = ResearchStage.COMPLETED
