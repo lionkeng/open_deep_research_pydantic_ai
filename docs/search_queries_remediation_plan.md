@@ -6,11 +6,11 @@ This document provides a comprehensive plan to fix critical design issues and bu
 
 ## Issues Identified
 
-### 1. **[CRITICAL] Timing Bug**
-- **Location**: `src/core/workflow.py` line 484
-- **Problem**: `_execute_search_queries(deps)` is called before `deps.search_queries` is populated
-- **Impact**: CLI crashes with AttributeError
-- **Root Cause**: Search queries are extracted from metadata AFTER execution is attempted
+### 1. **[CRITICAL] Timing/Data Flow Bug**
+- **Location**: `src/core/workflow.py` line 482-486
+- **Problem**: `_execute_search_queries(deps)` runs while no `SearchQueryBatch` has been attached to the dependencies
+- **Impact**: Search execution no-ops (returns empty results), so the Research Executor runs without any findings
+- **Root Cause**: Search queries are only re-materialized inside `_run_agent_with_circuit_breaker` after the failed call path
 
 ### 2. **[HIGH] Dead Code**
 - **Location**: `src/models/metadata.py` line 120
@@ -37,53 +37,54 @@ This document provides a comprehensive plan to fix critical design issues and bu
 
 ## Implementation Plan
 
-### Phase 1: Critical Timing Bug Fix (Immediate - 1 hour)
+### Phase 1: Establish Single Source of Truth + Fix Timing Bug (Immediate - 1.5 hours)
 
 #### Changes Required
 
-**File: `src/core/workflow.py`**
+**Files:**
 
-**Current Buggy Code (around line 483-484):**
-```python
-# Research executor now receives SearchQueryBatch directly
-if not getattr(deps, "search_results", None):
-    deps.search_results = await self._execute_search_queries(deps)  # BUG: deps.search_queries is None!
-```
+- `src/models/metadata.py`
+- `src/models/research_plan_models.py`
+- `src/core/workflow.py`
+- `src/agents/base.py`
 
-**Fixed Code:**
-```python
-# Extract search queries from metadata FIRST
-if (deps.research_state.metadata
-    and deps.research_state.metadata.query.transformed_query):
-    transformed_query_data = deps.research_state.metadata.query.transformed_query
-    from models.search_query_models import SearchQueryBatch
-    search_queries_data = transformed_query_data.get("search_queries", {})
-    if search_queries_data:
-        deps.search_queries = SearchQueryBatch.model_validate(search_queries_data)
-        logfire.info(
-            "Extracted search queries from metadata",
-            num_queries=len(deps.search_queries.queries) if deps.search_queries else 0
-        )
+**Key Steps:**
 
-# NOW execute search queries (they're available)
-if not getattr(deps, "search_results", None):
-    deps.search_results = await self._execute_search_queries(deps)
-```
+1. **Store the `TransformedQuery` object directly in metadata**
+   - Change `QueryMetadata.transformed_query` to type `TransformedQuery | None` (instead of `dict[str, Any]`).
+   - Update `_execute_two_phase_clarification` to assign the returned `enhanced_query` object directly:
+     ```python
+     research_state.metadata.query.transformed_query = enhanced_query
+     ```
+     This keeps a single, typed copy of the search queries and research plan.
 
-**Also Remove Duplicate Logic (lines 202-219):**
-```python
-# DELETE or simplify this entire block in _run_agent_with_circuit_breaker
-# since we're extracting in _execute_research_stages instead
-```
+2. **Provide a zero-copy accessor on dependencies**
+   - Add a helper on `ResearchDependencies` (e.g., `def get_search_query_batch(self) -> SearchQueryBatch | None`) that returns
+     `self.research_state.metadata.query.transformed_query.search_queries` when available.
+   - Update all call sites to rely on the accessor immediately—no fallback or duplicate storage.
+
+3. **Plumb the accessor through the workflow**
+   - In `_execute_research_stages`, fetch the batch via the accessor before calling `_execute_search_queries`:
+     ```python
+     batch = deps.get_search_query_batch()
+     if not batch:
+         raise ValueError("Missing SearchQueryBatch prior to search execution")
+     deps.search_results = await self._execute_search_queries(batch, deps)
+     ```
+   - Update `_execute_search_queries` to accept the batch directly (or call the accessor internally) instead of reading `deps.search_queries`.
+
+4. **Remove the redundant reconstruction block**
+   - Delete lines 200-219 in `_run_agent_with_circuit_breaker`; the Research Executor should rely on `deps.get_search_query_batch()` inside its agent implementation and not re-attach data.
+
 
 #### Testing
 ```python
 # tests/test_search_queries_timing.py
-async def test_search_queries_extracted_before_execution():
-    """Verify search queries are available when _execute_search_queries is called"""
-    # Mock workflow with metadata containing search_queries
-    # Verify deps.search_queries is populated before execution
-    # Assert no AttributeError
+async def test_search_queries_present_before_execution():
+    """Search execution uses the batch stored on metadata without copying."""
+    # Arrange workflow with a TransformedQuery already on metadata
+    # Assert that get_search_query_batch returns the same instance the transformer produced
+    # Verify _execute_search_queries receives a populated batch
 ```
 
 ### Phase 2: Remove Dead Code (30 minutes)
@@ -105,7 +106,7 @@ class QueryMetadata(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True)
 
-    transformed_query: dict[str, Any] | None = Field(
+    transformed_query: TransformedQuery | None = Field(
         default=None, description="Query transformation results"
     )
     # search_queries line REMOVED - it was never used
@@ -160,65 +161,25 @@ await self._execute_research_stages(research_state, deps, stream_callback)
 await self._execute_research_stages(deps, stream_callback)
 ```
 
-### Phase 4: Consolidate Search Queries (2 hours)
-
-#### Design Goals
-- Single source of truth: `TransformedQuery.search_queries`
-- Pass by reference, not copy
-- Remove duplicate storage
+### Phase 4: Clean Up Redundant Fields (1 hour)
 
 #### Changes Required
 
-**Step 1: Add Backward Compatibility Property**
-
-**File: `src/agents/base.py`**
-```python
-class ResearchDependencies(BaseModel):
-    # Keep the field for now but deprecate it
-    search_queries: SearchQueryBatch | None = None  # Will be removed in Phase 5
-
-    @property
-    def get_search_queries(self) -> SearchQueryBatch | None:
-        """Get search queries from metadata if not directly set."""
-        if self.search_queries:
-            return self.search_queries
-
-        # Fallback to metadata
-        if (self.research_state.metadata
-            and self.research_state.metadata.query.transformed_query):
-            data = self.research_state.metadata.query.transformed_query.get("search_queries")
-            if data:
-                return SearchQueryBatch.model_validate(data)
-        return None
-```
-
-**Step 2: Update Usage Pattern**
-```python
-# Throughout codebase, replace:
-deps.search_queries
-# With:
-deps.get_search_queries
-```
-
-### Phase 5: Final Cleanup (1 hour)
-
-#### Changes Required
-
-1. **Remove `search_queries` from `ResearchDependencies`** after ensuring all code uses the property
-2. **Simplify `_execute_search_queries` method** to use the property
-3. **Remove all duplicate extraction logic**
+1. Remove `search_queries` from `ResearchDependencies` once all call sites rely on the accessor.
+2. Update `_execute_search_queries` signature to accept the batch directly.
+3. Ensure `ResearchExecutorAgent` and related helpers (`_summarize_search_queries`, logging, etc.) call the accessor rather than touching a field.
 
 #### Final State
 ```python
-# Only ONE place defines search_queries:
-class TransformedQuery(BaseModel):
-    search_queries: SearchQueryBatch  # Source of truth
+# Only ONE place owns the search batch:
+class QueryMetadata(BaseModel):
+    transformed_query: TransformedQuery | None
 
 # Access pattern:
-# 1. Query Transformation creates TransformedQuery
-# 2. Stored in metadata.query.transformed_query
-# 3. Accessed via deps.research_state.metadata when needed
-# 4. No duplicate storage
+# 1. Query Transformation returns TransformedQuery (with SearchQueryBatch inside)
+# 2. Workflow stores the object on metadata
+# 3. Downstream consumers obtain it via ResearchDependencies.get_transformed_query()/get_search_query_batch()
+# 4. No serialization/deserialization unless persisting state externally
 ```
 
 ## Testing Strategy
@@ -228,30 +189,31 @@ class TransformedQuery(BaseModel):
 ```python
 # tests/unit/test_search_queries_fix.py
 class TestSearchQueriesRemediation:
-    async def test_timing_fix(self):
-        """Verify extraction happens before execution"""
+    async def test_query_batch_attached_before_execution(self):
+        """get_search_query_batch returns the same instance produced by transformation."""
 
-    def test_no_dead_fields(self):
-        """Verify QueryMetadata has no unused fields"""
+    def test_metadata_holds_single_transformed_query(self):
+        """QueryMetadata stores a TransformedQuery object and no redundant list field."""
 
-    async def test_single_parameter_pattern(self):
-        """Verify _execute_research_stages uses only deps"""
-
-    def test_single_source_of_truth(self):
-        """Verify search_queries defined in only one place"""
+    async def test_execute_research_stages_uses_accessor(self):
+        """_execute_research_stages calls accessor and raises if batch missing."""
 ```
 
 ### Integration Tests
 
 ```python
 # tests/integration/test_workflow_search_queries.py
-async def test_full_workflow_with_search_queries():
-    """End-to-end test of search query handling"""
-    # Create workflow
-    # Verify query transformation produces search_queries
-    # Verify execution receives search_queries
-    # Verify no errors or duplications
+async def test_full_workflow_executes_search_queries():
+    """End-to-end verification that searches run and findings propagate."""
+    # Run workflow with mocked search service
+    # Assert the orchestrator receives the expected SearchQueryBatch and returns results
+    # Confirm Research Executor instructions see accurate query counts
 ```
+
+### Regression Coverage
+
+- Update (or add) a CLI smoke test to ensure `uv run python -m src.cli ...` performs real searches after remediation.
+- Extend `tests/integration/test_research_executor_integration.py` with a fixture that injects a `SearchQueryBatch` via the accessor to prove downstream agents consume the new data path.
 
 ### CLI Smoke Test
 
@@ -267,11 +229,10 @@ uv run python -m src.cli research "What are the latest AI developments?" --verbo
 
 | Phase | Risk Level | Mitigation Strategy |
 |-------|------------|-------------------|
-| 1 | LOW | Test thoroughly, keep backup |
+| 1 | MEDIUM | Update all call sites and run focused unit tests on accessor path |
 | 2 | LOW | Grep for usage before removal |
 | 3 | LOW | Update all call sites |
-| 4 | MEDIUM | Use compatibility property |
-| 5 | MEDIUM | Gradual migration with deprecation |
+| 4 | MEDIUM | Coordinate field removal with thorough test pass |
 
 ## Rollback Procedures
 
@@ -296,13 +257,13 @@ cp src/models/metadata.py src/models/metadata.py.backup
 ## Success Metrics
 
 ### Phase 1 Success
-- ✅ CLI runs without AttributeError
-- ✅ Search queries execute successfully
-- ✅ All existing tests pass
+- ✅ `_execute_research_stages` acquires a populated `SearchQueryBatch` via the accessor before search execution
+- ✅ Search orchestrator receives non-empty batches in automated tests
+- ✅ All updated call sites rely on the accessor without fallback data paths
 
 ### Overall Success
-- ✅ 50% reduction in redundant field definitions
-- ✅ Single source of truth for search_queries
+- ✅ Redundant search-query fields removed or deprecated
+- ✅ Single source of truth for search queries enforced through `QueryMetadata.transformed_query`
 - ✅ No parameter redundancy
 - ✅ Improved code maintainability score
 - ✅ Zero regression in functionality
@@ -311,13 +272,12 @@ cp src/models/metadata.py src/models/metadata.py.backup
 
 | Phase | Duration | Dependencies | Start Date | Completion |
 |-------|----------|--------------|------------|------------|
-| 1 | 1 hour | None | Immediate | [ ] |
+| 1 | 1.5 hours | None | Immediate | [ ] |
 | 2 | 30 min | Phase 1 | After 1 | [ ] |
 | 3 | 1 hour | Phase 1-2 | After 2 | [ ] |
-| 4 | 2 hours | Phase 1-3 | After 3 | [ ] |
-| 5 | 1 hour | Phase 1-4 | After 4 | [ ] |
+| 4 | 1 hour | Phase 1-3 | After 3 | [ ] |
 
-**Total Estimated Time**: 5.5 hours
+**Total Estimated Time**: 4 hours
 
 ## Command Reference
 
@@ -358,16 +318,16 @@ grep -n "class.*QueryMetadata" src/ --include="*.py"
 ```
 TransformedQuery created → Serialized to dict → Stored in metadata
                                                           ↓
-ResearchExecutor called → deps.search_queries is None ← Not extracted yet!
-            ↓
-    AttributeError!
+Research workflow attempts search → Accessor finds nothing → `_execute_search_queries` returns []
+                                                          ↓
+Research Executor runs without findings
 ```
 
 ### Future State (Fixed)
 ```
-TransformedQuery created → Stored in metadata
+TransformedQuery created → Stored (typed) on metadata
                                 ↓
-                        Extract to deps
+                Accessor returns stored SearchQueryBatch
                                 ↓
                     Execute search queries
                                 ↓
