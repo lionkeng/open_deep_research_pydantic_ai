@@ -1,7 +1,13 @@
 """Integration tests for Research Executor components."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from agents.research_executor_tools import (
+    ResearchExecutorDependencies,
+    analyze_patterns,
+)
 from models.research_executor import (
     ConfidenceLevel,
     ImportanceLevel,
@@ -11,9 +17,14 @@ from models.research_executor import (
     Contradiction,
     ExecutiveSummary,
     ResearchResults,
+    OptimizationConfig,
+    PatternAnalysis,
+    PatternType,
 )
 from services.synthesis_engine import SynthesisEngine
 from services.contradiction_detector import ContradictionDetector
+from services.cache_manager import CacheManager
+from services.metrics_collector import MetricsCollector
 
 
 class TestResearchExecutorIntegration:
@@ -268,3 +279,46 @@ class TestResearchExecutorIntegration:
         # When level is provided, score is calculated from level
         assert finding2.confidence_score == ConfidenceLevel.LOW.to_score()
         assert finding2.importance_score == ImportanceLevel.MEDIUM.to_score()
+
+    @pytest.mark.asyncio
+    async def test_pattern_analysis_cache_roundtrip(self, sample_findings):
+        """Ensure cached pattern analyses deserialize without errors."""
+
+        cache_manager = CacheManager(OptimizationConfig())
+        metrics = MetricsCollector(OptimizationConfig())
+
+        pattern = PatternAnalysis(
+            pattern_type=PatternType.CONVERGENCE,
+            pattern_name="Consensus",
+            description="Multiple findings align",
+            strength=0.7,
+            finding_ids=["0", "1"],
+            confidence_factors={"confidence": 0.65},
+        )
+
+        pattern_recognizer = MagicMock()
+        pattern_recognizer.detect_patterns.return_value = [pattern]
+
+        deps = ResearchExecutorDependencies(
+            cache_manager=cache_manager,
+            pattern_recognizer=pattern_recognizer,
+            metrics_collector=metrics,
+        )
+
+        clusters = [
+            ThemeCluster(
+                theme_name="Cluster",
+                description="",
+                findings=sample_findings,
+                coherence_score=0.7,
+                importance_score=0.6,
+            )
+        ]
+
+        first_run = await analyze_patterns(deps, sample_findings, clusters)
+        second_run = await analyze_patterns(deps, sample_findings, clusters)
+
+        assert first_run
+        assert second_run
+        assert isinstance(second_run[0], PatternAnalysis)
+        assert pattern_recognizer.detect_patterns.call_count == 1

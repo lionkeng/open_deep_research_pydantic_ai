@@ -55,19 +55,20 @@ def base_dependencies() -> ResearchExecutorDependencies:
             description="Conflict",
             confidence_score=0.75,
             resolution_suggestion="Investigate",
+            contradiction_type="direct",
         )
     ]
 
     pattern_recognizer = MagicMock()
     pattern_recognizer.detect_patterns.return_value = [
-        {
-            "type": PatternType.CONVERGENCE,
-            "name": "Pattern",
-            "description": "Description",
-            "strength": 0.6,
-            "finding_indices": [0, 1],
-            "implications": ["Implication"],
-        }
+        PatternAnalysis(
+            pattern_type=PatternType.CONVERGENCE,
+            pattern_name="Pattern",
+            description="Description",
+            strength=0.6,
+            finding_ids=["0", "1"],
+            implications=["Implication"],
+        )
     ]
 
     confidence_analyzer = MagicMock()

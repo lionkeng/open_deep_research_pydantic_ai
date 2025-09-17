@@ -1,16 +1,15 @@
 """Cache management service for research executor."""
 
 import hashlib
-import json
 import sys
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 import logfire
-from pydantic import BaseModel
 
 from models.research_executor import CacheMetadata, OptimizationConfig
+from utils.cache_serialization import dumps_for_cache
 
 T = TypeVar("T")
 
@@ -45,15 +44,8 @@ class CacheManager:
         Returns:
             Cache key string
         """
-        # Convert content to string for hashing
-        if isinstance(content, BaseModel):
-            content_str = content.model_dump_json()
-        elif isinstance(content, list | dict):
-            content_str = json.dumps(content, sort_keys=True)
-        else:
-            content_str = str(content)
-
-        content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+        serialized = dumps_for_cache({"cache_type": cache_type, "content": content})
+        content_hash = hashlib.sha256(serialized.encode()).hexdigest()
         return f"{cache_type}:{content_hash[:16]}"
 
     def _calculate_size(self, obj: Any) -> int:
@@ -65,27 +57,15 @@ class CacheManager:
         Returns:
             Size in bytes
         """
-        if isinstance(obj, BaseModel):
-            try:
-                json_str = obj.model_dump_json()
-                if len(json_str) > 1024 * 1024:  # 1MB limit
-                    return sys.getsizeof(obj)
-                return len(json_str.encode())
-            except (MemoryError, RecursionError):
-                return sys.getsizeof(obj)
-        elif isinstance(obj, str):
-            return len(obj.encode())
-        elif isinstance(obj, list | dict):
-            try:
-                # Limit serialization size for safety
-                json_str = json.dumps(obj)
-                if len(json_str) > 1024 * 1024:  # 1MB limit
-                    return sys.getsizeof(obj)  # Fallback to rough estimate
-                return len(json_str.encode())
-            except (MemoryError, RecursionError):
-                return sys.getsizeof(obj)
-        else:
+        try:
+            serialized = dumps_for_cache(obj)
+        except (MemoryError, RecursionError, TypeError, ValueError):
             return sys.getsizeof(obj)
+
+        encoded = serialized.encode()
+        if len(encoded) > 1024 * 1024:  # 1MB limit
+            return sys.getsizeof(obj)
+        return len(encoded)
 
     def _enforce_size_limit(self) -> None:
         """Enforce the maximum cache size limit."""
@@ -177,9 +157,10 @@ class CacheManager:
         size_bytes = self._calculate_size(value)
         ttl = ttl_override or self.config.cache_ttl_seconds
 
+        serialized_content = dumps_for_cache(content_key)
         metadata = CacheMetadata(
             key=key,
-            content_hash=hashlib.sha256(str(content_key).encode()).hexdigest(),
+            content_hash=hashlib.sha256(serialized_content.encode()).hexdigest(),
             created_at=datetime.now(UTC),
             expires_at=datetime.now(UTC) + timedelta(seconds=ttl),
             size_bytes=size_bytes,

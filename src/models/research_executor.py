@@ -1,5 +1,7 @@
 """Research executor models for the research system."""
 
+from __future__ import annotations
+
 import json
 import math
 from collections import Counter
@@ -7,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from utils.validation import (
     ContradictionSeverityCalculator,
@@ -35,7 +37,7 @@ class ConfidenceLevel(str, Enum):
         return mapping[self]
 
     @classmethod
-    def from_score(cls, score: float) -> "ConfidenceLevel":
+    def from_score(cls, score: float) -> ConfidenceLevel:
         """Convert numeric score to confidence level."""
         if score >= 0.8:
             return cls.HIGH
@@ -65,7 +67,7 @@ class ImportanceLevel(str, Enum):
         return mapping[self]
 
     @classmethod
-    def from_score(cls, score: float) -> "ImportanceLevel":
+    def from_score(cls, score: float) -> ImportanceLevel:
         """Convert numeric score to importance level."""
         if score >= 0.9:
             return cls.CRITICAL
@@ -222,15 +224,15 @@ class ThemeCluster(BaseModel):
         return sum(1 for f in self.findings if f.importance == ImportanceLevel.CRITICAL)
 
 
-class Contradiction(BaseModel):
+class LegacyContradiction(BaseModel):
     """Represents a contradiction between findings with comprehensive severity analysis."""
 
-    finding_1_id: str = Field(description="ID/index of first finding")
-    finding_2_id: str = Field(description="ID/index of second finding")
-    contradiction_type: str = Field(
-        description="Type of contradiction (direct, partial, temporal, etc.)"
+    finding_1_id: str | None = Field(default=None, description="ID/index of first finding")
+    finding_2_id: str | None = Field(default=None, description="ID/index of second finding")
+    contradiction_type: str | None = Field(
+        default=None, description="Type of contradiction (direct, partial, temporal, etc.)"
     )
-    explanation: str = Field(description="Explanation of the contradiction")
+    explanation: str | None = Field(default=None, description="Explanation of the contradiction")
     resolution_hint: str | None = Field(
         default=None, description="Hint for resolving the contradiction"
     )
@@ -326,9 +328,10 @@ class Contradiction(BaseModel):
 
     def needs_immediate_resolution(self) -> bool:
         """Check if contradiction needs immediate resolution."""
+        contradiction_type = (self.contradiction_type or "").lower()
         return (
             self.severity > 0.7
-            or self.contradiction_type.lower() == "direct"
+            or contradiction_type == "direct"
             or self.priority <= 2
             or self.severity_level in ["critical", "high"]
         )
@@ -1260,7 +1263,7 @@ class ResearchFinding(BaseModel):
     category: str | None = Field(default=None, description="Category or topic of this finding")
 
     @classmethod
-    def from_hierarchical(cls, hf: HierarchicalFinding) -> "ResearchFinding":
+    def from_hierarchical(cls, hf: HierarchicalFinding) -> ResearchFinding:
         """Convert from hierarchical finding."""
         return cls(
             finding=hf.finding,
@@ -1404,16 +1407,66 @@ class ContradictionType(str, Enum):
     TEMPORAL = "temporal"
 
 
-class Contradiction(BaseModel):
-    """Detected contradiction between evidence items."""
+class Contradiction(LegacyContradiction):
+    """Detected contradiction between evidence items with backward compatibility."""
 
-    id: str = Field(description="Unique contradiction identifier")
-    type: ContradictionType = Field(description="Type of contradiction")
-    evidence_indices: list[int] = Field(description="Indices of conflicting evidence")
-    description: str = Field(description="Description of the contradiction")
-    confidence_score: float = Field(ge=0.0, le=1.0, description="Confidence in this contradiction")
-    resolution_suggestion: str = Field(description="Suggestion for resolving the contradiction")
+    id: str | None = Field(default=None, description="Unique contradiction identifier")
+    type: ContradictionType | None = Field(
+        default=None, description="Enum-based contradiction type"
+    )
+    evidence_indices: list[int] = Field(
+        default_factory=list, description="Indices of conflicting evidence"
+    )
+    description: str | None = Field(
+        default=None, description="Human-readable description of the contradiction"
+    )
+    confidence_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        default=0.5,
+        description="Confidence in this contradiction",
+    )
+    resolution_suggestion: str | None = Field(
+        default=None, description="Suggestion for resolving the contradiction"
+    )
     metadata: dict[str, Any] = Field(default_factory=dict, description="Contradiction metadata")
+
+    @model_validator(mode="after")
+    def _synchronise_fields(self) -> Contradiction:
+        """Keep legacy and modern fields aligned."""
+
+        if self.contradiction_type is None and self.type is not None:
+            self.contradiction_type = self.type.value
+        elif self.type is None and self.contradiction_type:
+            try:
+                self.type = ContradictionType(self.contradiction_type.lower())
+            except ValueError:
+                self.type = None
+
+        if self.description is None and self.explanation is not None:
+            self.description = self.explanation
+        elif self.explanation is None and self.description is not None:
+            self.explanation = self.description
+
+        if self.resolution_suggestion is None and self.resolution_hint is not None:
+            self.resolution_suggestion = self.resolution_hint
+        elif self.resolution_hint is None and self.resolution_suggestion is not None:
+            self.resolution_hint = self.resolution_suggestion
+
+        if not self.evidence_indices:
+            indices: list[int] = []
+            if self.finding_1_id is not None and self.finding_1_id.isdigit():
+                indices.append(int(self.finding_1_id))
+            if self.finding_2_id is not None and self.finding_2_id.isdigit():
+                indices.append(int(self.finding_2_id))
+            self.evidence_indices = indices
+
+        if self.evidence_indices and self.finding_1_id is None:
+            self.finding_1_id = str(self.evidence_indices[0])
+        if len(self.evidence_indices) > 1 and self.finding_2_id is None:
+            self.finding_2_id = str(self.evidence_indices[1])
+
+        return self
 
 
 class ContradictionAnalysis(BaseModel):
@@ -1449,7 +1502,7 @@ class SynthesisContext(BaseModel):
 
     evidence_items: list[EvidenceItem] = Field(description="Evidence items to synthesize")
     research_query: ResearchQuery | None = Field(default=None, description="Research query")
-    config: "SynthesisConfig | None" = Field(default=None, description="Synthesis configuration")
+    config: SynthesisConfig | None = Field(default=None, description="Synthesis configuration")
 
 
 class SynthesisResult(BaseModel):

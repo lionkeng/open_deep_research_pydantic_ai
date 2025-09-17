@@ -9,6 +9,7 @@ from sklearn.metrics import silhouette_score
 
 from models.research_executor import (
     Contradiction,
+    ContradictionType,
     HierarchicalFinding,
     ImportanceLevel,
     ThemeCluster,
@@ -409,11 +410,21 @@ class SynthesisEngine:
                     if self._are_contradictory(findings[i], findings[j]):
                         contradictions.append(
                             Contradiction(
-                                finding_1_id=str(i),
-                                finding_2_id=str(j),
+                                id=f"synthesis-contradiction-{i}-{j}",
+                                type=ContradictionType.SEMANTIC,
+                                evidence_indices=[i, j],
+                                description=self._explain_contradiction(findings[i], findings[j]),
+                                confidence_score=0.6,
+                                resolution_suggestion=self._suggest_resolution(
+                                    findings[i], findings[j]
+                                ),
                                 contradiction_type="direct",
                                 explanation=self._explain_contradiction(findings[i], findings[j]),
                                 resolution_hint=self._suggest_resolution(findings[i], findings[j]),
+                                finding_1_id=str(i),
+                                finding_2_id=str(j),
+                                severity=0.7,
+                                severity_level="medium",
                             )
                         )
 

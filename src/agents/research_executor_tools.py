@@ -27,6 +27,7 @@ from services.optimization_manager import OptimizationManager
 from services.parallel_executor import ParallelExecutor
 from services.pattern_recognizer import PatternRecognizer
 from services.synthesis_engine import SynthesisEngine
+from utils.cache_serialization import dumps_for_cache
 
 
 @dataclass
@@ -445,8 +446,8 @@ async def assess_synthesis_quality(
 def _generate_cache_key(*args: Any) -> str:
     """Generate cache key from arguments."""
 
-    key_string = str(args)
-    return hashlib.md5(key_string.encode()).hexdigest()[:16]
+    serialized = dumps_for_cache(args)
+    return hashlib.md5(serialized.encode()).hexdigest()[:16]
 
 
 def _extract_findings_fallback(

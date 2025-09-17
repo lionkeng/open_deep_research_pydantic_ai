@@ -3,6 +3,7 @@
 import csv
 import json
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import StringIO
@@ -12,7 +13,27 @@ from typing import Any
 import logfire
 import psutil
 
-from models.research_executor import OptimizationConfig, PerformanceMetrics
+from models.research_executor import (
+    OptimizationConfig,
+    PatternAnalysis,
+    PerformanceMetrics,
+)
+
+
+def _normalize_patterns(
+    patterns: Sequence[PatternAnalysis | Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert pattern payloads to JSON-compatible dictionaries."""
+
+    normalized: list[dict[str, Any]] = []
+    for item in patterns:
+        if isinstance(item, PatternAnalysis):
+            normalized.append(item.model_dump(mode="json", exclude_none=True))
+        elif isinstance(item, Mapping):
+            normalized.append(dict(item))
+        else:
+            raise TypeError(f"Unsupported pattern payload type: {type(item)!r}")
+    return normalized
 
 
 @dataclass
@@ -132,20 +153,23 @@ class MetricsCollector:
             "count": len(confidences),
         }
 
-    def record_pattern_strength(self, patterns: list[dict[str, Any]]) -> None:
+    def record_pattern_strength(
+        self, patterns: Sequence[PatternAnalysis | Mapping[str, Any]]
+    ) -> None:
         """Record pattern strength metrics.
 
         Args:
-            patterns: List of pattern dictionaries with confidence scores
+            patterns: Sequence of pattern payloads with confidence data
         """
         if not self.current_snapshot or not patterns:
             return
 
-        strengths = [p.get("confidence", 0.0) for p in patterns]
+        normalized_patterns = _normalize_patterns(patterns)
+        strengths = [pattern.get("confidence", 0.0) for pattern in normalized_patterns]
         self.current_snapshot.quality_metrics["pattern_strength"] = {
             "mean": sum(strengths) / len(strengths),
             "max": max(strengths),
-            "count": len(patterns),
+            "count": len(normalized_patterns),
         }
 
     def record_synthesis_quality(self, synthesis_score: float, completeness: float) -> None:
@@ -183,6 +207,23 @@ class MetricsCollector:
             "estimated_tokens": estimated_tokens,
             "estimated_cost_usd": estimated_cost,
         }
+
+    async def record_synthesis_metrics(self, metrics: Mapping[str, Any]) -> None:
+        """Asynchronously record synthesis metrics.
+
+        Args:
+            metrics: Mapping of synthesis metric name to value
+        """
+        if not self.config.enable_metrics_collection:
+            return
+
+        if self.current_snapshot is None:
+            self.start_collection()
+
+        if self.current_snapshot is None:  # start_collection may be disabled
+            return
+
+        self.current_snapshot.quality_metrics.update(dict(metrics))
 
     def _collect_system_metrics(self) -> None:
         """Collect system metrics."""

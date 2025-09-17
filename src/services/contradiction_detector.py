@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from models.research_executor import Contradiction, HierarchicalFinding
+from models.research_executor import Contradiction, ContradictionType, HierarchicalFinding
 
 
 class ContradictionDetector:
@@ -83,22 +83,48 @@ class ContradictionDetector:
         direct = self._is_direct_contradiction(finding1, finding2)
         if direct:
             return Contradiction(
-                finding_1_id=str(idx1),
-                finding_2_id=str(idx2),
+                id=f"contradiction-{idx1}-{idx2}",
+                type=ContradictionType.SEMANTIC,
+                evidence_indices=[idx1, idx2],
+                description=self._generate_direct_explanation(finding1, finding2),
+                confidence_score=self._calculate_confidence_score(finding1, finding2, direct=True),
+                resolution_suggestion=self._generate_resolution_hint(finding1, finding2),
                 contradiction_type="direct",
                 explanation=self._generate_direct_explanation(finding1, finding2),
                 resolution_hint=self._generate_resolution_hint(finding1, finding2),
+                finding_1_id=str(idx1),
+                finding_2_id=str(idx2),
+                severity=0.8,
+                severity_level="high",
+                metadata={
+                    "kind": "direct",
+                    "finding_1_id": idx1,
+                    "finding_2_id": idx2,
+                },
             )
 
         # Check for partial contradiction
         partial = self._is_partial_contradiction(finding1, finding2)
         if partial:
             return Contradiction(
-                finding_1_id=str(idx1),
-                finding_2_id=str(idx2),
+                id=f"contradiction-{idx1}-{idx2}",
+                type=ContradictionType.FACTUAL,
+                evidence_indices=[idx1, idx2],
+                description=self._generate_partial_explanation(finding1, finding2),
+                confidence_score=self._calculate_confidence_score(finding1, finding2, direct=False),
+                resolution_suggestion=self._generate_resolution_hint(finding1, finding2),
                 contradiction_type="partial",
                 explanation=self._generate_partial_explanation(finding1, finding2),
                 resolution_hint=self._generate_resolution_hint(finding1, finding2),
+                finding_1_id=str(idx1),
+                finding_2_id=str(idx2),
+                severity=0.6,
+                severity_level="medium",
+                metadata={
+                    "kind": "partial",
+                    "finding_1_id": idx1,
+                    "finding_2_id": idx2,
+                },
             )
 
         return None
@@ -448,6 +474,16 @@ class ContradictionDetector:
 
         return "Partial contradiction with conflicting implications"
 
+    def _calculate_confidence_score(
+        self, finding1: HierarchicalFinding, finding2: HierarchicalFinding, direct: bool
+    ) -> float:
+        """Estimate contradiction confidence based on finding scores."""
+
+        base_score = (finding1.confidence_score + finding2.confidence_score) / 2
+        adjustment = 0.1 if direct else -0.05
+        adjusted = max(0.0, min(1.0, base_score + adjustment))
+        return adjusted
+
     def _generate_resolution_hint(
         self, finding1: HierarchicalFinding, finding2: HierarchicalFinding
     ) -> str:
@@ -515,8 +551,17 @@ class ContradictionDetector:
                 "resolution_complexity": "low",
             }
 
-        direct_count = sum(1 for c in contradictions if c.contradiction_type == "direct")
-        partial_count = len(contradictions) - direct_count
+        direct_count = 0
+        partial_count = 0
+
+        for contradiction in contradictions:
+            kind = contradiction.contradiction_type or (
+                contradiction.type.value if contradiction.type else None
+            )
+            if kind in {"direct", "semantic"}:
+                direct_count += 1
+            elif kind in {"partial", "factual"}:
+                partial_count += 1
 
         # Determine resolution complexity
         if direct_count > 3:
