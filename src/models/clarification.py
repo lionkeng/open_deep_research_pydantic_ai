@@ -150,9 +150,8 @@ class ClarificationRequest(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Build index after model initialization."""
         super().model_post_init(__context)
-        # Only build index if not already built to prevent memory leak
-        if not self._question_index:
-            self._question_index = {q.id: q for q in self.questions}
+        # Always rebuild index to handle dynamic updates
+        self._question_index = {q.id: q for q in self.questions}
 
     def get_question_by_id(self, question_id: str) -> ClarificationQuestion | None:
         """Retrieve a question by its ID in O(1) time."""
@@ -187,9 +186,8 @@ class ClarificationResponse(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         """Build index after model initialization."""
         super().model_post_init(__context)
-        # Only build index if not already built to prevent memory leak
-        if not self._answer_index:
-            self._answer_index = {a.question_id: a for a in self.answers}
+        # Always rebuild index to handle dynamic updates
+        self._answer_index = {a.question_id: a for a in self.answers}
 
     def get_answer_for_question(self, question_id: str) -> ClarificationAnswer | None:
         """Get answer for a specific question ID in O(1) time."""

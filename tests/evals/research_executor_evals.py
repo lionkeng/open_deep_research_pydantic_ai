@@ -1024,8 +1024,8 @@ class MultiJudgeConsensusEvaluator(Evaluator):
             weight_by_confidence: Whether to weight votes by confidence scores
         """
         self.models = models or [
-            "openai:gpt-4o-mini",
-            "openai:gpt-4o"
+            "openai:gpt-5-mini",
+            "openai:gpt-5"
         ]
         self.consensus_threshold = consensus_threshold
         self.weight_by_confidence = weight_by_confidence
