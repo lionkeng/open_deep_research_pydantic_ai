@@ -60,10 +60,10 @@ async def extract_hierarchical_findings(
     logfire.info("Extracting hierarchical findings from source content")
 
     try:
-        cache_key = _generate_cache_key("extract_findings", source_content, source_metadata)
+        cache_content_key = _generate_cache_key("extract_findings", source_content, source_metadata)
 
         if deps.cache_manager:
-            cached_result = await deps.cache_manager.get(cache_key)
+            cached_result = deps.cache_manager.get("extract_findings", cache_content_key)
             if cached_result:
                 logfire.debug("Using cached hierarchical findings")
                 return cached_result
@@ -111,7 +111,11 @@ async def extract_hierarchical_findings(
             hierarchical_findings.append(finding)
 
         if deps.cache_manager:
-            await deps.cache_manager.set(cache_key, hierarchical_findings)
+            deps.cache_manager.set(
+                "extract_findings",
+                cache_content_key,
+                hierarchical_findings,
+            )
 
         logfire.info("Extracted hierarchical findings", count=len(hierarchical_findings))
         return hierarchical_findings
@@ -134,10 +138,10 @@ async def identify_theme_clusters(
         return []
 
     try:
-        cache_key = _generate_cache_key("identify_clusters", findings, min_cluster_size)
+        cache_content_key = _generate_cache_key("identify_clusters", findings, min_cluster_size)
 
         if deps.cache_manager:
-            cached_result = await deps.cache_manager.get(cache_key)
+            cached_result = deps.cache_manager.get("identify_theme_clusters", cache_content_key)
             if cached_result:
                 logfire.debug("Using cached theme clusters")
                 return cached_result
@@ -172,7 +176,11 @@ async def identify_theme_clusters(
             )
 
         if deps.cache_manager:
-            await deps.cache_manager.set(cache_key, theme_clusters)
+            deps.cache_manager.set(
+                "identify_theme_clusters",
+                cache_content_key,
+                theme_clusters,
+            )
 
         logfire.info("Identified theme clusters", count=len(theme_clusters))
         return theme_clusters
@@ -202,10 +210,10 @@ async def detect_contradictions(
         return []
 
     try:
-        cache_key = _generate_cache_key("detect_contradictions", findings)
+        cache_content_key = _generate_cache_key("detect_contradictions", findings)
 
         if deps.cache_manager:
-            cached_result = await deps.cache_manager.get(cache_key)
+            cached_result = deps.cache_manager.get("detect_contradictions", cache_content_key)
             if cached_result:
                 logfire.debug("Using cached contradiction analysis")
                 return cached_result
@@ -213,7 +221,11 @@ async def detect_contradictions(
         contradictions = deps.contradiction_detector.detect_contradictions(findings)
 
         if deps.cache_manager:
-            await deps.cache_manager.set(cache_key, contradictions)
+            deps.cache_manager.set(
+                "detect_contradictions",
+                cache_content_key,
+                contradictions,
+            )
 
         logfire.info("Detected contradictions", count=len(contradictions))
         return contradictions
@@ -242,27 +254,18 @@ async def analyze_patterns(
         return patterns
 
     try:
-        cache_key = _generate_cache_key("analyze_patterns", findings, clusters)
+        cache_content_key = _generate_cache_key("analyze_patterns", findings, clusters)
 
         if deps.cache_manager:
-            cached_result = await deps.cache_manager.get(cache_key)
+            cached_result = deps.cache_manager.get("analyze_patterns", cache_content_key)
             if cached_result:
                 logfire.debug("Using cached pattern analysis")
                 return cached_result
 
         detected_patterns = deps.pattern_recognizer.detect_patterns(findings)
 
-        for pattern in detected_patterns:
-            pattern_analysis = PatternAnalysis(
-                pattern_type=pattern.get("type", PatternType.CONVERGENCE),
-                pattern_name=pattern.get("name", "Detected Pattern"),
-                description=pattern.get("description", "Pattern in research data"),
-                strength=pattern.get("strength", 0.5),
-                finding_ids=[str(index) for index in pattern.get("finding_indices", [])],
-                implications=pattern.get("implications", ["Pattern detected in data"]),
-                confidence_factors=pattern.get("confidence_factors", {"detection": 0.5}),
-            )
-            patterns.append(pattern_analysis)
+        # detected_patterns already returns list[PatternAnalysis], so use them directly
+        patterns.extend(detected_patterns)
 
         if len(findings) > 3:
             high_confidence_findings = [f for f in findings if f.confidence_score > 0.8]
@@ -294,7 +297,11 @@ async def analyze_patterns(
             )
 
         if deps.cache_manager:
-            await deps.cache_manager.set(cache_key, patterns)
+            deps.cache_manager.set(
+                "analyze_patterns",
+                cache_content_key,
+                patterns,
+            )
 
         logfire.info("Analyzed patterns", count=len(patterns))
         return patterns

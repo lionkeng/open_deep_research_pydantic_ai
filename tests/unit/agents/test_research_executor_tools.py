@@ -1,5 +1,7 @@
 """Unit tests for research executor tool helpers."""
 
+from dataclasses import replace
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -93,6 +95,35 @@ async def test_extract_hierarchical_findings_uses_synthesis_engine(base_dependen
 
     assert findings
     assert findings[0].finding.startswith("Synthetic finding")
+
+
+@pytest.mark.asyncio
+async def test_extract_hierarchical_findings_returns_cached(base_dependencies):
+    cache_manager = MagicMock()
+    cached_findings = [
+        HierarchicalFinding(
+            finding="Cached finding",
+            supporting_evidence=[],
+            confidence=ConfidenceLevel.MEDIUM,
+            confidence_score=ConfidenceLevel.MEDIUM.to_score(),
+            importance=ImportanceLevel.MEDIUM,
+            importance_score=ImportanceLevel.MEDIUM.to_score(),
+        )
+    ]
+    cache_manager.get.return_value = cached_findings
+
+    deps = replace(base_dependencies, cache_manager=cache_manager)
+
+    result = await extract_hierarchical_findings(
+        deps,
+        "Example content",
+        {"title": "Example", "url": "https://example.com", "type": "article"},
+    )
+
+    assert result == cached_findings
+    cache_manager.get.assert_called_once()
+    assert deps.synthesis_engine.extract_themes.await_args_list == []
+    cache_manager.set.assert_not_called()
 
 
 @pytest.mark.asyncio

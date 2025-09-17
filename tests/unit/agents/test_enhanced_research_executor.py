@@ -105,7 +105,7 @@ class TestEnhancedResearchExecutor:
             contradiction_detector=MagicMock(),
             pattern_recognizer=MagicMock(),
             confidence_analyzer=MagicMock(),
-            cache_manager=AsyncMock(),
+            cache_manager=None,
             parallel_executor=MagicMock(),
             metrics_collector=MagicMock(),
             optimization_manager=MagicMock(),
