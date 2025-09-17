@@ -425,10 +425,25 @@ class ResearchWorkflow:
                 research_state.current_stage = ResearchStage.COMPLETED
                 research_state.completed_at = datetime.now()
 
+                duration = (datetime.now() - research_state.started_at).total_seconds()
+
                 logfire.info(
                     "Research workflow completed successfully",
                     request_id=research_state.request_id,
-                    duration=(datetime.now() - research_state.started_at).total_seconds(),
+                    duration=duration,
+                )
+
+                # Emit research completed event for CLI and other consumers
+                from core.events import ResearchCompletedEvent, research_event_bus
+
+                await research_event_bus.emit(
+                    ResearchCompletedEvent(
+                        _request_id=research_state.request_id,
+                        report=research_state.final_report,
+                        success=True,
+                        duration_seconds=duration,
+                        error_message=None,
+                    )
                 )
 
                 return research_state
@@ -443,6 +458,21 @@ class ResearchWorkflow:
                     str(e),
                     recoverable=False,
                 )
+
+                # Emit research completed event with failure status
+                duration = (datetime.now() - research_state.started_at).total_seconds()
+                from core.events import ResearchCompletedEvent, research_event_bus
+
+                await research_event_bus.emit(
+                    ResearchCompletedEvent(
+                        _request_id=research_state.request_id,
+                        report=research_state.final_report,
+                        success=False,
+                        duration_seconds=duration,
+                        error_message=str(e),
+                    )
+                )
+
                 return research_state
 
     async def _execute_research_stages(
@@ -704,6 +734,20 @@ class ResearchWorkflow:
                     research_state.current_stage = ResearchStage.COMPLETED
                     research_state.completed_at = datetime.now()
 
+                    # Emit research completed event for resumed research
+                    duration = (datetime.now() - research_state.started_at).total_seconds()
+                    from core.events import ResearchCompletedEvent, research_event_bus
+
+                    await research_event_bus.emit(
+                        ResearchCompletedEvent(
+                            _request_id=research_state.request_id,
+                            report=research_state.final_report,
+                            success=True,
+                            duration_seconds=duration,
+                            error_message=None,
+                        )
+                    )
+
                     return research_state
 
                 if current_stage == ResearchStage.COMPLETED:
@@ -716,4 +760,19 @@ class ResearchWorkflow:
             except Exception as e:
                 logfire.error(f"Resume failed: {e}", exc_info=True)
                 research_state.set_error(str(e))
+
+                # Emit research completed event with failure status for resumed research
+                duration = (datetime.now() - research_state.started_at).total_seconds()
+                from core.events import ResearchCompletedEvent, research_event_bus
+
+                await research_event_bus.emit(
+                    ResearchCompletedEvent(
+                        _request_id=research_state.request_id,
+                        report=research_state.final_report,
+                        success=False,
+                        duration_seconds=duration,
+                        error_message=str(e),
+                    )
+                )
+
                 return research_state
