@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +29,14 @@ class ReportMetadata(BaseModel):
     keywords: list[str] = Field(default_factory=list, description="Report keywords")
     classification: str | None = Field(
         default=None, description="Report classification or category"
+    )
+    source_summary: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Summary of sources with identifiers and URLs",
+    )
+    citation_audit: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Results from the post-generation citation audit",
     )
 
 

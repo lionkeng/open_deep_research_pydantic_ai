@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import uuid
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -16,6 +17,37 @@ from utils.validation import (
     RobustScoreValidator,
     SeverityResult,
 )
+
+
+class SourceUsage(BaseModel):
+    """Tracks how a source is reused across synthesis artefacts."""
+
+    source_id: str
+    finding_ids: list[str] = Field(default_factory=list)
+    cluster_ids: list[str] = Field(default_factory=list)
+    contradiction_ids: list[str] = Field(default_factory=list)
+    pattern_ids: list[str] = Field(default_factory=list)
+    report_sections: list[str] = Field(default_factory=list)
+
+    def record_finding(self, finding_id: str) -> None:
+        if finding_id not in self.finding_ids:
+            self.finding_ids.append(finding_id)
+
+    def record_cluster(self, cluster_id: str) -> None:
+        if cluster_id not in self.cluster_ids:
+            self.cluster_ids.append(cluster_id)
+
+    def record_contradiction(self, contradiction_id: str) -> None:
+        if contradiction_id not in self.contradiction_ids:
+            self.contradiction_ids.append(contradiction_id)
+
+    def record_pattern(self, pattern_id: str) -> None:
+        if pattern_id not in self.pattern_ids:
+            self.pattern_ids.append(pattern_id)
+
+    def record_report_section(self, section_name: str) -> None:
+        if section_name not in self.report_sections:
+            self.report_sections.append(section_name)
 
 
 class ConfidenceLevel(str, Enum):
@@ -81,9 +113,14 @@ class ImportanceLevel(str, Enum):
 class ResearchSource(BaseModel):
     """Information about a research source."""
 
+    source_id: str | None = Field(default=None, description="Stable identifier for the source")
+    canonical_key: str | None = Field(
+        default=None, description="Canonical key used for deduplication"
+    )
     url: str | None = Field(default=None, description="URL of the source")
     title: str = Field(description="Title of the source")
     author: str | None = Field(default=None, description="Author of the source")
+    publisher: str | None = Field(default=None, description="Publisher or outlet")
     date: datetime | None = Field(default=None, description="Publication date of the source")
     source_type: str | None = Field(
         default=None, description="Type of source (academic, news, blog, etc.)"
@@ -129,6 +166,9 @@ class HierarchicalFinding(BaseModel):
     Simplified version without relationships for MVP.
     """
 
+    finding_id: str = Field(
+        default_factory=lambda: uuid.uuid4().hex, description="Unique identifier for the finding"
+    )
     finding: str = Field(description="The core finding or insight")
     supporting_evidence: list[str] = Field(
         default_factory=list, description="Evidence supporting this finding"
@@ -146,6 +186,12 @@ class HierarchicalFinding(BaseModel):
         ge=0.0, le=1.0, default=0.5, description="Numeric importance score"
     )
     source: ResearchSource | None = Field(default=None, description="Source of this finding")
+    source_ids: list[str] = Field(
+        default_factory=list, description="Identifiers for supporting sources"
+    )
+    supporting_source_ids: list[str] = Field(
+        default_factory=list, description="Additional supporting source identifiers"
+    )
     category: str | None = Field(default=None, description="Category or topic of this finding")
     temporal_relevance: str | None = Field(
         default=None, description="Time period or temporal context"
@@ -160,6 +206,9 @@ class HierarchicalFinding(BaseModel):
             self.confidence_score = self.confidence.to_score()
         if "importance_score" not in data:
             self.importance_score = self.importance.to_score()
+        if self.source and self.source.source_id:
+            if self.source.source_id not in self.source_ids:
+                self.source_ids.insert(0, self.source.source_id)
 
     @field_validator("confidence_score", mode="after")
     @classmethod
@@ -200,6 +249,9 @@ class HierarchicalFinding(BaseModel):
 class ThemeCluster(BaseModel):
     """A cluster of related findings forming a theme."""
 
+    cluster_id: str = Field(
+        default_factory=lambda: uuid.uuid4().hex, description="Unique cluster identifier"
+    )
     theme_name: str = Field(description="Name or title of the theme")
     description: str = Field(description="Description of what this theme represents")
     findings: list[HierarchicalFinding] = Field(
@@ -488,6 +540,9 @@ class PatternType(str, Enum):
 class PatternAnalysis(BaseModel):
     """Analysis of patterns detected in research findings."""
 
+    pattern_id: str = Field(
+        default_factory=lambda: uuid.uuid4().hex, description="Unique identifier for the pattern"
+    )
     pattern_type: PatternType = Field(description="Type of pattern detected")
     pattern_name: str = Field(description="Descriptive name for the pattern")
     description: str = Field(description="Detailed description of the pattern")
@@ -559,6 +614,9 @@ class ResearchResults(BaseModel):
 
     # Source tracking
     sources: list[ResearchSource] = Field(default_factory=list, description="All sources consulted")
+    source_usage: dict[str, SourceUsage] = Field(
+        default_factory=dict, description="Usage mapping for each source"
+    )
 
     # Quality and metadata
     synthesis_metadata: SynthesisMetadata | None = Field(
@@ -583,6 +641,28 @@ class ResearchResults(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata about the research"
     )
+
+    def record_usage(
+        self,
+        source_id: str,
+        *,
+        finding_id: str | None = None,
+        cluster_id: str | None = None,
+        contradiction_id: str | None = None,
+        pattern_id: str | None = None,
+        report_section: str | None = None,
+    ) -> None:
+        usage = self.source_usage.setdefault(source_id, SourceUsage(source_id=source_id))
+        if finding_id:
+            usage.record_finding(finding_id)
+        if cluster_id:
+            usage.record_cluster(cluster_id)
+        if contradiction_id:
+            usage.record_contradiction(contradiction_id)
+        if pattern_id:
+            usage.record_pattern(pattern_id)
+        if report_section:
+            usage.record_report_section(report_section)
 
     def get_critical_findings(self) -> list[HierarchicalFinding]:
         """Get all critical importance findings."""

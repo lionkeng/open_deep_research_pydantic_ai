@@ -26,6 +26,7 @@ from core.events import (
 from core.logging import configure_logging
 from models.api_models import APIKeys
 from models.core import ResearchState
+from services.source_repository import AbstractSourceRepository
 
 
 # Enhanced exception system for agent errors
@@ -139,6 +140,7 @@ class ResearchDependencies:
     usage: RunUsage | None = None
     stream_callback: Any | None = None
     search_results: list[dict[str, Any]] = field(default_factory=list)
+    source_repository: AbstractSourceRepository | None = None
 
     def get_transformed_query(self) -> "TransformedQuery | None":
         """Return the transformed query stored on metadata, if any."""

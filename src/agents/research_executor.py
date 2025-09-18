@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from textwrap import dedent
 from typing import Any
 
@@ -27,9 +28,12 @@ from models.research_executor import (
     PatternAnalysis,
     ResearchFinding,
     ResearchResults,
+    ResearchSource,
     SynthesisMetadata,
     ThemeCluster,
 )
+from services.source_repository import InMemorySourceRepository, ensure_repository
+from services.source_validation import create_default_validation_pipeline
 
 from .research_executor_tools import (
     ResearchExecutorDependencies,
@@ -350,6 +354,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             "optimization_manager": getattr(deps, "optimization_manager", None),
             "original_query": deps.research_state.user_query,
             "search_results": getattr(deps, "search_results", []) or [],
+            "source_repository": getattr(deps, "source_repository", None),
         }
 
         for attr in (
@@ -371,18 +376,70 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
     ) -> ResearchResults:
         query = deps.research_state.user_query
         findings: list[HierarchicalFinding] = []
+        source_repository = await ensure_repository(executor_deps.source_repository)
+        if deps.source_repository is None:
+            deps.source_repository = source_repository
+        if executor_deps.source_repository is None:
+            executor_deps.source_repository = source_repository
 
-        for result in executor_deps.search_results:
+        validation_pipeline = None
+        if getattr(deps, "http_client", None) is not None:
+            validation_pipeline = create_default_validation_pipeline(
+                repository=source_repository,
+                http_client=deps.http_client,
+            )
+
+        for index, result in enumerate(executor_deps.search_results, start=1):
             content = result.get("content") or result.get("snippet") or ""
             if not content.strip():
                 continue
+            snippet = " ".join(content.split())[:500]
             metadata = {
                 "title": result.get("title", "Unknown"),
                 "url": result.get("url"),
                 "type": result.get("type") or result.get("source_type", "unknown"),
+                "publisher": result.get("metadata", {}).get("publisher"),
+                "author": result.get("metadata", {}).get("author"),
+                "snippet": snippet,
+                "score": result.get("score"),
+                "raw_index": index,
             }
+            raw_source_payload = {
+                "title": metadata["title"],
+                "url": metadata.get("url"),
+                "source_type": metadata["type"],
+                "author": metadata.get("author"),
+                "publisher": metadata.get("publisher"),
+                "metadata": {
+                    k: v
+                    for k, v in metadata.items()
+                    if k not in {"title", "url", "type", "author", "publisher"}
+                },
+            }
+
+            if validation_pipeline is not None:
+                registered_source = await validation_pipeline.validate_and_register(
+                    raw_source_payload
+                )
+            else:
+                identity = await source_repository.register(ResearchSource(**raw_source_payload))
+                registered_source = await source_repository.get(identity.source_id)
+            if registered_source and registered_source.source_id:
+                metadata["source_id"] = registered_source.source_id
             extracted = await extract_hierarchical_findings(executor_deps, content, metadata)
-            findings.extend(extracted)
+            for finding in extracted:
+                if registered_source:
+                    finding.source = registered_source
+                    if (
+                        registered_source.source_id
+                        and registered_source.source_id not in finding.source_ids
+                    ):
+                        finding.source_ids.insert(0, registered_source.source_id)
+                        await source_repository.register_usage(
+                            registered_source.source_id,
+                            finding_id=finding.finding_id,
+                        )
+                findings.append(finding)
 
         clusters = await identify_theme_clusters(executor_deps, findings)
         contradictions = await detect_contradictions(executor_deps, findings)
@@ -402,7 +459,53 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
 
         overall_quality = quality_metrics.get("overall_quality", 0.0) if quality_metrics else 0.0
 
-        sources: list = [finding.source for finding in findings if finding.source is not None]
+        ordered_sources = await source_repository.ordered_sources()
+
+        sources: list[ResearchSource] = ordered_sources
+
+        finding_by_id: dict[str, HierarchicalFinding] = {
+            finding.finding_id: finding for finding in findings
+        }
+        for index, finding in enumerate(findings):
+            finding_by_id.setdefault(str(index), finding)
+
+        for cluster in clusters:
+            for finding in cluster.findings:
+                for source_id in finding.source_ids:
+                    await source_repository.register_usage(
+                        source_id,
+                        finding_id=finding.finding_id,
+                        cluster_id=cluster.cluster_id,
+                    )
+
+        for pattern in patterns:
+            related_finding_ids = getattr(pattern, "finding_ids", [])
+            for fid in related_finding_ids:
+                referenced = finding_by_id.get(fid)
+                if not referenced:
+                    continue
+                for source_id in referenced.source_ids:
+                    await source_repository.register_usage(
+                        source_id,
+                        finding_id=referenced.finding_id,
+                        pattern_id=pattern.pattern_id,
+                    )
+
+        for contradiction in contradictions:
+            if not contradiction.id:
+                contradiction.id = uuid.uuid4().hex
+            related_findings: list[HierarchicalFinding] = []
+            for attr in ("finding_1_id", "finding_2_id"):
+                fid = getattr(contradiction, attr, None)
+                if fid and fid in finding_by_id:
+                    related_findings.append(finding_by_id[fid])
+            for finding in related_findings:
+                for source_id in finding.source_ids:
+                    await source_repository.register_usage(
+                        source_id,
+                        finding_id=finding.finding_id,
+                        contradiction_id=contradiction.id,
+                    )
 
         synthesis_metadata = SynthesisMetadata(
             synthesis_method="fallback_pipeline",
@@ -443,15 +546,14 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             "search_query_count": len(getattr(deps.get_search_query_batch(), "queries", []) or []),
             "generation_mode": "structured_fallback",
         }
-
-        return ResearchResults(
+        research_results = ResearchResults(
             query=query,
             findings=findings,
             theme_clusters=clusters,
             contradictions=contradictions,
             executive_summary=summary,
             patterns=patterns,
-            sources=[source for source in sources if source],
+            sources=sources,
             synthesis_metadata=synthesis_metadata,
             overall_quality_score=overall_quality,
             content_hierarchy=content_hierarchy,
@@ -459,6 +561,17 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             data_gaps=data_gaps,
             metadata=metadata,
         )
+
+        for source in sources:
+            if not source.source_id:
+                continue
+            usage = await source_repository.get_usage(source.source_id)
+            if usage:
+                research_results.source_usage[source.source_id] = usage
+
+        deps.research_state.metadata.sources_consulted = len(sources)
+
+        return research_results
 
 
 _research_executor_agent_instance: ResearchExecutorAgent | None = None
@@ -503,6 +616,7 @@ async def execute_research(
             research_state=research_state,
         )
         deps.search_results = search_results or []
+        deps.source_repository = InMemorySourceRepository()
         result = await agent_instance.run(deps)
         research_state.research_results = result
         research_state.findings = [

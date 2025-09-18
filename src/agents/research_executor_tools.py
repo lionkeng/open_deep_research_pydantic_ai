@@ -26,6 +26,7 @@ from services.metrics_collector import MetricsCollector
 from services.optimization_manager import OptimizationManager
 from services.parallel_executor import ParallelExecutor
 from services.pattern_recognizer import PatternRecognizer
+from services.source_repository import AbstractSourceRepository
 from services.synthesis_engine import SynthesisEngine
 from utils.cache_serialization import dumps_for_cache
 
@@ -49,6 +50,7 @@ class ResearchExecutorDependencies:
     # Research context
     original_query: str = ""
     search_results: list[dict[str, Any]] = field(default_factory=list)
+    source_repository: AbstractSourceRepository | None = None
 
 
 async def extract_hierarchical_findings(
@@ -75,10 +77,51 @@ async def extract_hierarchical_findings(
             else _extract_findings_fallback(source_content, source_metadata)
         )
 
+        async def _resolve_source(
+            existing: ResearchSource | None,
+        ) -> tuple[ResearchSource | None, str | None]:
+            source_id: str | None = None
+            if existing and existing.source_id:
+                source_id = existing.source_id
+            if source_metadata and source_metadata.get("source_id"):
+                source_id = str(source_metadata["source_id"])
+
+            source_obj: ResearchSource | None = None
+            if source_id and deps.source_repository:
+                source_obj = await deps.source_repository.get(source_id)
+
+            if source_obj is None:
+                source_obj = existing
+
+            if source_obj is None and source_metadata:
+                source_obj = ResearchSource(
+                    source_id=source_id,
+                    title=source_metadata.get("title", "Unknown"),
+                    url=source_metadata.get("url"),
+                    source_type=source_metadata.get("type", "unknown"),
+                    author=source_metadata.get("author"),
+                    publisher=source_metadata.get("publisher"),
+                    metadata={
+                        k: v
+                        for k, v in source_metadata.items()
+                        if k not in {"title", "url", "type", "author", "publisher", "source_id"}
+                    },
+                )
+
+            if source_obj and source_id and not source_obj.source_id:
+                source_obj = source_obj.model_copy(update={"source_id": source_id})
+
+            return source_obj, source_id
+
         hierarchical_findings: list[HierarchicalFinding] = []
         for finding_data in findings_data:
             if isinstance(finding_data, HierarchicalFinding):
-                hierarchical_findings.append(finding_data)
+                finding = finding_data.model_copy(deep=True)
+                resolved_source, resolved_source_id = await _resolve_source(finding.source)
+                finding.source = resolved_source
+                if resolved_source_id and resolved_source_id not in finding.source_ids:
+                    finding.source_ids.insert(0, resolved_source_id)
+                hierarchical_findings.append(finding)
                 continue
 
             if isinstance(finding_data, dict):
@@ -90,6 +133,8 @@ async def extract_hierarchical_findings(
                 confidence = 0.7
                 importance = 0.75
 
+            resolved_source, resolved_source_id = await _resolve_source(None)
+
             finding = HierarchicalFinding(
                 finding=text,
                 supporting_evidence=[source_content[:200]],
@@ -97,19 +142,19 @@ async def extract_hierarchical_findings(
                 confidence_score=confidence,
                 importance=ImportanceLevel.MEDIUM,
                 importance_score=importance,
-                source=ResearchSource(
-                    title=source_metadata.get("title", "Unknown") if source_metadata else "Unknown",
-                    url=source_metadata.get("url") if source_metadata else None,
-                    source_type=source_metadata.get("type", "unknown")
-                    if source_metadata
-                    else "unknown",
-                )
-                if source_metadata
-                else None,
+                source=resolved_source,
                 category="research",
                 temporal_relevance="current",
             )
+            if resolved_source_id and resolved_source_id not in finding.source_ids:
+                finding.source_ids.insert(0, resolved_source_id)
             hierarchical_findings.append(finding)
+
+        if source_metadata and source_metadata.get("source_id"):
+            source_id = str(source_metadata["source_id"])
+            for finding in hierarchical_findings:
+                if source_id not in finding.source_ids:
+                    finding.source_ids.insert(0, source_id)
 
         if deps.cache_manager:
             deps.cache_manager.set(

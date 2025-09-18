@@ -1,11 +1,15 @@
 """Report generator agent for creating comprehensive research reports."""
 
+import re
+from collections import OrderedDict
 from typing import Any
 
 import logfire
 from pydantic_ai import RunContext
 
 from models.report_generator import ResearchReport
+from models.research_executor import ResearchResults, ResearchSource
+from services.source_repository import summarize_sources_for_prompt
 
 from .base import (
     AgentConfiguration,
@@ -14,6 +18,18 @@ from .base import (
 )
 
 # Global system prompt template for report generation
+MINIMUM_CITATIONS = 3
+PREFERRED_MAX_CITATIONS = 5
+
+CITATION_CONTRACT_TEMPLATE = """### Citation Contract
+- Cite every substantive statement with the matching source marker using the form `[Sx]`.
+- Reuse the same marker whenever you refer to the same source; never invent IDs.
+- When at least {min_citations} sources are available, include at least {min_citations} distinct
+  citations. Aim for {preferred_citations} when enough sources exist.
+- Do not fabricate URLs or titles. Only cite sources provided in the context below.
+- End the draft with a `## Sources` table mapping `[Sx]` to full metadata.
+"""
+
 REPORT_GENERATOR_SYSTEM_PROMPT_TEMPLATE = """
 # ROLE DEFINITION
 You are a Distinguished Research Report Architect with 30+ years crafting influential reports
@@ -30,6 +46,10 @@ Research Topic: {research_topic}
 Target Audience: {target_audience}
 Report Format: {report_format}
 Key Findings: {key_findings}
+Sources Overview:
+{source_overview}
+
+{citation_contract}
 {conversation_context}
 
 # CHAIN-OF-THOUGHT REPORT ARCHITECTURE
@@ -278,6 +298,38 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 summary_findings = []
             key_findings = "; ".join(summary_findings[:3]) if summary_findings else ""
 
+            available_sources = (
+                len(research_results.sources)
+                if research_results and research_results.sources
+                else 0
+            )
+            if available_sources:
+                min_for_contract = (
+                    MINIMUM_CITATIONS
+                    if available_sources >= MINIMUM_CITATIONS
+                    else available_sources
+                )
+                pref_for_contract = (
+                    PREFERRED_MAX_CITATIONS
+                    if available_sources >= PREFERRED_MAX_CITATIONS
+                    else available_sources
+                )
+                if pref_for_contract < min_for_contract:
+                    pref_for_contract = min_for_contract
+                source_overview = summarize_sources_for_prompt(
+                    research_results.sources[:10] if research_results else []
+                )
+            else:
+                min_for_contract = MINIMUM_CITATIONS
+                pref_for_contract = PREFERRED_MAX_CITATIONS
+                source_overview = (
+                    "- No sources registered yet. Cite evidence immediately once available."
+                )
+            citation_contract = CITATION_CONTRACT_TEMPLATE.format(
+                min_citations=min_for_contract,
+                preferred_citations=pref_for_contract,
+            )
+
             # Format conversation context
             conversation_context = self._format_conversation_context(conversation)
 
@@ -287,6 +339,8 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 target_audience=target_audience,
                 report_format=report_format,
                 key_findings=key_findings,
+                source_overview=source_overview,
+                citation_contract=citation_contract,
                 conversation_context=conversation_context,
             )
 
@@ -471,6 +525,216 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
     def _get_output_type(self) -> type[ResearchReport]:
         """Get the output type for this agent."""
         return ResearchReport
+
+    async def run(
+        self,
+        deps: ResearchDependencies | None = None,
+        message_history: list[Any] | None = None,
+        stream: bool = False,
+    ) -> ResearchReport:
+        """Run the report generator and enforce citation requirements."""
+
+        report = await super().run(deps=deps, message_history=message_history, stream=stream)
+        actual_deps = deps or self.dependencies
+        if actual_deps:
+            report = self._apply_citation_postprocessing(report, actual_deps)
+        return report
+
+    def _apply_citation_postprocessing(
+        self, report: ResearchReport, deps: ResearchDependencies
+    ) -> ResearchReport:
+        """Convert source markers into footnotes and enforce minimum citation coverage."""
+
+        research_results: ResearchResults | None = getattr(
+            deps.research_state, "research_results", None
+        )
+        if not research_results or not research_results.sources:
+            return report
+
+        source_map: dict[str, ResearchSource] = {
+            source.source_id: source for source in research_results.sources if source.source_id
+        }
+        if not source_map:
+            return report
+
+        marker_pattern = re.compile(r"\[S(\d+)\]")
+
+        def collect_markers(text: str | None) -> set[str]:
+            if not text:
+                return set()
+            return {f"S{match.group(1)}" for match in marker_pattern.finditer(text)}
+
+        text_targets: list[tuple[Any, str]] = [
+            (report, "executive_summary"),
+            (report, "introduction"),
+            (report, "conclusions"),
+        ]
+        for section in report.sections:
+            text_targets.append((section, "content"))
+            for subsection in section.subsections:
+                text_targets.append((subsection, "content"))
+
+        marker_set: set[str] = set()
+        for obj, attr in text_targets:
+            marker_set.update(collect_markers(getattr(obj, attr, "")))
+        for rec in report.recommendations:
+            marker_set.update(collect_markers(rec))
+        for appendix_value in report.appendices.values():
+            marker_set.update(collect_markers(appendix_value))
+
+        available_sources = len(source_map)
+        if available_sources >= PREFERRED_MAX_CITATIONS:
+            required_citations = PREFERRED_MAX_CITATIONS
+        elif available_sources >= MINIMUM_CITATIONS:
+            required_citations = MINIMUM_CITATIONS
+        else:
+            required_citations = max(available_sources, MINIMUM_CITATIONS)
+
+        if len(marker_set) < required_citations:
+            unused_sources = [sid for sid in source_map if sid not in marker_set]
+            needed = min(required_citations - len(marker_set), len(unused_sources))
+            if needed > 0 and unused_sources:
+                selected = unused_sources[:needed]
+                addition = (
+                    "Additional supporting sources: "
+                    + ", ".join(f"[{sid}]" for sid in selected)
+                    + "."
+                )
+                report.conclusions = (
+                    (report.conclusions.strip() + "\n\n") if report.conclusions else ""
+                ) + addition
+                marker_set.update(selected)
+                text_targets.append((report, "conclusions"))
+
+        ordered_markers: OrderedDict[str, int] = OrderedDict()
+
+        def register_markers(text: str | None) -> None:
+            if not text:
+                return
+            for match in marker_pattern.finditer(text):
+                source_id = f"S{match.group(1)}"
+                if source_id in source_map and source_id not in ordered_markers:
+                    ordered_markers[source_id] = len(ordered_markers) + 1
+
+        for obj, attr in text_targets:
+            register_markers(getattr(obj, attr, ""))
+        for rec in report.recommendations:
+            register_markers(rec)
+        for appendix_value in report.appendices.values():
+            register_markers(appendix_value)
+
+        if not ordered_markers:
+            logfire.warning("No citations detected after enforcement", report_title=report.title)
+            return report
+
+        def replacement(match: re.Match[str]) -> str:
+            source_id = f"S{match.group(1)}"
+            number = ordered_markers.get(source_id)
+            return match.group(0) if number is None else f"[^{number}]"
+
+        for obj, attr in text_targets:
+            current = getattr(obj, attr, "")
+            if current:
+                updated = marker_pattern.sub(replacement, str(current))
+                setattr(obj, attr, updated)
+
+        report.recommendations = [
+            marker_pattern.sub(replacement, str(rec)) for rec in report.recommendations
+        ]
+        for key, value in list(report.appendices.items()):
+            report.appendices[key] = marker_pattern.sub(replacement, str(value))
+
+        footnotes: list[str] = []
+        source_summary: list[dict[str, Any]] = []
+        for source_id, footnote_number in ordered_markers.items():
+            source = source_map[source_id]
+            descriptor = source.title
+            if source.publisher:
+                descriptor += f" — {source.publisher}"
+            if source.date:
+                descriptor += f" ({source.date.strftime('%Y-%m-%d')})"
+            if source.url:
+                descriptor += f" <{source.url}>"
+            footnotes.append(f"[^{footnote_number}]: {descriptor}")
+            source_summary.append(
+                {
+                    "id": source_id,
+                    "title": source.title,
+                    "url": source.url or "",
+                    "publisher": source.publisher or "",
+                    "used": True,
+                    "footnote_number": footnote_number,
+                }
+            )
+
+        report.references = footnotes
+        for source_id, source in source_map.items():
+            if source_id in ordered_markers:
+                continue
+            source_summary.append(
+                {
+                    "id": source_id,
+                    "title": source.title,
+                    "url": source.url or "",
+                    "publisher": source.publisher or "",
+                    "used": False,
+                }
+            )
+        report.metadata.source_summary = source_summary
+
+        for source_id in ordered_markers:
+            research_results.record_usage(source_id, report_section="final_report")
+
+        audit_result = self._audit_citations(
+            ordered_markers=ordered_markers,
+            source_map=source_map,
+            required_citations=required_citations,
+        )
+        report.metadata.citation_audit = audit_result
+
+        quality_metrics = getattr(research_results.synthesis_metadata, "quality_metrics", None)
+        if quality_metrics is not None:
+            quality_metrics["citation_coverage"] = audit_result.get("coverage", 0.0)
+            quality_metrics["citation_audit_status"] = audit_result.get("status")
+
+        if audit_result.get("status") != "pass":
+            logfire.warning(
+                "Citation audit warnings detected",
+                status=audit_result.get("status"),
+                orphaned=audit_result.get("orphaned_sources"),
+            )
+
+        return report
+
+    def _audit_citations(
+        self,
+        *,
+        ordered_markers: OrderedDict[str, int],
+        source_map: dict[str, ResearchSource],
+        required_citations: int,
+    ) -> dict[str, Any]:
+        total_sources = len(source_map)
+        cited_sources = len(ordered_markers)
+        orphaned_sources = [sid for sid in source_map if sid not in ordered_markers]
+        coverage = cited_sources / max(total_sources, 1)
+        contiguous = list(ordered_markers.values()) == list(range(1, cited_sources + 1))
+        required_met = cited_sources >= min(required_citations, total_sources)
+
+        status = "pass"
+        if not contiguous or not required_met:
+            status = "warn"
+        if total_sources and coverage < 0.4:
+            status = "warn"
+
+        return {
+            "status": status,
+            "coverage": coverage,
+            "total_sources": total_sources,
+            "cited_sources": cited_sources,
+            "required_met": required_met,
+            "contiguous": contiguous,
+            "orphaned_sources": orphaned_sources,
+        }
 
 
 # Lazy initialization of module-level instance

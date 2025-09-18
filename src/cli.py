@@ -602,6 +602,14 @@ def display_report_object(report: ResearchReport) -> None:
         )
     )
 
+    if report.metadata.source_summary:
+        console.print("\n[bold magenta]Sources:[/bold magenta]")
+        for source in report.metadata.source_summary[:10]:
+            line = f"{source.get('id', '?')}: {source.get('title', '')}"
+            if source.get("url"):
+                line += f" ({source['url']})"
+            console.print(f"  - {line}")
+
     # Display key sections (first 3)
     for section in report.sections[:3]:
         console.print(f"\n[bold cyan]{section.title}[/bold cyan]")
@@ -615,6 +623,11 @@ def display_report_object(report: ResearchReport) -> None:
         console.print("\n[bold yellow]Recommendations:[/bold yellow]")
         for i, rec in enumerate(report.recommendations, 1):
             console.print(f"  {i}. {rec}")
+
+    if report.references:
+        console.print("\n[bold magenta]Footnotes:[/bold magenta]")
+        for reference in report.references:
+            console.print(f"  {reference}")
 
 
 def display_report_dict(report_dict: dict[str, Any]) -> None:
@@ -636,6 +649,23 @@ def display_report_dict(report_dict: dict[str, Any]) -> None:
             border_style="green",
         )
     )
+
+    metadata = report_dict.get("metadata")
+    source_summary: list[Any] | None = None
+    if isinstance(metadata, dict):
+        raw_summary = metadata.get("source_summary")
+        if isinstance(raw_summary, list):
+            source_summary = raw_summary
+    if source_summary:
+        console.print("\n[bold magenta]Sources:[/bold magenta]")
+        for entry in source_summary[:10]:
+            if not isinstance(entry, dict):
+                continue
+            line = f"{entry.get('id', '?')}: {entry.get('title', '')}"
+            url = entry.get("url")
+            if url:
+                line += f" ({url})"
+            console.print(f"  - {line}")
 
     # Display key sections (first 3)
     sections_raw = report_dict.get("sections", [])
@@ -670,6 +700,13 @@ def display_report_dict(report_dict: dict[str, Any]) -> None:
         for i, rec in enumerate(recommendations, 1):
             rec_str = str(rec) if rec is not None else ""
             console.print(f"  {i}. {rec_str}")
+
+    references_raw = report_dict.get("references", [])
+    if isinstance(references_raw, list) and references_raw:
+        references = cast(list[Any], references_raw)
+        console.print("\n[bold magenta]Footnotes:[/bold magenta]")
+        for reference in references:
+            console.print(f"  {reference}")
 
 
 def display_report(
@@ -943,9 +980,9 @@ def save_report_object(report: ResearchReport, filename: str) -> None:
             content.append(f"- {rec}\n")
 
     if report.references:
-        content.append("\n## References\n")
+        content.append("\n## Footnotes\n")
         for reference in report.references:
-            content.append(f"- {reference}\n")
+            content.append(f"{reference}\n")
 
     with open(filename, "w") as f:
         f.write("\n".join(content))

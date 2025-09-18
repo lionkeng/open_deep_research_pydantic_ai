@@ -322,3 +322,18 @@ class TestResearchExecutorIntegration:
         assert second_run
         assert isinstance(second_run[0], PatternAnalysis)
         assert pattern_recognizer.detect_patterns.call_count == 1
+
+
+    def test_source_usage_recording(self):
+        source = ResearchSource(title="Alpha", url="https://alpha.test", source_id="S1")
+        finding = HierarchicalFinding(finding="Fact", source=source)
+        results = ResearchResults(query="usage", findings=[finding], sources=[source])
+
+        results.record_usage("S1", finding_id=finding.finding_id, cluster_id="cluster-1", contradiction_id="contradiction-1", pattern_id="pattern-1", report_section="final_report")
+        usage = results.source_usage.get("S1")
+        assert usage is not None
+        assert usage.finding_ids == [finding.finding_id]
+        assert usage.cluster_ids == ["cluster-1"]
+        assert usage.contradiction_ids == ["contradiction-1"]
+        assert usage.pattern_ids == ["pattern-1"]
+        assert usage.report_sections == ["final_report"]

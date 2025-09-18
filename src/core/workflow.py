@@ -47,6 +47,7 @@ from services.search_orchestrator import (
 from services.search_orchestrator import (
     SearchResult as OrchestratorResult,
 )
+from services.source_repository import InMemorySourceRepository
 
 
 class ResearchWorkflow:
@@ -411,6 +412,7 @@ class ResearchWorkflow:
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
             )
+            deps.source_repository = InMemorySourceRepository()
 
             try:
                 # Execute two-phase clarification (includes query transformation)
