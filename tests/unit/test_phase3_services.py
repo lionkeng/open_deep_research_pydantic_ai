@@ -524,7 +524,7 @@ class TestSynthesisTools:
         assert any(p.type == PatternType.CAUSAL for p in patterns)
 
         # Should detect correlative pattern (as X increases, Y increases)
-        assert any(p.type == PatternType.CORRELATIVE for p in patterns)
+        assert any(p.type == PatternType.CORRELATION for p in patterns)
 
     def test_synthesis_score_calculation(self, tools):
         """Test overall synthesis score calculation."""
