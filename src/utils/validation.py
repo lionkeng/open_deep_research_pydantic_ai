@@ -9,6 +9,8 @@ from typing import Any, TypedDict
 
 import logfire
 
+from models.priority import Priority
+
 
 class SeverityResult(TypedDict):
     """Type definition for contradiction severity calculation result."""
@@ -535,14 +537,14 @@ class ContradictionSeverityCalculator:
         high_priority_types = {"direct", "semantic", "temporal"}
 
         if severity_score >= 0.8 or contradiction_type.lower() in high_priority_types:
-            return 1  # Immediate attention required
+            return Priority.HIGHEST  # Immediate attention required
         if severity_score >= 0.6:
-            return 2  # High priority
+            return Priority.HIGH  # High priority
         if severity_score >= 0.4:
-            return 3  # Medium priority
+            return Priority.MEDIUM  # Medium priority
         if severity_score >= 0.2:
-            return 4  # Low priority
-        return 5  # Monitor only
+            return Priority.LOW  # Low priority
+        return Priority.LOWEST  # Monitor only
 
     @staticmethod
     def suggest_resolution_strategy(

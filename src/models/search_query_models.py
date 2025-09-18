@@ -4,6 +4,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .priority import Priority
+
 
 class SearchQueryType(str, Enum):
     """Types of search queries with different processing strategies."""
@@ -61,7 +63,7 @@ class SearchQuery(BaseModel):
     )
 
     # Prioritization and execution
-    priority: int = Field(default=3, ge=1, le=5, description="Priority level (1=highest, 5=lowest)")
+    priority: int = Priority.FIELD_DEFINITION
     max_results: int = Field(default=10, ge=1, le=50, description="Maximum results to retrieve")
 
     # Context and targeting

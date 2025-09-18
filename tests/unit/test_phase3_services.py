@@ -11,11 +11,14 @@ import pytest
 from models.research_executor import (
     PatternType,
 )
+from models.search_query_models import ExecutionStrategy
+from services.search_orchestrator import SearchQuery
 from services.quality_monitor import (
     AlertSeverity,
     QualityMetric,
     QualityMonitor,
     QualityThresholds,
+    SynthesisResult,  # Add missing import
 )
 from services.search_orchestrator import (
     CacheConfig,
@@ -23,10 +26,13 @@ from services.search_orchestrator import (
     QueryExecutionPlan,
     RetryConfig,
     SearchOrchestrator,
+    SearchResult,
 )
 from services.synthesis_tools import (
     ContradictionConfig,
+    ContradictionType,  # Add missing import
     HierarchyFactors,
+    InformationHierarchy,  # Add missing import
     SynthesisTools,
     ThemeType,
 )
@@ -61,8 +67,8 @@ class TestSearchOrchestrator:
     async def test_sequential_execution(self, orchestrator):
         """Test sequential query execution."""
         queries = [
-            SearchQuery(query="test1", priority=QueryPriority.HIGH),
-            SearchQuery(query="test2", priority=QueryPriority.MEDIUM),
+            SearchQuery(id="q1", query="test1", priority=1, rationale="Test query 1"),
+            SearchQuery(id="q2", query="test2", priority=3, rationale="Test query 2"),
         ]
 
         results = await orchestrator.execute_sequential(queries)
@@ -74,7 +80,7 @@ class TestSearchOrchestrator:
     async def test_parallel_execution(self, orchestrator):
         """Test parallel query execution."""
         queries = [
-            SearchQuery(query=f"test{i}", priority=QueryPriority.MEDIUM)
+            SearchQuery(id=f"q{i}", query=f"test{i}", priority=3, rationale=f"Test query {i}")
             for i in range(5)
         ]
 
@@ -91,10 +97,10 @@ class TestSearchOrchestrator:
     async def test_hierarchical_execution(self, orchestrator):
         """Test hierarchical query execution based on priority."""
         queries = [
-            SearchQuery(query="low", priority=QueryPriority.LOW),
-            SearchQuery(query="high1", priority=QueryPriority.HIGH),
-            SearchQuery(query="medium", priority=QueryPriority.MEDIUM),
-            SearchQuery(query="high2", priority=QueryPriority.HIGH),
+            SearchQuery(id="q1", query="low", priority=5, rationale="Low priority query"),
+            SearchQuery(id="q2", query="high1", priority=1, rationale="High priority query 1"),
+            SearchQuery(id="q3", query="medium", priority=3, rationale="Medium priority query"),
+            SearchQuery(id="q4", query="high2", priority=1, rationale="High priority query 2"),
         ]
 
         results = await orchestrator.execute_hierarchical(queries)
@@ -127,7 +133,7 @@ class TestSearchOrchestrator:
             retry_config=RetryConfig(max_attempts=3, initial_delay_ms=10),
         )
 
-        query = SearchQuery(query="test")
+        query = SearchQuery(id="q1", query="test", rationale="Test query for retry")
         _, result = await orchestrator._execute_query(query)
 
         assert result is not None
@@ -136,7 +142,7 @@ class TestSearchOrchestrator:
     @pytest.mark.asyncio
     async def test_caching(self, orchestrator):
         """Test caching mechanism."""
-        query = SearchQuery(query="cached_test")
+        query = SearchQuery(id="q1", query="cached_test", rationale="Test query for caching")
 
         # First execution
         _, result1 = await orchestrator._execute_query(query)
@@ -155,8 +161,8 @@ class TestSearchOrchestrator:
         """Test execution report generation."""
         plan = QueryExecutionPlan(
             queries=[
-                SearchQuery(query="test1"),
-                SearchQuery(query="test2"),
+                SearchQuery(id="q1", query="test1", rationale="Test query 1"),
+                SearchQuery(id="q2", query="test2", rationale="Test query 2"),
             ],
             strategy=ExecutionStrategy.PARALLEL,
         )
@@ -184,7 +190,7 @@ class TestSearchOrchestrator:
 
         # Fill cache beyond capacity
         for i in range(3):
-            query = SearchQuery(query=f"test{i}")
+            query = SearchQuery(id=f"q{i}", query=f"test{i}", rationale=f"Test query {i}")
             await orchestrator._execute_query(query)
 
         # First query should be evicted
@@ -195,7 +201,7 @@ class TestSearchOrchestrator:
     async def test_execution_stats(self, orchestrator):
         """Test execution statistics tracking."""
         queries = [
-            SearchQuery(query=f"test{i}")
+            SearchQuery(id=f"q{i}", query=f"test{i}", rationale=f"Test query {i}")
             for i in range(3)
         ]
 
@@ -601,8 +607,8 @@ class TestServiceIntegration:
         # Execute queries
         plan = QueryExecutionPlan(
             queries=[
-                SearchQuery(query="test1"),
-                SearchQuery(query="test2"),
+                SearchQuery(id="q1", query="test1", rationale="Test query 1"),
+                SearchQuery(id="q2", query="test2", rationale="Test query 2"),
             ],
             strategy=ExecutionStrategy.PARALLEL,
         )
@@ -668,8 +674,8 @@ class TestServiceIntegration:
         # Execute search plan
         plan = QueryExecutionPlan(
             queries=[
-                SearchQuery(query="test query 1", priority=QueryPriority.HIGH),
-                SearchQuery(query="test query 2", priority=QueryPriority.MEDIUM),
+                SearchQuery(query="test query 1", priority=1),  # High priority
+                SearchQuery(query="test query 2", priority=3),  # Medium priority
             ],
             strategy=ExecutionStrategy.HIERARCHICAL,
         )

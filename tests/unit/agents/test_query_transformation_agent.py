@@ -57,7 +57,7 @@ def test_config():
     return AgentConfiguration(
         agent_name="test-query-transformation",
         agent_type="transformation",
-        model="test-model",
+        model="test",  # Use PydanticAI's built-in test model
         max_retries=1,
         custom_settings={"temperature": 0.7}
     )
@@ -66,13 +66,10 @@ def test_config():
 @pytest.fixture
 def transformation_agent(test_config):
     """Create a real QueryTransformationAgent instance for testing."""
-    with patch('src.agents.base.Agent') as MockAgent:
-        mock_agent_instance = MagicMock()
-        MockAgent.return_value = mock_agent_instance
-
-        agent = QueryTransformationAgent(config=test_config)
-        agent.agent = mock_agent_instance
-        return agent
+    # When using 'test' model, PydanticAI creates a TestModel internally
+    # which handles mocking appropriately
+    agent = QueryTransformationAgent(config=test_config)
+    return agent
 
 
 @pytest.fixture
@@ -100,18 +97,16 @@ class TestQueryTransformationAgent:
         - Name and type are set properly
         - Agent instance is initialized
         """
-        # Arrange
-        with patch('src.agents.base.Agent') as MockAgent:
-            mock_agent_instance = MagicMock()
-            MockAgent.return_value = mock_agent_instance
+        # Act - Create agent with test model
+        agent = QueryTransformationAgent(config=test_config)
 
-            # Act
-            agent = QueryTransformationAgent(config=test_config)
-
-            # Assert
-            assert agent.config == test_config
-            assert agent.name == "test-query-transformation"
-            assert agent.agent == mock_agent_instance
+        # Assert
+        assert agent.config == test_config
+        assert agent.name == "test-query-transformation"
+        assert agent.agent is not None
+        # Verify it's using the TestModel
+        from pydantic_ai.models.test import TestModel
+        assert isinstance(agent.agent.model, TestModel)
 
     async def test_simple_query_transformation(self, transformation_agent, mock_llm_response, sample_dependencies):
         """Test transformation of a simple query.

@@ -75,7 +75,7 @@ from enum import Enum
 class ResearchObjective(BaseModel):
     """Individual research objective."""
     objective: str = Field(description="Specific research goal")
-    priority: int = Field(ge=1, le=5, description="Priority (5=highest)")
+    priority: int = Field(ge=1, le=5, description="Priority (1=highest, 5=lowest)")
     success_criteria: str = Field(description="How to measure success")
     related_queries: List[int] = Field(
         default_factory=list,
@@ -335,7 +335,7 @@ class EnhancedQueryTransformationAgent(BaseAgent[TransformedQuery]):
 
 ### 1. Query Transformation
 - Decompose complex queries into 10-15 specific, executable searches
-- Assign priority levels (1-5, where 5 is highest)
+- Assign priority levels (1-5, where 1 is highest, 5 is lowest)
 - Classify query types (academic, news, technical, market, general)
 - Include rationale and expected insights for each query
 

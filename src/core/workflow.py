@@ -23,6 +23,7 @@ from models.core import (
     ResearchStage,
     ResearchState,
 )
+from models.priority import Priority
 from models.research_executor import ResearchFinding
 from models.search_query_models import (
     ExecutionStrategy as BatchExecutionStrategy,
@@ -37,9 +38,6 @@ from services.search_orchestrator import (
 from services.search_orchestrator import (
     QueryExecutionPlan,
     SearchOrchestrator,
-)
-from services.search_orchestrator import (
-    QueryPriority as SearchQueryPriority,
 )
 from services.search_orchestrator import (
     SearchQuery as OrchestratorQuery,
@@ -643,14 +641,9 @@ class ResearchWorkflow:
             strategy=strategy_map.get(batch.execution_strategy, SearchExecutionStrategy.SEQUENTIAL),
         )
 
-    def _map_query_priority(self, priority: int | None) -> SearchQueryPriority:
-        """Map numeric priority to orchestrator priority enum."""
-
-        if priority is None or priority <= 2:
-            return SearchQueryPriority.HIGH
-        if priority <= 4:
-            return SearchQueryPriority.MEDIUM
-        return SearchQueryPriority.LOW
+    def _map_query_priority(self, priority: int | None) -> int:
+        """Map numeric priority, returning a default if None."""
+        return priority if priority is not None else Priority.DEFAULT_PRIORITY
 
     async def _orchestrated_search(self, query: OrchestratorQuery) -> OrchestratorResult:
         """Bridge function that executes a query through WebSearchService."""

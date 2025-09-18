@@ -34,7 +34,7 @@ def test_config():
     return AgentConfiguration(
         agent_name="test-clarification-agent",
         agent_type="clarification",
-        model="test-model",
+        model="test",  # Use PydanticAI's built-in test model
         max_retries=1,
         custom_settings={"temperature": 0.7}
     )
@@ -43,14 +43,10 @@ def test_config():
 @pytest.fixture
 def clarification_agent(test_config):
     """Create a real ClarificationAgent instance for testing."""
-    # Mock the Agent creation to avoid real API calls
-    with patch('src.agents.base.Agent') as MockAgent:
-        mock_agent_instance = MagicMock()
-        MockAgent.return_value = mock_agent_instance
-
-        agent = ClarificationAgent(config=test_config)
-        agent.agent = mock_agent_instance
-        return agent
+    # When using 'test' model, PydanticAI creates a TestModel internally
+    # which handles mocking appropriately
+    agent = ClarificationAgent(config=test_config)
+    return agent
 
 
 @pytest.fixture
@@ -72,15 +68,16 @@ class TestClarificationAgent:
 
     async def test_agent_initialization(self, test_config):
         """Test that ClarificationAgent initializes correctly."""
-        with patch('src.agents.base.Agent') as MockAgent:
-            mock_agent_instance = MagicMock()
-            MockAgent.return_value = mock_agent_instance
+        # Act - Create agent with test model
+        agent = ClarificationAgent(config=test_config)
 
-            agent = ClarificationAgent(config=test_config)
-
-            assert agent.config == test_config
-            assert agent.name == "test-clarification-agent"
-            assert agent.agent == mock_agent_instance
+        # Assert
+        assert agent.config == test_config
+        assert agent.name == "test-clarification-agent"
+        assert agent.agent is not None
+        # Verify it's using the TestModel
+        from pydantic_ai.models.test import TestModel
+        assert isinstance(agent.agent.model, TestModel)
 
     async def test_needs_clarification_basic(self, clarification_agent, mock_llm_response, sample_dependencies):
         """Test basic case where clarification is needed."""
@@ -384,27 +381,24 @@ class TestClarificationAgent:
         config1 = AgentConfiguration(
             agent_name="agent1",
             agent_type="clarification",
-            model="gpt-5",
+            model="test",  # Use PydanticAI's built-in test model
             max_retries=1,
             custom_settings={"temperature": 0.1}
         )
         config2 = AgentConfiguration(
             agent_name="agent2",
             agent_type="clarification",
-            model="claude-3",
+            model="test",  # Use PydanticAI's built-in test model
             max_retries=3,
             custom_settings={"temperature": 0.9}
         )
 
-        with patch('src.agents.base.Agent') as MockAgent:
-            mock_agent_instance = MagicMock()
-            MockAgent.return_value = mock_agent_instance
+        # Create agents with test model
+        agent1 = ClarificationAgent(config=config1)
+        agent2 = ClarificationAgent(config=config2)
 
-            agent1 = ClarificationAgent(config=config1)
-            agent2 = ClarificationAgent(config=config2)
-
-            # Verify configs are applied
-            assert agent1.config.model == "gpt-5"
-            assert agent2.config.model == "claude-3"
-            assert agent1.config.custom_settings["temperature"] == 0.1
-            assert agent2.config.custom_settings["temperature"] == 0.9
+        # Verify configs are applied
+        assert agent1.config.model == "test"
+        assert agent2.config.model == "test"
+        assert agent1.config.custom_settings["temperature"] == 0.1
+        assert agent2.config.custom_settings["temperature"] == 0.9

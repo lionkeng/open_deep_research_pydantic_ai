@@ -255,7 +255,7 @@ class SearchQuery(BaseModel):
         default=3,
         ge=1,
         le=5,
-        description="Priority level (1=lowest, 5=highest)"
+        description="Priority level (1=highest, 5=lowest)"
     )
     max_results: int = Field(
         default=10,

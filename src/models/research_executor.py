@@ -18,6 +18,8 @@ from utils.validation import (
     SeverityResult,
 )
 
+from .priority import Priority
+
 
 class SourceUsage(BaseModel):
     """Tracks how a source is reused across synthesis artefacts."""
@@ -297,9 +299,7 @@ class LegacyContradiction(BaseModel):
     resolution_strategy: dict[str, Any] = Field(
         default_factory=dict, description="Suggested resolution strategy and actions"
     )
-    priority: int = Field(
-        ge=1, le=5, default=3, description="Resolution priority (1=highest, 5=lowest)"
-    )
+    priority: int = Priority.FIELD_DEFINITION
     severity_level: str = Field(default="medium", description="Categorical severity level")
     domain_overlap: float = Field(
         ge=0.0, le=1.0, default=1.0, description="Domain overlap between findings"

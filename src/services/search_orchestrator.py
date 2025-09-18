@@ -15,34 +15,38 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-# Local model definitions until integrated with main models
+from models.priority import Priority
 
+# Import ExecutionStrategy from canonical models
+from models.search_query_models import ExecutionStrategy
 
-class ExecutionStrategy(str, Enum):
-    """Execution strategy for queries."""
-
-    SEQUENTIAL = "sequential"
-    PARALLEL = "parallel"
-    HIERARCHICAL = "hierarchical"
-
-
-class QueryPriority(str, Enum):
-    """Priority levels for queries."""
-
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
+# Local model definitions for backward compatibility
+# These wrap around the canonical models where needed
 
 
 class SearchQuery(BaseModel):
-    """Search query model."""
+    """Search query model for orchestrator.
+
+    This is a simplified version that maintains backward compatibility
+    with workflow.py while supporting the canonical model structure.
+    """
 
     id: str | None = Field(default=None)
     query: str = Field(description="The search query text")
-    priority: QueryPriority | None = Field(default=QueryPriority.MEDIUM)
+    priority: int = Priority.FIELD_DEFINITION
     context: dict[str, Any] | None = Field(default=None)
 
+    # Additional fields from canonical model for test compatibility
+    rationale: str | None = Field(default=None, description="Why this query is needed")
+    query_type: str | None = Field(default=None)
+    max_results: int = Field(default=10)
+    objective_id: str | None = Field(default=None)
+    search_sources: list[Any] = Field(default_factory=list)
+    temporal_context: Any | None = Field(default=None)
+    expected_result_type: str = Field(default="")
 
+
+# Keep local SearchResult since it's not in canonical models
 class SearchResult(BaseModel):
     """Search result model."""
 
@@ -167,10 +171,8 @@ class SearchOrchestrator:
         """Generate a unique cache key for a query."""
         query_data = {
             "text": query.query,
-            "context": query.context.model_dump()
-            if hasattr(query.context, "model_dump")
-            else query.context,
-            "priority": query.priority.value if query.priority else None,
+            "context": getattr(query, "context", None),
+            "priority": query.priority if hasattr(query, "priority") else Priority.DEFAULT_PRIORITY,
         }
         query_json = json.dumps(query_data, sort_keys=True)
         return hashlib.sha256(query_json.encode()).hexdigest()
@@ -335,21 +337,21 @@ class SearchOrchestrator:
         High priority queries are executed first in parallel,
         followed by medium and low priority queries.
         """
-        # Group by priority
-        priority_groups: dict[QueryPriority, list[SearchQuery]] = defaultdict(list)
+        # Group by priority using Priority class constants
+        priority_groups: dict[int, list[SearchQuery]] = defaultdict(list)
         for query in queries:
-            priority = query.priority or QueryPriority.MEDIUM
+            priority = query.priority if hasattr(query, "priority") else Priority.DEFAULT_PRIORITY
             priority_groups[priority].append(query)
 
         results = []
 
-        # Execute in priority order
-        for priority in [QueryPriority.HIGH, QueryPriority.MEDIUM, QueryPriority.LOW]:
-            if priority in priority_groups:
-                group_queries = priority_groups[priority]
-                # Execute each priority group in parallel
-                group_results = await self.execute_parallel(group_queries)
-                results.extend(group_results)
+        # Execute in priority order using Priority sorting
+        # Lower numbers = higher priority, execute first
+        for priority in sorted(priority_groups.keys()):
+            group_queries = priority_groups[priority]
+            # Execute each priority group in parallel
+            group_results = await self.execute_parallel(group_queries)
+            results.extend(group_results)
 
         return results
 
