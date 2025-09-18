@@ -6,34 +6,32 @@ evaluation components, generates comprehensive reports, and provides dashboard
 capabilities for the clarification agent.
 """
 
+import argparse
 import asyncio
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Union
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from enum import Enum
-import argparse
+from pathlib import Path
+from typing import Any
 
 # Testing imports
-import pytest
-import sqlite3
-
 # Evaluation system imports
-from clarification_evals import (
+from tests.evals.clarification_evals import (
+    ClarificationAgent,
     create_clarification_dataset,
     run_clarification_evaluation,
-    ClarificationAgent
 )
-from multi_judge_evaluation import AdvancedMultiJudgeEvaluator
-from domain_specific_evals import DomainEvaluationOrchestrator
-from regression_tracker import PerformanceTracker, PerformanceMetrics, RegressionAlert
+from tests.evals.domain_specific_evals import DomainEvaluationOrchestrator
+from tests.evals.multi_judge_evaluation import AdvancedMultiJudgeEvaluator
+from tests.evals.regression_tracker import PerformanceMetrics, PerformanceTracker, RegressionAlert
 
 
 class EvaluationSuite(Enum):
     """Available evaluation suites."""
+
     UNIT_TESTS = "unit_tests"
     INTEGRATION_TESTS = "integration_tests"
     LLM_EVALUATIONS = "llm_evaluations"
@@ -46,6 +44,7 @@ class EvaluationSuite(Enum):
 
 class OutputFormat(Enum):
     """Available output formats."""
+
     CONSOLE = "console"
     MARKDOWN = "markdown"
     HTML = "html"
@@ -58,10 +57,10 @@ class EvaluationConfig:
     """Configuration for evaluation runs."""
 
     # Suite selection
-    suites: List[EvaluationSuite]
+    suites: list[EvaluationSuite]
 
     # Output options
-    output_formats: List[OutputFormat]
+    output_formats: list[OutputFormat]
     output_dir: str
 
     # Performance options
@@ -78,9 +77,9 @@ class EvaluationConfig:
     fail_on_accuracy_drop: float = 0.05  # 5% accuracy drop fails build
 
     # Git integration
-    git_commit: Optional[str] = None
-    git_branch: Optional[str] = None
-    model_version: Optional[str] = None
+    git_commit: str | None = None
+    git_branch: str | None = None
+    model_version: str | None = None
 
 
 @dataclass
@@ -92,22 +91,22 @@ class EvaluationResults:
     config: EvaluationConfig
 
     # Test results
-    unit_test_results: Optional[Dict[str, Any]] = None
-    integration_test_results: Optional[Dict[str, Any]] = None
+    unit_test_results: dict[str, Any] | None = None
+    integration_test_results: dict[str, Any] | None = None
 
     # LLM evaluation results
-    llm_evaluation_results: Optional[Dict[str, Any]] = None
-    multi_judge_results: Optional[Dict[str, Any]] = None
-    domain_specific_results: Optional[Dict[str, Any]] = None
+    llm_evaluation_results: dict[str, Any] | None = None
+    multi_judge_results: dict[str, Any] | None = None
+    domain_specific_results: dict[str, Any] | None = None
 
     # Performance results
-    performance_metrics: Optional[PerformanceMetrics] = None
-    regression_alerts: Optional[List[RegressionAlert]] = None
+    performance_metrics: PerformanceMetrics | None = None
+    regression_alerts: list[RegressionAlert] | None = None
 
     # Summary
     overall_success: bool = False
-    critical_issues: List[str] = None
-    recommendations: List[str] = None
+    critical_issues: list[str] = None
+    recommendations: list[str] = None
 
     def __post_init__(self):
         if self.critical_issues is None:
@@ -119,13 +118,22 @@ class EvaluationResults:
 class TestRunner:
     """Runner for pytest-based tests."""
 
-    def run_unit_tests(self) -> Dict[str, Any]:
+    def run_unit_tests(self) -> dict[str, Any]:
         """Run unit tests."""
-        result = subprocess.run([
-            sys.executable, "-m", "pytest",
-            "tests/unit/agents/test_clarification_agent_unit.py",
-            "-v", "--tb=short", "--json-report", "--json-report-file=/tmp/unit_test_results.json"
-        ], capture_output=True, text=True)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/unit/agents/test_clarification_agent_unit.py",
+                "-v",
+                "--tb=short",
+                "--json-report",
+                "--json-report-file=/tmp/unit_test_results.json",
+            ],
+            capture_output=True,
+            text=True,
+        )
 
         # Load JSON report if available
         json_path = Path("/tmp/unit_test_results.json")
@@ -140,16 +148,25 @@ class TestRunner:
             "stdout": result.stdout,
             "stderr": result.stderr,
             "success": result.returncode == 0,
-            "json_report": json_data
+            "json_report": json_data,
         }
 
-    def run_integration_tests(self) -> Dict[str, Any]:
+    def run_integration_tests(self) -> dict[str, Any]:
         """Run integration tests."""
-        result = subprocess.run([
-            sys.executable, "-m", "pytest",
-            "tests/integration/test_clarification_workflows.py",
-            "-v", "--tb=short", "--json-report", "--json-report-file=/tmp/integration_test_results.json"
-        ], capture_output=True, text=True)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "tests/integration/test_clarification_workflows.py",
+                "-v",
+                "--tb=short",
+                "--json-report",
+                "--json-report-file=/tmp/integration_test_results.json",
+            ],
+            capture_output=True,
+            text=True,
+        )
 
         # Load JSON report if available
         json_path = Path("/tmp/integration_test_results.json")
@@ -164,7 +181,7 @@ class TestRunner:
             "stdout": result.stdout,
             "stderr": result.stderr,
             "success": result.returncode == 0,
-            "json_report": json_data
+            "json_report": json_data,
         }
 
 
@@ -182,49 +199,67 @@ class ComprehensiveEvaluationRunner:
     async def run_evaluation(self) -> EvaluationResults:
         """Run comprehensive evaluation based on configuration."""
 
-        print(f"🚀 Starting comprehensive evaluation...")
+        print("🚀 Starting comprehensive evaluation...")
         print(f"   Suites: {[s.value for s in self.config.suites]}")
         print(f"   Output formats: {[f.value for f in self.config.output_formats]}")
 
-        results = EvaluationResults(
-            timestamp=datetime.now(timezone.utc),
-            config=self.config
-        )
+        results = EvaluationResults(timestamp=datetime.now(UTC), config=self.config)
 
         # Run selected evaluation suites
-        if EvaluationSuite.UNIT_TESTS in self.config.suites or EvaluationSuite.ALL in self.config.suites:
+        if (
+            EvaluationSuite.UNIT_TESTS in self.config.suites
+            or EvaluationSuite.ALL in self.config.suites
+        ):
             print("📋 Running unit tests...")
             results.unit_test_results = self.test_runner.run_unit_tests()
 
-        if EvaluationSuite.INTEGRATION_TESTS in self.config.suites or EvaluationSuite.ALL in self.config.suites:
+        if (
+            EvaluationSuite.INTEGRATION_TESTS in self.config.suites
+            or EvaluationSuite.ALL in self.config.suites
+        ):
             print("🔗 Running integration tests...")
             results.integration_test_results = self.test_runner.run_integration_tests()
 
-        if EvaluationSuite.LLM_EVALUATIONS in self.config.suites or EvaluationSuite.ALL in self.config.suites:
+        if (
+            EvaluationSuite.LLM_EVALUATIONS in self.config.suites
+            or EvaluationSuite.ALL in self.config.suites
+        ):
             print("🤖 Running LLM evaluations...")
             results.llm_evaluation_results = await self._run_llm_evaluations()
 
-        if EvaluationSuite.MULTI_JUDGE in self.config.suites or EvaluationSuite.ALL in self.config.suites:
+        if (
+            EvaluationSuite.MULTI_JUDGE in self.config.suites
+            or EvaluationSuite.ALL in self.config.suites
+        ):
             print("⚖️  Running multi-judge evaluations...")
             results.multi_judge_results = await self._run_multi_judge_evaluations()
 
-        if EvaluationSuite.DOMAIN_SPECIFIC in self.config.suites or EvaluationSuite.ALL in self.config.suites:
+        if (
+            EvaluationSuite.DOMAIN_SPECIFIC in self.config.suites
+            or EvaluationSuite.ALL in self.config.suites
+        ):
             print("🎯 Running domain-specific evaluations...")
             results.domain_specific_results = await self._run_domain_specific_evaluations()
 
-        if (EvaluationSuite.REGRESSION_TRACKING in self.config.suites or
-            EvaluationSuite.ALL in self.config.suites or
-            self.config.include_regression_tracking):
+        if (
+            EvaluationSuite.REGRESSION_TRACKING in self.config.suites
+            or EvaluationSuite.ALL in self.config.suites
+            or self.config.include_regression_tracking
+        ):
             print("📊 Running regression tracking...")
-            performance_metrics, regression_alerts = await self.performance_tracker.run_performance_evaluation(
-                git_commit=self.config.git_commit,
-                model_version=self.config.model_version
+            (
+                performance_metrics,
+                regression_alerts,
+            ) = await self.performance_tracker.run_performance_evaluation(
+                git_commit=self.config.git_commit, model_version=self.config.model_version
             )
             results.performance_metrics = performance_metrics
             results.regression_alerts = regression_alerts
 
         # Analyze results and determine overall success
-        results.overall_success, results.critical_issues, results.recommendations = self._analyze_results(results)
+        results.overall_success, results.critical_issues, results.recommendations = (
+            self._analyze_results(results)
+        )
 
         # Generate reports
         await self._generate_reports(results)
@@ -233,23 +268,19 @@ class ComprehensiveEvaluationRunner:
 
         return results
 
-    async def _run_llm_evaluations(self) -> Dict[str, Any]:
+    async def _run_llm_evaluations(self) -> dict[str, Any]:
         """Run LLM-based evaluations."""
         try:
             report = await run_clarification_evaluation()
             return {
                 "success": True,
                 "report": str(report) if report else "No report generated",
-                "error": None
+                "error": None,
             }
         except Exception as e:
-            return {
-                "success": False,
-                "report": None,
-                "error": str(e)
-            }
+            return {"success": False, "report": None, "error": str(e)}
 
-    async def _run_multi_judge_evaluations(self) -> Dict[str, Any]:
+    async def _run_multi_judge_evaluations(self) -> dict[str, Any]:
         """Run multi-judge consensus evaluations."""
         try:
             evaluator = AdvancedMultiJudgeEvaluator()
@@ -262,19 +293,13 @@ class ComprehensiveEvaluationRunner:
                     agent_result = await agent.agent.run(case.inputs.query)
                     multi_judge_result = await evaluator.evaluate_consensus(
                         case.inputs.query,
-                        agent_result.data if hasattr(agent_result, 'data') else agent_result
+                        agent_result.data if hasattr(agent_result, "data") else agent_result,
                     )
-                    results.append({
-                        "case_name": case.name,
-                        "success": True,
-                        "result": multi_judge_result
-                    })
+                    results.append(
+                        {"case_name": case.name, "success": True, "result": multi_judge_result}
+                    )
                 except Exception as e:
-                    results.append({
-                        "case_name": case.name,
-                        "success": False,
-                        "error": str(e)
-                    })
+                    results.append({"case_name": case.name, "success": False, "error": str(e)})
 
             success_rate = sum(1 for r in results if r["success"]) / len(results) if results else 0
 
@@ -283,17 +308,13 @@ class ComprehensiveEvaluationRunner:
                 "success_rate": success_rate,
                 "total_cases": len(results),
                 "results": results,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "results": []
-            }
+            return {"success": False, "error": str(e), "results": []}
 
-    async def _run_domain_specific_evaluations(self) -> Dict[str, Any]:
+    async def _run_domain_specific_evaluations(self) -> dict[str, Any]:
         """Run domain-specific evaluations."""
         try:
             orchestrator = DomainEvaluationOrchestrator()
@@ -302,27 +323,31 @@ class ComprehensiveEvaluationRunner:
             test_queries = [
                 ("How do I optimize my code?", "technical"),
                 ("Explain quantum computing", "scientific"),
-                ("Analyze the market for our product", "business")
+                ("Analyze the market for our product", "business"),
             ]
 
             results = []
             for query, expected_domain in test_queries:
                 try:
                     domain_result = await orchestrator.evaluate_query_with_domain_detection(query)
-                    results.append({
-                        "query": query,
-                        "expected_domain": expected_domain,
-                        "detected_domain": domain_result.get("detected_domain"),
-                        "success": True,
-                        "result": domain_result
-                    })
+                    results.append(
+                        {
+                            "query": query,
+                            "expected_domain": expected_domain,
+                            "detected_domain": domain_result.get("detected_domain"),
+                            "success": True,
+                            "result": domain_result,
+                        }
+                    )
                 except Exception as e:
-                    results.append({
-                        "query": query,
-                        "expected_domain": expected_domain,
-                        "success": False,
-                        "error": str(e)
-                    })
+                    results.append(
+                        {
+                            "query": query,
+                            "expected_domain": expected_domain,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    )
 
             success_rate = sum(1 for r in results if r["success"]) / len(results) if results else 0
 
@@ -331,17 +356,13 @@ class ComprehensiveEvaluationRunner:
                 "success_rate": success_rate,
                 "total_cases": len(results),
                 "results": results,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "results": []
-            }
+            return {"success": False, "error": str(e), "results": []}
 
-    def _analyze_results(self, results: EvaluationResults) -> Tuple[bool, List[str], List[str]]:
+    def _analyze_results(self, results: EvaluationResults) -> tuple[bool, list[str], list[str]]:
         """Analyze all results to determine overall success and generate recommendations."""
 
         overall_success = True
@@ -380,7 +401,7 @@ class ComprehensiveEvaluationRunner:
             domain_accuracies = [
                 metrics.technical_domain_accuracy,
                 metrics.scientific_domain_accuracy,
-                metrics.business_domain_accuracy
+                metrics.business_domain_accuracy,
             ]
             min_domain_accuracy = min(domain_accuracies)
             if min_domain_accuracy < 0.7:
@@ -395,11 +416,15 @@ class ComprehensiveEvaluationRunner:
             if critical_alerts:
                 if self.config.fail_on_regression:
                     overall_success = False
-                critical_issues.extend([f"Critical regression in {a.metric_name}" for a in critical_alerts])
+                critical_issues.extend(
+                    [f"Critical regression in {a.metric_name}" for a in critical_alerts]
+                )
                 recommendations.append("Address critical performance regressions immediately")
 
             if warning_alerts:
-                recommendations.extend([f"Monitor {a.metric_name} performance" for a in warning_alerts])
+                recommendations.extend(
+                    [f"Monitor {a.metric_name} performance" for a in warning_alerts]
+                )
 
         # Add general recommendations
         if not critical_issues:
@@ -428,9 +453,9 @@ class ComprehensiveEvaluationRunner:
     def _print_console_report(self, results: EvaluationResults):
         """Print comprehensive console report."""
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("🔍 COMPREHENSIVE EVALUATION REPORT")
-        print("="*80)
+        print("=" * 80)
 
         print(f"📅 Timestamp: {results.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
         print(f"🎯 Overall Success: {'✅ PASS' if results.overall_success else '❌ FAIL'}")
@@ -443,11 +468,15 @@ class ComprehensiveEvaluationRunner:
         # Performance summary
         if results.performance_metrics:
             metrics = results.performance_metrics
-            print(f"\n📊 Performance Summary:")
-            print(f"   • Overall Accuracy: {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy*100:.1f}%)")
+            print("\n📊 Performance Summary:")
+            print(
+                f"   • Overall Accuracy: {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy * 100:.1f}%)"
+            )
             print(f"   • Average Response Time: {metrics.avg_response_time:.3f}s")
             print(f"   • F1 Score: {metrics.f1_score:.3f}")
-            print(f"   • Test Cases: {metrics.total_test_cases} ({metrics.failed_test_cases} failed)")
+            print(
+                f"   • Test Cases: {metrics.total_test_cases} ({metrics.failed_test_cases} failed)"
+            )
 
         # Regression alerts
         if results.regression_alerts:
@@ -470,17 +499,17 @@ class ComprehensiveEvaluationRunner:
             for rec in results.recommendations:
                 print(f"   • {rec}")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
 
     async def _generate_markdown_report(self, results: EvaluationResults):
         """Generate comprehensive markdown report."""
 
         report = f"""# Clarification Agent Evaluation Report
 
-**Generated:** {results.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
-**Overall Status:** {'✅ PASS' if results.overall_success else '❌ FAIL'}
-**Git Commit:** {self.config.git_commit or 'Unknown'}
-**Model Version:** {self.config.model_version or 'Unknown'}
+**Generated:** {results.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")}
+**Overall Status:** {"✅ PASS" if results.overall_success else "❌ FAIL"}
+**Git Commit:** {self.config.git_commit or "Unknown"}
+**Model Version:** {self.config.model_version or "Unknown"}
 
 ## Executive Summary
 
@@ -504,7 +533,7 @@ class ComprehensiveEvaluationRunner:
             report += f"""## 📊 Performance Metrics
 
 ### Accuracy Metrics
-- **Overall Accuracy:** {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy*100:.1f}%)
+- **Overall Accuracy:** {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy * 100:.1f}%)
 - **Precision:** {metrics.precision:.3f}
 - **Recall:** {metrics.recall:.3f}
 - **F1 Score:** {metrics.f1_score:.3f}
@@ -516,9 +545,9 @@ class ComprehensiveEvaluationRunner:
 - **Maximum:** {metrics.max_response_time:.3f}s
 
 ### Domain-Specific Performance
-- **Technical Domain:** {metrics.technical_domain_accuracy:.3f} ({metrics.technical_domain_accuracy*100:.1f}%)
-- **Scientific Domain:** {metrics.scientific_domain_accuracy:.3f} ({metrics.scientific_domain_accuracy*100:.1f}%)
-- **Business Domain:** {metrics.business_domain_accuracy:.3f} ({metrics.business_domain_accuracy*100:.1f}%)
+- **Technical Domain:** {metrics.technical_domain_accuracy:.3f} ({metrics.technical_domain_accuracy * 100:.1f}%)
+- **Scientific Domain:** {metrics.scientific_domain_accuracy:.3f} ({metrics.scientific_domain_accuracy * 100:.1f}%)
+- **Business Domain:** {metrics.business_domain_accuracy:.3f} ({metrics.business_domain_accuracy * 100:.1f}%)
 
 ### Quality Metrics
 - **Average Confidence:** {metrics.avg_confidence_score:.3f}
@@ -526,8 +555,8 @@ class ComprehensiveEvaluationRunner:
 - **Dimension Coverage:** {metrics.dimension_coverage_score:.3f}
 
 ### Robustness
-- **Edge Case Handling:** {metrics.edge_case_handling_score:.3f} ({metrics.edge_case_handling_score*100:.1f}%)
-- **Multilingual Support:** {metrics.multilingual_handling_score:.3f} ({metrics.multilingual_handling_score*100:.1f}%)
+- **Edge Case Handling:** {metrics.edge_case_handling_score:.3f} ({metrics.edge_case_handling_score * 100:.1f}%)
+- **Multilingual Support:** {metrics.multilingual_handling_score:.3f} ({metrics.multilingual_handling_score * 100:.1f}%)
 
 ### Resource Usage
 - **Peak Memory:** {metrics.peak_memory_usage_mb:.1f} MB
@@ -600,14 +629,16 @@ class ComprehensiveEvaluationRunner:
                 "suites": [s.value for s in results.config.suites],
                 "output_formats": [f.value for f in results.config.output_formats],
                 "git_commit": results.config.git_commit,
-                "model_version": results.config.model_version
-            }
+                "model_version": results.config.model_version,
+            },
         }
 
         # Add performance metrics if available
         if results.performance_metrics:
             json_data["performance_metrics"] = asdict(results.performance_metrics)
-            json_data["performance_metrics"]["timestamp"] = results.performance_metrics.timestamp.isoformat()
+            json_data["performance_metrics"]["timestamp"] = (
+                results.performance_metrics.timestamp.isoformat()
+            )
 
         # Add regression alerts if available
         if results.regression_alerts:
@@ -618,7 +649,7 @@ class ComprehensiveEvaluationRunner:
                     "baseline_value": alert.baseline_value,
                     "change_percent": alert.change_percent,
                     "severity": alert.severity,
-                    "timestamp": alert.timestamp.isoformat()
+                    "timestamp": alert.timestamp.isoformat(),
                 }
                 for alert in results.regression_alerts
             ]
@@ -629,12 +660,12 @@ class ComprehensiveEvaluationRunner:
             "integration_tests": results.integration_test_results,
             "llm_evaluations": results.llm_evaluation_results,
             "multi_judge": results.multi_judge_results,
-            "domain_specific": results.domain_specific_results
+            "domain_specific": results.domain_specific_results,
         }
 
         # Save JSON report
         json_path = Path(self.config.output_dir) / "evaluation_report.json"
-        with open(json_path, 'w') as f:
+        with open(json_path, "w") as f:
             json.dump(json_data, f, indent=2, default=str)
 
         print(f"📊 JSON report saved to {json_path}")
@@ -667,10 +698,10 @@ class ComprehensiveEvaluationRunner:
 <body>
     <div class="header">
         <h1>🔍 Clarification Agent Evaluation Report</h1>
-        <p><strong>Generated:</strong> {results.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
-        <p><strong>Status:</strong> <span class="{'status-pass' if results.overall_success else 'status-fail'}">{'✅ PASS' if results.overall_success else '❌ FAIL'}</span></p>
-        <p><strong>Git Commit:</strong> {self.config.git_commit or 'Unknown'}</p>
-        <p><strong>Model Version:</strong> {self.config.model_version or 'Unknown'}</p>
+        <p><strong>Generated:</strong> {results.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")}</p>
+        <p><strong>Status:</strong> <span class="{"status-pass" if results.overall_success else "status-fail"}">{"✅ PASS" if results.overall_success else "❌ FAIL"}</span></p>
+        <p><strong>Git Commit:</strong> {self.config.git_commit or "Unknown"}</p>
+        <p><strong>Model Version:</strong> {self.config.model_version or "Unknown"}</p>
     </div>"""
 
         # Critical Issues
@@ -692,7 +723,7 @@ class ComprehensiveEvaluationRunner:
         <div class="metrics-grid">
             <div>
                 <h3>Accuracy</h3>
-                <p>Overall: {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy*100:.1f}%)</p>
+                <p>Overall: {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy * 100:.1f}%)</p>
                 <p>Precision: {metrics.precision:.3f}</p>
                 <p>Recall: {metrics.recall:.3f}</p>
                 <p>F1 Score: {metrics.f1_score:.3f}</p>
@@ -756,14 +787,18 @@ class ComprehensiveEvaluationRunner:
     async def _generate_dashboard(self, results: EvaluationResults):
         """Generate interactive dashboard (placeholder for future implementation)."""
         # This would integrate with tools like Streamlit, Dash, or custom web dashboard
-        print("📈 Dashboard generation not yet implemented - consider integrating with Streamlit or similar")
+        print(
+            "📈 Dashboard generation not yet implemented - consider integrating with Streamlit or similar"
+        )
 
 
-def get_git_info() -> Tuple[Optional[str], Optional[str]]:
+def get_git_info() -> tuple[str | None, str | None]:
     """Get current git commit and branch."""
     try:
-        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], text=True).strip()
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True
+        ).strip()
         return commit, branch
     except:
         return None, None
@@ -779,7 +814,7 @@ def create_default_config() -> EvaluationConfig:
         output_dir="tests/evals/reports",
         git_commit=git_commit,
         git_branch=git_branch,
-        model_version="pydantic-ai-1.0"
+        model_version="pydantic-ai-1.0",
     )
 
 
@@ -788,24 +823,33 @@ async def main():
 
     parser = argparse.ArgumentParser(description="Comprehensive Clarification Agent Evaluation")
 
-    parser.add_argument("--suites", nargs="+",
-                       choices=[s.value for s in EvaluationSuite],
-                       default=["all"],
-                       help="Evaluation suites to run")
+    parser.add_argument(
+        "--suites",
+        nargs="+",
+        choices=[s.value for s in EvaluationSuite],
+        default=["all"],
+        help="Evaluation suites to run",
+    )
 
-    parser.add_argument("--output-formats", nargs="+",
-                       choices=[f.value for f in OutputFormat],
-                       default=["console", "markdown", "json"],
-                       help="Output formats to generate")
+    parser.add_argument(
+        "--output-formats",
+        nargs="+",
+        choices=[f.value for f in OutputFormat],
+        default=["console", "markdown", "json"],
+        help="Output formats to generate",
+    )
 
-    parser.add_argument("--output-dir", default="tests/evals/reports",
-                       help="Output directory for reports")
+    parser.add_argument(
+        "--output-dir", default="tests/evals/reports", help="Output directory for reports"
+    )
 
-    parser.add_argument("--fail-on-regression", action="store_true",
-                       help="Fail build on critical regressions")
+    parser.add_argument(
+        "--fail-on-regression", action="store_true", help="Fail build on critical regressions"
+    )
 
-    parser.add_argument("--model-version", default="pydantic-ai-1.0",
-                       help="Model version identifier")
+    parser.add_argument(
+        "--model-version", default="pydantic-ai-1.0", help="Model version identifier"
+    )
 
     args = parser.parse_args()
 
@@ -819,7 +863,7 @@ async def main():
         fail_on_regression=args.fail_on_regression,
         git_commit=git_commit,
         git_branch=git_branch,
-        model_version=args.model_version
+        model_version=args.model_version,
     )
 
     # Run evaluation

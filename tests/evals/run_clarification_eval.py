@@ -22,7 +22,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Suppress logfire prompts
-os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
+os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
 # Note: .env is loaded automatically when importing from src
 
@@ -45,13 +45,42 @@ class MultiQuestionClarificationEvaluator:
         self.timing_data = []
         self.question_metrics = []
 
+    def load_dataset_from_yaml(self, categories=None):
+        """Load dataset from YAML file."""
+        from collections import namedtuple
+
+        # Create simple dataset structure
+        Dataset = namedtuple("Dataset", ["samples"])
+        Sample = namedtuple("Sample", ["inputs", "expected"])
+
+        # Load test cases from YAML
+        yaml_path = Path(__file__).parent / "evaluation_datasets" / "clarification_dataset.yaml"
+
+        samples = []
+
+        if yaml_path.exists():
+            with open(yaml_path) as f:
+                dataset = yaml.safe_load(f)
+
+                # Extract test cases from YAML
+                for category, cases in dataset.get("cases", {}).items():
+                    if categories and category not in categories:
+                        continue
+                    for case in cases:
+                        sample = Sample(
+                            inputs=case.get("input", {}), expected=case.get("expected", {})
+                        )
+                        samples.append(sample)
+
+        return Dataset(samples=samples)
+
     async def evaluate_query(
         self,
         query: str,
         expected_clarification: bool,
         expected_question_count: int | None = None,
         expected_question_types: list[str] | None = None,
-        context: list[dict[str, str]] | None = None
+        context: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         """Evaluate a single query with multi-question support.
 
@@ -67,29 +96,30 @@ class MultiQuestionClarificationEvaluator:
             conversation_messages = []
             if context:
                 for msg in context:
-                    conversation_messages.append(ConversationMessage(
-                        role=msg['role'],
-                        content=msg['content']
-                    ))
+                    conversation_messages.append(
+                        ConversationMessage(role=msg["role"], content=msg["content"])
+                    )
 
             # Create metadata with conversation context
-            metadata = ResearchMetadata(
-                conversation_messages=conversation_messages
-            )
+            metadata = ResearchMetadata(conversation_messages=conversation_messages)
 
             state = ResearchState(
                 request_id=f"eval-{abs(hash(query))}",
                 user_query=query,
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=metadata
+                metadata=metadata,
             )
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=APIKeys(
-                    openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None,
-                    anthropic=SecretStr(anthropic_key) if (anthropic_key := os.getenv("ANTHROPIC_API_KEY")) else None
+                    openai=SecretStr(openai_key)
+                    if (openai_key := os.getenv("OPENAI_API_KEY"))
+                    else None,
+                    anthropic=SecretStr(anthropic_key)
+                    if (anthropic_key := os.getenv("ANTHROPIC_API_KEY"))
+                    else None,
                 ),
-                research_state=state
+                research_state=state,
             )
 
             try:
@@ -120,23 +150,31 @@ class MultiQuestionClarificationEvaluator:
                                 "required": q.is_required,
                                 "has_context": q.context is not None,
                                 "has_choices": q.choices is not None,
-                                "num_choices": len(q.choices) if q.choices else 0
+                                "num_choices": len(q.choices) if q.choices else 0,
                             }
                             for q in questions
                         ],
-                        "average_question_length": mean([len(q.question) for q in questions]) if questions else 0,
-                        "unique_types": list(set(q.question_type for q in questions))
+                        "average_question_length": mean([len(q.question) for q in questions])
+                        if questions
+                        else 0,
+                        "unique_types": list(set(q.question_type for q in questions)),
                     }
 
                     # Check question count expectation
                     if expected_question_count is not None:
-                        question_analysis["expected_count_match"] = len(questions) == expected_question_count
+                        question_analysis["expected_count_match"] = (
+                            len(questions) == expected_question_count
+                        )
 
                     # Check question types expectation
                     if expected_question_types is not None:
                         actual_types = set(q.question_type for q in questions)
                         expected_types = set(expected_question_types)
-                        question_analysis["type_coverage"] = len(actual_types.intersection(expected_types)) / len(expected_types) if expected_types else 1.0
+                        question_analysis["type_coverage"] = (
+                            len(actual_types.intersection(expected_types)) / len(expected_types)
+                            if expected_types
+                            else 1.0
+                        )
 
                 evaluation = {
                     "query": query,
@@ -145,8 +183,10 @@ class MultiQuestionClarificationEvaluator:
                     "correct": correct_prediction,
                     "response_time": response_time,
                     "reasoning": output.reasoning,
-                    "missing_dimensions": output.missing_dimensions if hasattr(output, 'missing_dimensions') else [],
-                    "question_analysis": question_analysis
+                    "missing_dimensions": output.missing_dimensions
+                    if hasattr(output, "missing_dimensions")
+                    else [],
+                    "question_analysis": question_analysis,
                 }
 
                 # Store timing data
@@ -159,12 +199,7 @@ class MultiQuestionClarificationEvaluator:
                 return evaluation
 
             except Exception as e:
-                return {
-                    "query": query,
-                    "error": str(e),
-                    "correct": False,
-                    "response_time": None
-                }
+                return {"query": query, "error": str(e), "correct": False, "response_time": None}
 
     async def run_evaluation_suite(self):
         """Run complete evaluation suite with multi-question support."""
@@ -179,22 +214,26 @@ class MultiQuestionClarificationEvaluator:
                 dataset = yaml.safe_load(f)
 
                 # Extract test cases from YAML
-                for category, cases in dataset['cases'].items():
+                for category, cases in dataset["cases"].items():
                     for case in cases:
                         test_case = {
-                            "name": case['name'],
-                            "query": case['input']['query'],
-                            "expected": case['expected']['needs_clarification'],
-                            "category": category
+                            "name": case["name"],
+                            "query": case["input"]["query"],
+                            "expected": case["expected"]["needs_clarification"],
+                            "category": category,
                         }
                         # Add context if present
-                        if 'context' in case['input']:
-                            test_case['context'] = case['input']['context']
+                        if "context" in case["input"]:
+                            test_case["context"] = case["input"]["context"]
                         # Add multi-question expectations if present
-                        if 'expected_questions' in case['expected']:
-                            test_case['expected_question_count'] = case['expected'].get('expected_questions')
-                        if 'question_types' in case['expected']:
-                            test_case['expected_question_types'] = case['expected'].get('question_types')
+                        if "expected_questions" in case["expected"]:
+                            test_case["expected_question_count"] = case["expected"].get(
+                                "expected_questions"
+                            )
+                        if "question_types" in case["expected"]:
+                            test_case["expected_question_types"] = case["expected"].get(
+                                "question_types"
+                            )
                         test_cases.append(test_case)
         else:
             # Enhanced test cases with multi-question expectations
@@ -204,15 +243,14 @@ class MultiQuestionClarificationEvaluator:
                     "name": "bitcoin_price",
                     "query": "What is the current Bitcoin price in USD?",
                     "expected": False,
-                    "category": "clear_specific"
+                    "category": "clear_specific",
                 },
                 {
                     "name": "resnet_comparison",
                     "query": "Compare ResNet-50 vs VGG-16 for ImageNet classification accuracy",
                     "expected": False,
-                    "category": "clear_specific"
+                    "category": "clear_specific",
                 },
-
                 # Ambiguous queries (multiple questions expected)
                 {
                     "name": "vague_reference",
@@ -220,7 +258,7 @@ class MultiQuestionClarificationEvaluator:
                     "expected": True,
                     "expected_question_count": 2,
                     "expected_question_types": ["text"],
-                    "category": "ambiguous"
+                    "category": "ambiguous",
                 },
                 {
                     "name": "incomplete_comparison",
@@ -228,7 +266,7 @@ class MultiQuestionClarificationEvaluator:
                     "expected": True,
                     "expected_question_count": 3,
                     "expected_question_types": ["text", "choice"],
-                    "category": "ambiguous"
+                    "category": "ambiguous",
                 },
                 {
                     "name": "broad_research",
@@ -236,16 +274,15 @@ class MultiQuestionClarificationEvaluator:
                     "expected": True,
                     "expected_question_count": 4,
                     "expected_question_types": ["text", "choice", "multi_choice"],
-                    "category": "ambiguous"
+                    "category": "ambiguous",
                 },
-
                 # Partial context (focused questions expected)
                 {
                     "name": "partial_project",
                     "query": "I need help with my Python project",
                     "expected": True,
                     "expected_question_count": 3,
-                    "category": "partial_context"
+                    "category": "partial_context",
                 },
                 {
                     "name": "vague_database",
@@ -253,23 +290,17 @@ class MultiQuestionClarificationEvaluator:
                     "expected": True,
                     "expected_question_count": 4,
                     "expected_question_types": ["text", "choice"],
-                    "category": "partial_context"
+                    "category": "partial_context",
                 },
-
                 # Edge cases
-                {
-                    "name": "minimal",
-                    "query": "?",
-                    "expected": True,
-                    "category": "edge"
-                },
+                {"name": "minimal", "query": "?", "expected": True, "category": "edge"},
                 {
                     "name": "single_word",
                     "query": "Python",
                     "expected": True,
                     "expected_question_count": 2,
-                    "category": "edge"
-                }
+                    "category": "edge",
+                },
             ]
 
         print("=" * 80)
@@ -279,33 +310,37 @@ class MultiQuestionClarificationEvaluator:
 
         # Run evaluations
         for i, test_case in enumerate(test_cases, 1):
-            print(f"[{i}/{len(test_cases)}] Evaluating: {test_case['name']} ({test_case['category']})")
-
-            result = await self.evaluate_query(
-                test_case['query'],
-                test_case['expected'],
-                test_case.get('expected_question_count'),
-                test_case.get('expected_question_types'),
-                test_case.get('context')
+            print(
+                f"[{i}/{len(test_cases)}] Evaluating: {test_case['name']} ({test_case['category']})"
             )
 
-            result['name'] = test_case['name']
-            result['category'] = test_case['category']
+            result = await self.evaluate_query(
+                test_case["query"],
+                test_case["expected"],
+                test_case.get("expected_question_count"),
+                test_case.get("expected_question_types"),
+                test_case.get("context"),
+            )
+
+            result["name"] = test_case["name"]
+            result["category"] = test_case["category"]
             self.results.append(result)
 
             # Print immediate feedback
-            if 'error' in result:
+            if "error" in result:
                 print(f"  ❌ Error: {result['error']}")
-            elif result['correct']:
+            elif result["correct"]:
                 print("  ✅ Correct prediction")
-                if result.get('question_analysis'):
-                    qa = result['question_analysis']
-                    print(f"     Questions: {qa['num_questions']} ({qa['required_count']} required, {qa['optional_count']} optional)")
+                if result.get("question_analysis"):
+                    qa = result["question_analysis"]
+                    print(
+                        f"     Questions: {qa['num_questions']} ({qa['required_count']} required, {qa['optional_count']} optional)"
+                    )
                     print(f"     Types: {', '.join(qa['unique_types'])}")
             else:
                 print(f"  ❌ Incorrect: Expected {result['expected']}, got {result['predicted']}")
 
-            if result.get('response_time'):
+            if result.get("response_time"):
                 print(f"     Response time: {result['response_time']:.2f}s")
 
         # Generate comprehensive report
@@ -319,22 +354,36 @@ class MultiQuestionClarificationEvaluator:
 
         # Basic metrics
         total = len(self.results)
-        correct = sum(1 for r in self.results if r.get('correct', False))
-        errors = sum(1 for r in self.results if 'error' in r)
+        correct = sum(1 for r in self.results if r.get("correct", False))
+        errors = sum(1 for r in self.results if "error" in r)
 
         # Binary classification metrics
-        true_positives = sum(1 for r in self.results
-                           if r.get('expected') and r.get('predicted') and r.get('correct'))
-        false_positives = sum(1 for r in self.results
-                            if not r.get('expected') and r.get('predicted'))
-        false_negatives = sum(1 for r in self.results
-                            if r.get('expected') and not r.get('predicted'))
-        true_negatives = sum(1 for r in self.results
-                           if not r.get('expected') and not r.get('predicted') and r.get('correct'))
+        true_positives = sum(
+            1 for r in self.results if r.get("expected") and r.get("predicted") and r.get("correct")
+        )
+        false_positives = sum(
+            1 for r in self.results if not r.get("expected") and r.get("predicted")
+        )
+        false_negatives = sum(
+            1 for r in self.results if r.get("expected") and not r.get("predicted")
+        )
+        true_negatives = sum(
+            1
+            for r in self.results
+            if not r.get("expected") and not r.get("predicted") and r.get("correct")
+        )
 
         accuracy = correct / total if total > 0 else 0
-        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
-        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+        precision = (
+            true_positives / (true_positives + false_positives)
+            if (true_positives + false_positives) > 0
+            else 0
+        )
+        recall = (
+            true_positives / (true_positives + false_negatives)
+            if (true_positives + false_negatives) > 0
+            else 0
+        )
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
         print("\n📊 OVERALL METRICS:")
@@ -365,7 +414,7 @@ class MultiQuestionClarificationEvaluator:
         # Multi-question analysis
         if self.question_metrics:
             print("\n❓ MULTI-QUESTION ANALYSIS:")
-            all_counts = [m['num_questions'] for m in self.question_metrics]
+            all_counts = [m["num_questions"] for m in self.question_metrics]
             print(f"  Average Questions per Query: {mean(all_counts):.1f}")
             print(f"  Min Questions: {min(all_counts)}")
             print(f"  Max Questions: {max(all_counts)}")
@@ -373,7 +422,7 @@ class MultiQuestionClarificationEvaluator:
             # Question type distribution
             all_types = []
             for m in self.question_metrics:
-                all_types.extend(m['question_types'])
+                all_types.extend(m["question_types"])
             type_counts = Counter(all_types)
             print("  Question Type Distribution:")
             for qtype, count in type_counts.most_common():
@@ -381,16 +430,24 @@ class MultiQuestionClarificationEvaluator:
                 print(f"    - {qtype}: {count} ({percentage:.1f}%)")
 
             # Required vs Optional
-            total_required = sum(m['required_count'] for m in self.question_metrics)
-            total_optional = sum(m['optional_count'] for m in self.question_metrics)
+            total_required = sum(m["required_count"] for m in self.question_metrics)
+            total_optional = sum(m["optional_count"] for m in self.question_metrics)
             total_questions = total_required + total_optional
             if total_questions > 0:
                 print("  Required vs Optional:")
-                print(f"    - Required: {total_required} ({total_required/total_questions*100:.1f}%)")
-                print(f"    - Optional: {total_optional} ({total_optional/total_questions*100:.1f}%)")
+                print(
+                    f"    - Required: {total_required} ({total_required / total_questions * 100:.1f}%)"
+                )
+                print(
+                    f"    - Optional: {total_optional} ({total_optional / total_questions * 100:.1f}%)"
+                )
 
             # Average question length
-            avg_lengths = [m['average_question_length'] for m in self.question_metrics if m['average_question_length'] > 0]
+            avg_lengths = [
+                m["average_question_length"]
+                for m in self.question_metrics
+                if m["average_question_length"] > 0
+            ]
             if avg_lengths:
                 print(f"  Average Question Length: {mean(avg_lengths):.0f} characters")
 
@@ -398,33 +455,31 @@ class MultiQuestionClarificationEvaluator:
         print("\n📂 PER-CATEGORY PERFORMANCE:")
         categories = {}
         for result in self.results:
-            cat = result.get('category', 'unknown')
+            cat = result.get("category", "unknown")
             if cat not in categories:
-                categories[cat] = {
-                    'total': 0,
-                    'correct': 0,
-                    'question_counts': []
-                }
-            categories[cat]['total'] += 1
-            if result.get('correct', False):
-                categories[cat]['correct'] += 1
-            if result.get('question_analysis'):
-                categories[cat]['question_counts'].append(result['question_analysis']['num_questions'])
+                categories[cat] = {"total": 0, "correct": 0, "question_counts": []}
+            categories[cat]["total"] += 1
+            if result.get("correct", False):
+                categories[cat]["correct"] += 1
+            if result.get("question_analysis"):
+                categories[cat]["question_counts"].append(
+                    result["question_analysis"]["num_questions"]
+                )
 
         for cat, stats in categories.items():
-            cat_accuracy = stats['correct'] / stats['total'] if stats['total'] > 0 else 0
-            avg_questions = mean(stats['question_counts']) if stats['question_counts'] else 0
+            cat_accuracy = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+            avg_questions = mean(stats["question_counts"]) if stats["question_counts"] else 0
             print(f"  {cat}:")
             print(f"    - Accuracy: {stats['correct']}/{stats['total']} ({cat_accuracy:.1%})")
-            if stats['question_counts']:
+            if stats["question_counts"]:
                 print(f"    - Avg Questions: {avg_questions:.1f}")
 
         # Missing dimensions analysis
         print("\n🔍 DIMENSION ANALYSIS:")
         all_dimensions = []
         for result in self.results:
-            if result.get('predicted') and result.get('missing_dimensions'):
-                all_dimensions.extend(result['missing_dimensions'])
+            if result.get("predicted") and result.get("missing_dimensions"):
+                all_dimensions.extend(result["missing_dimensions"])
 
         if all_dimensions:
             dim_counts = Counter(all_dimensions)
@@ -437,54 +492,64 @@ class MultiQuestionClarificationEvaluator:
 
         # Show example with multiple questions
         for result in self.results:
-            if result.get('correct') and result.get('predicted') and result.get('question_analysis'):
-                qa = result['question_analysis']
-                if qa['num_questions'] > 1:
+            if (
+                result.get("correct")
+                and result.get("predicted")
+                and result.get("question_analysis")
+            ):
+                qa = result["question_analysis"]
+                if qa["num_questions"] > 1:
                     print("\n  Multi-Question Clarification Example:")
                     print(f"    Query: '{result['query']}'")
                     print(f"    Generated {qa['num_questions']} questions:")
-                    for i, q in enumerate(qa['questions'][:3], 1):  # Show up to 3 questions
-                        req_tag = "[Required]" if q['required'] else "[Optional]"
+                    for i, q in enumerate(qa["questions"][:3], 1):  # Show up to 3 questions
+                        req_tag = "[Required]" if q["required"] else "[Optional]"
                         print(f"      {i}. {req_tag} {q['text'][:80]}...")
                         print(f"         Type: {q['type']}, Choices: {q['num_choices']}")
                     break
 
         # Show correct non-clarification example
         for result in self.results:
-            if result.get('correct') and not result.get('predicted'):
+            if result.get("correct") and not result.get("predicted"):
                 print("\n  Correct Non-Clarification Example:")
                 print(f"    Query: '{result['query']}'")
                 print(f"    Reasoning: {result.get('reasoning', 'N/A')[:100]}...")
                 break
 
         # Save detailed results
-        results_dir = Path('./eval_results')
+        results_dir = Path("./eval_results")
         results_dir.mkdir(exist_ok=True)
         output_path = results_dir / "evaluation_results_multi.json"
-        with open(output_path, 'w') as f:
-            json.dump({
-                "summary": {
-                    "total_cases": total,
-                    "correct": correct,
-                    "errors": errors
+        with open(output_path, "w") as f:
+            json.dump(
+                {
+                    "summary": {"total_cases": total, "correct": correct, "errors": errors},
+                    "metrics": {
+                        "accuracy": accuracy,
+                        "precision": precision,
+                        "recall": recall,
+                        "f1_score": f1,
+                    },
+                    "performance": {
+                        "avg_response_time": mean(self.timing_data) if self.timing_data else None,
+                        "min_response_time": min(self.timing_data) if self.timing_data else None,
+                        "max_response_time": max(self.timing_data) if self.timing_data else None,
+                    },
+                    "multi_question_stats": {
+                        "avg_questions_per_query": mean(
+                            [m["num_questions"] for m in self.question_metrics]
+                        )
+                        if self.question_metrics
+                        else 0,
+                        "question_type_distribution": dict(
+                            Counter(sum([m["question_types"] for m in self.question_metrics], []))
+                        ),
+                    },
+                    "results": self.results,
                 },
-                "metrics": {
-                    "accuracy": accuracy,
-                    "precision": precision,
-                    "recall": recall,
-                    "f1_score": f1
-                },
-                "performance": {
-                    "avg_response_time": mean(self.timing_data) if self.timing_data else None,
-                    "min_response_time": min(self.timing_data) if self.timing_data else None,
-                    "max_response_time": max(self.timing_data) if self.timing_data else None
-                },
-                "multi_question_stats": {
-                    "avg_questions_per_query": mean([m['num_questions'] for m in self.question_metrics]) if self.question_metrics else 0,
-                    "question_type_distribution": dict(Counter(sum([m['question_types'] for m in self.question_metrics], [])))
-                },
-                "results": self.results
-            }, f, indent=2)
+                f,
+                indent=2,
+            )
 
         print(f"\n💾 Detailed results saved to: {output_path}")
         print("=" * 80)

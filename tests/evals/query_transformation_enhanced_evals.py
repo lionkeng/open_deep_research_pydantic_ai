@@ -33,7 +33,7 @@ class AssumptionQualityEvaluator(Evaluator):
             "count_appropriateness": self._evaluate_assumption_count(output),
             "clarity": self._evaluate_assumption_clarity(output),
             "gap_coverage": self._evaluate_gap_coverage(output),
-            "risk_assessment": self._evaluate_assumption_risk(output)
+            "risk_assessment": self._evaluate_assumption_risk(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -72,13 +72,16 @@ class AssumptionQualityEvaluator(Evaluator):
             score = 0.0
 
             # Check for explicit statement structure
-            if any(keyword in assumption.lower()
-                   for keyword in ["assume", "assuming", "presumed", "expected"]):
+            if any(
+                keyword in assumption.lower()
+                for keyword in ["assume", "assuming", "presumed", "expected"]
+            ):
                 score += 0.3
 
             # Check for justification
-            if any(word in assumption.lower()
-                   for word in ["because", "since", "based on", "given"]):
+            if any(
+                word in assumption.lower() for word in ["because", "since", "based on", "given"]
+            ):
                 score += 0.3
 
             # Check for specificity (longer, detailed assumptions)
@@ -146,7 +149,7 @@ class PriorityDistributionEvaluator(Evaluator):
         scores = {
             "distribution_balance": self._evaluate_distribution(output),
             "objective_alignment": self._evaluate_objective_alignment(output),
-            "critical_prioritization": self._evaluate_critical_queries(output)
+            "critical_prioritization": self._evaluate_critical_queries(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -201,8 +204,7 @@ class PriorityDistributionEvaluator(Evaluator):
             return 0.3  # No high priority queries is problematic
 
         aligned_count = sum(
-            1 for q in high_priority_queries
-            if q.objective_id and q.objective_id in primary_obj_ids
+            1 for q in high_priority_queries if q.objective_id and q.objective_id in primary_obj_ids
         )
 
         alignment_ratio = aligned_count / len(high_priority_queries)
@@ -249,7 +251,7 @@ class ClarificationIntegrationEvaluator(Evaluator):
         scores = {
             "response_coverage": self._evaluate_response_coverage(output),
             "intent_preservation": self._evaluate_intent_preservation(output),
-            "ambiguity_resolution": self._evaluate_ambiguity_resolution(output)
+            "ambiguity_resolution": self._evaluate_ambiguity_resolution(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -266,11 +268,12 @@ class ClarificationIntegrationEvaluator(Evaluator):
         if isinstance(answers, str):
             # Parse answers text to extract key terms
             answer_terms = set()
-            for line in answers.split('\n'):
-                if 'A:' in line and '[SKIPPED]' not in line:
-                    answer_text = line.split('A:', 1)[1].strip()
-                    answer_terms.update(word.lower() for word in answer_text.split()
-                                      if len(word) > 3)
+            for line in answers.split("\n"):
+                if "A:" in line and "[SKIPPED]" not in line:
+                    answer_text = line.split("A:", 1)[1].strip()
+                    answer_terms.update(
+                        word.lower() for word in answer_text.split() if len(word) > 3
+                    )
         else:
             return 0.5  # Unknown format
 
@@ -278,11 +281,15 @@ class ClarificationIntegrationEvaluator(Evaluator):
             return 1.0  # No substantive answers
 
         # Check if answer terms appear in transformation
-        transformation_text = " ".join([
-            output.research_plan.methodology.approach if output.research_plan.methodology else "",
-            " ".join(obj.objective for obj in output.research_plan.objectives),
-            " ".join(q.query for q in output.search_queries.queries)
-        ]).lower()
+        transformation_text = " ".join(
+            [
+                output.research_plan.methodology.approach
+                if output.research_plan.methodology
+                else "",
+                " ".join(obj.objective for obj in output.research_plan.objectives),
+                " ".join(q.query for q in output.search_queries.queries),
+            ]
+        ).lower()
 
         covered = sum(1 for term in answer_terms if term in transformation_text)
         coverage = covered / len(answer_terms) if answer_terms else 0.0
@@ -344,7 +351,7 @@ class QueryDecompositionEvaluator(Evaluator):
         scores = {
             "hierarchy_quality": self._evaluate_hierarchy(output),
             "component_independence": self._evaluate_independence(output),
-            "coverage_completeness": self._evaluate_coverage(output)
+            "coverage_completeness": self._evaluate_coverage(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -385,7 +392,7 @@ class QueryDecompositionEvaluator(Evaluator):
 
         overlap_scores = []
         for i, text1 in enumerate(objective_texts):
-            for _j, text2 in enumerate(objective_texts[i+1:], i+1):
+            for _j, text2 in enumerate(objective_texts[i + 1 :], i + 1):
                 words1 = set(text1.split())
                 words2 = set(text2.split())
 
@@ -452,7 +459,7 @@ class SupportingQuestionsEvaluator(Evaluator):
         scores = {
             "relevance": self._evaluate_relevance(output, all_questions),
             "specificity": self._evaluate_specificity(all_questions),
-            "diversity": self._evaluate_diversity(all_questions)
+            "diversity": self._evaluate_diversity(all_questions),
         }
 
         return sum(scores.values()) / len(scores)
@@ -543,7 +550,7 @@ class SuccessCriteriaMeasurabilityEvaluator(Evaluator):
         scores = {
             "quantifiability": self._evaluate_quantifiability(all_criteria),
             "clarity": self._evaluate_clarity(all_criteria),
-            "achievability": self._evaluate_achievability(all_criteria)
+            "achievability": self._evaluate_achievability(all_criteria),
         }
 
         return sum(scores.values()) / len(scores)
@@ -554,12 +561,12 @@ class SuccessCriteriaMeasurabilityEvaluator(Evaluator):
 
         # Patterns that indicate quantifiable metrics
         quantifiable_patterns = [
-            r'\d+',  # Contains numbers
-            r'percentage|percent|%',  # Percentages
-            r'increase|decrease|improve|reduce',  # Comparative metrics
-            r'measure|metric|score|rating',  # Measurement terms
-            r'complete|finish|achieve',  # Completion indicators
-            r'all|every|each',  # Totality indicators
+            r"\d+",  # Contains numbers
+            r"percentage|percent|%",  # Percentages
+            r"increase|decrease|improve|reduce",  # Comparative metrics
+            r"measure|metric|score|rating",  # Measurement terms
+            r"complete|finish|achieve",  # Completion indicators
+            r"all|every|each",  # Totality indicators
         ]
 
         for criterion in criteria:
@@ -576,8 +583,15 @@ class SuccessCriteriaMeasurabilityEvaluator(Evaluator):
             score = 0.0
 
             # Check for action verbs
-            action_verbs = ["identify", "complete", "achieve", "demonstrate",
-                          "verify", "validate", "confirm"]
+            action_verbs = [
+                "identify",
+                "complete",
+                "achieve",
+                "demonstrate",
+                "verify",
+                "validate",
+                "confirm",
+            ]
             if any(verb in criterion.lower() for verb in action_verbs):
                 score += 0.4
 
@@ -597,8 +611,16 @@ class SuccessCriteriaMeasurabilityEvaluator(Evaluator):
         """Evaluate if success criteria are realistically achievable."""
         achievability_scores = []
 
-        unrealistic_terms = ["perfect", "complete", "all", "every",
-                            "100%", "zero", "none", "eliminate"]
+        unrealistic_terms = [
+            "perfect",
+            "complete",
+            "all",
+            "every",
+            "100%",
+            "zero",
+            "none",
+            "eliminate",
+        ]
 
         for criterion in criteria:
             # Start with assumption of achievability
@@ -614,8 +636,9 @@ class SuccessCriteriaMeasurabilityEvaluator(Evaluator):
 
             achievability_scores.append(max(0.0, score))
 
-        return (sum(achievability_scores) / len(achievability_scores)
-                if achievability_scores else 0.0)
+        return (
+            sum(achievability_scores) / len(achievability_scores) if achievability_scores else 0.0
+        )
 
 
 class TemporalGeographicScopeEvaluator(Evaluator):
@@ -635,7 +658,7 @@ class TemporalGeographicScopeEvaluator(Evaluator):
         scores = {
             "temporal_relevance": self._evaluate_temporal_scope(output),
             "geographic_relevance": self._evaluate_geographic_scope(output),
-            "scope_consistency": self._evaluate_scope_consistency(output)
+            "scope_consistency": self._evaluate_scope_consistency(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -646,10 +669,23 @@ class TemporalGeographicScopeEvaluator(Evaluator):
         queries_with_temporal = [q for q in output.search_queries.queries if q.temporal_context]
 
         # Check for temporal indicators in original query
-        temporal_keywords = ["recent", "latest", "current", "historical", "past", "future",
-                           "year", "month", "date", "when", "timeline", "trend"]
-        needs_temporal = any(keyword in output.original_query.lower()
-                            for keyword in temporal_keywords)
+        temporal_keywords = [
+            "recent",
+            "latest",
+            "current",
+            "historical",
+            "past",
+            "future",
+            "year",
+            "month",
+            "date",
+            "when",
+            "timeline",
+            "trend",
+        ]
+        needs_temporal = any(
+            keyword in output.original_query.lower() for keyword in temporal_keywords
+        )
 
         if needs_temporal:
             if queries_with_temporal:
@@ -677,8 +713,19 @@ class TemporalGeographicScopeEvaluator(Evaluator):
     def _evaluate_geographic_scope(self, output: TransformedQuery) -> float:
         """Evaluate geographic scope relevance."""
         # Check for geographic indicators
-        geo_keywords = ["country", "region", "global", "local", "national", "international",
-                       "location", "where", "area", "city", "state"]
+        geo_keywords = [
+            "country",
+            "region",
+            "global",
+            "local",
+            "national",
+            "international",
+            "location",
+            "where",
+            "area",
+            "city",
+            "state",
+        ]
         needs_geographic = any(keyword in output.original_query.lower() for keyword in geo_keywords)
 
         # Check if scope is defined
@@ -687,17 +734,18 @@ class TemporalGeographicScopeEvaluator(Evaluator):
         if needs_geographic:
             if has_scope:
                 # Check if scope mentions geographic boundaries
-                if any(geo in output.research_plan.scope_definition.lower()
-                       for geo in geo_keywords):
+                if any(
+                    geo in output.research_plan.scope_definition.lower() for geo in geo_keywords
+                ):
                     return 1.0
                 else:
                     return 0.6  # Has scope but not geographic
             else:
                 return 0.3  # Needed but not provided
         else:
-            if (has_scope and
-                any(geo in output.research_plan.scope_definition.lower()
-                    for geo in geo_keywords)):
+            if has_scope and any(
+                geo in output.research_plan.scope_definition.lower() for geo in geo_keywords
+            ):
                 return 0.7  # Geographic scope when not clearly needed
             else:
                 return 1.0  # Appropriately no geographic scope
@@ -750,7 +798,7 @@ class SearchSourceSelectionEvaluator(Evaluator):
         scores = {
             "source_diversity": self._evaluate_source_diversity(output),
             "source_alignment": self._evaluate_source_alignment(output),
-            "domain_appropriateness": self._evaluate_domain_sources(output)
+            "domain_appropriateness": self._evaluate_domain_sources(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -789,8 +837,9 @@ class SearchSourceSelectionEvaluator(Evaluator):
             # Check alignment based on query type
             if query.query_type == "factual" and "academic" in sources_str:
                 score = 0.9
-            elif (query.query_type == "analytical" and
-                  ("academic" in sources_str or "technical" in sources_str)):
+            elif query.query_type == "analytical" and (
+                "academic" in sources_str or "technical" in sources_str
+            ):
                 score = 0.9
             elif query.query_type == "exploratory" and "web_general" in sources_str:
                 score = 0.8
@@ -816,7 +865,7 @@ class SearchSourceSelectionEvaluator(Evaluator):
             "business": ["industry_reports", "news"],
             "technical": ["technical_docs", "academic"],
             "government": ["government"],
-            "social": ["social_media", "news"]
+            "social": ["social_media", "news"],
         }
 
         detected_domains = [domain for domain in domain_source_map if domain in query_lower]
@@ -858,7 +907,7 @@ class ConfidenceCalibrationEvaluator(Evaluator):
         scores = {
             "assumption_calibration": self._evaluate_assumption_confidence(output),
             "gap_calibration": self._evaluate_gap_confidence(output),
-            "complexity_calibration": self._evaluate_complexity_confidence(output)
+            "complexity_calibration": self._evaluate_complexity_confidence(output),
         }
 
         return sum(scores.values()) / len(scores)
@@ -960,7 +1009,7 @@ class ExecutionStrategyEvaluator(Evaluator):
         scores = {
             "strategy_appropriateness": self._evaluate_strategy_choice(batch),
             "dependency_handling": self._evaluate_dependency_handling(output),
-            "parallelization": self._evaluate_parallelization(batch)
+            "parallelization": self._evaluate_parallelization(batch),
         }
 
         return sum(scores.values()) / len(scores)
@@ -1024,8 +1073,9 @@ class ExecutionStrategyEvaluator(Evaluator):
             # Check if high priority queries align with dependency order
             query_order_score = 0.0
             for _i, obj_id in enumerate(dep_obj_ids[:3]):  # Check first 3
-                matching_queries = [q for q in output.search_queries.queries
-                                  if q.objective_id == obj_id]
+                matching_queries = [
+                    q for q in output.search_queries.queries if q.objective_id == obj_id
+                ]
                 if matching_queries:
                     avg_priority = sum(q.priority for q in matching_queries) / len(matching_queries)
                     if avg_priority <= 2:  # High priority

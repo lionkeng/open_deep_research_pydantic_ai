@@ -5,18 +5,15 @@ This module provides comprehensive regression testing and performance tracking
 capabilities to monitor agent performance over time and detect regressions.
 """
 
-import json
 import asyncio
-import statistics
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
-from pydantic import BaseModel
-import sqlite3
-import sys
 import os
+import sqlite3
+import statistics
+import sys
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -24,15 +21,17 @@ sys.path.insert(0, str(project_root))
 
 # Load environment variables
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import httpx
 from pydantic import SecretStr
-from agents.clarification import ClarificationAgent
+
 from agents.base import ResearchDependencies
-from models.core import ResearchState, ResearchStage
-from models.metadata import ResearchMetadata
+from agents.clarification import ClarificationAgent
 from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
 
 # Import evaluation datasets
 from tests.evals.run_clarification_eval import MultiQuestionClarificationEvaluator
@@ -65,8 +64,8 @@ class PerformanceMetrics:
     total_test_cases: int
     failed_test_cases: int
     timestamp: datetime
-    git_commit: Optional[str]
-    model_version: Optional[str]
+    git_commit: str | None
+    model_version: str | None
 
 
 @dataclass
@@ -141,7 +140,8 @@ class PerformanceDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO performance_metrics (
                 timestamp, git_commit, model_version, overall_accuracy, precision_score,
                 recall_score, f1_score, avg_response_time, median_response_time,
@@ -149,41 +149,43 @@ class PerformanceDatabase:
                 peak_memory_usage_mb, avg_cpu_usage_percent,
                 total_test_cases, failed_test_cases
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            metrics.timestamp.isoformat(),
-            metrics.git_commit,
-            metrics.model_version,
-            metrics.overall_accuracy,
-            metrics.precision,
-            metrics.recall,
-            metrics.f1_score,
-            metrics.avg_response_time,
-            metrics.median_response_time,
-            metrics.p95_response_time,
-            metrics.max_response_time,
-            metrics.avg_confidence_score,
-            metrics.peak_memory_usage_mb,
-            metrics.avg_cpu_usage_percent,
-            metrics.total_test_cases,
-            metrics.failed_test_cases
-        ))
+        """,
+            (
+                metrics.timestamp.isoformat(),
+                metrics.git_commit,
+                metrics.model_version,
+                metrics.overall_accuracy,
+                metrics.precision,
+                metrics.recall,
+                metrics.f1_score,
+                metrics.avg_response_time,
+                metrics.median_response_time,
+                metrics.p95_response_time,
+                metrics.max_response_time,
+                metrics.avg_confidence_score,
+                metrics.peak_memory_usage_mb,
+                metrics.avg_cpu_usage_percent,
+                metrics.total_test_cases,
+                metrics.failed_test_cases,
+            ),
+        )
 
         run_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return run_id
 
-    def get_baseline_metrics(self, days_back: int = 30) -> Optional[PerformanceMetrics]:
+    def get_baseline_metrics(self, days_back: int = 30) -> PerformanceMetrics | None:
         """Get baseline metrics from recent successful runs."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT * FROM performance_metrics
-            WHERE timestamp > datetime('now', '-{} days')
+            WHERE timestamp > datetime('now', '-{days_back} days')
             ORDER BY overall_accuracy DESC, avg_response_time ASC
             LIMIT 10
-        """.format(days_back))
+        """)
 
         rows = cursor.fetchall()
         conn.close()
@@ -194,40 +196,52 @@ class PerformanceDatabase:
         # Calculate median baseline from top performing runs
         metrics_list = []
         for row in rows:
-            metrics_list.append({
-                'overall_accuracy': row[4],
-                'precision': row[5],
-                'recall': row[6],
-                'f1_score': row[7],
-                'avg_response_time': row[8],
-                'median_response_time': row[9],
-                'p95_response_time': row[10],
-                'max_response_time': row[11],
-                'avg_confidence_score': row[12],
-                'peak_memory_usage_mb': row[13],
-                'avg_cpu_usage_percent': row[14],
-                'total_test_cases': row[15],
-                'failed_test_cases': row[16]
-            })
+            metrics_list.append(
+                {
+                    "overall_accuracy": row[4],
+                    "precision": row[5],
+                    "recall": row[6],
+                    "f1_score": row[7],
+                    "avg_response_time": row[8],
+                    "median_response_time": row[9],
+                    "p95_response_time": row[10],
+                    "max_response_time": row[11],
+                    "avg_confidence_score": row[12],
+                    "peak_memory_usage_mb": row[13],
+                    "avg_cpu_usage_percent": row[14],
+                    "total_test_cases": row[15],
+                    "failed_test_cases": row[16],
+                }
+            )
 
         # Calculate median values for baseline
         baseline = PerformanceMetrics(
-            overall_accuracy=statistics.median([m['overall_accuracy'] for m in metrics_list]),
-            precision=statistics.median([m['precision'] for m in metrics_list]),
-            recall=statistics.median([m['recall'] for m in metrics_list]),
-            f1_score=statistics.median([m['f1_score'] for m in metrics_list]),
-            avg_response_time=statistics.median([m['avg_response_time'] for m in metrics_list]),
-            median_response_time=statistics.median([m['median_response_time'] for m in metrics_list]),
-            p95_response_time=statistics.median([m['p95_response_time'] for m in metrics_list]),
-            max_response_time=statistics.median([m['max_response_time'] for m in metrics_list]),
-            avg_confidence_score=statistics.median([m['avg_confidence_score'] for m in metrics_list]),
-            peak_memory_usage_mb=statistics.median([m['peak_memory_usage_mb'] for m in metrics_list]),
-            avg_cpu_usage_percent=statistics.median([m['avg_cpu_usage_percent'] for m in metrics_list]),
-            total_test_cases=int(statistics.median([m['total_test_cases'] for m in metrics_list])),
-            failed_test_cases=int(statistics.median([m['failed_test_cases'] for m in metrics_list])),
-            timestamp=datetime.now(timezone.utc),
+            overall_accuracy=statistics.median([m["overall_accuracy"] for m in metrics_list]),
+            precision=statistics.median([m["precision"] for m in metrics_list]),
+            recall=statistics.median([m["recall"] for m in metrics_list]),
+            f1_score=statistics.median([m["f1_score"] for m in metrics_list]),
+            avg_response_time=statistics.median([m["avg_response_time"] for m in metrics_list]),
+            median_response_time=statistics.median(
+                [m["median_response_time"] for m in metrics_list]
+            ),
+            p95_response_time=statistics.median([m["p95_response_time"] for m in metrics_list]),
+            max_response_time=statistics.median([m["max_response_time"] for m in metrics_list]),
+            avg_confidence_score=statistics.median(
+                [m["avg_confidence_score"] for m in metrics_list]
+            ),
+            peak_memory_usage_mb=statistics.median(
+                [m["peak_memory_usage_mb"] for m in metrics_list]
+            ),
+            avg_cpu_usage_percent=statistics.median(
+                [m["avg_cpu_usage_percent"] for m in metrics_list]
+            ),
+            total_test_cases=int(statistics.median([m["total_test_cases"] for m in metrics_list])),
+            failed_test_cases=int(
+                statistics.median([m["failed_test_cases"] for m in metrics_list])
+            ),
+            timestamp=datetime.now(UTC),
             git_commit=None,
-            model_version=None
+            model_version=None,
         )
 
         return baseline
@@ -237,20 +251,23 @@ class PerformanceDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO regression_alerts (
                 timestamp, metric_name, current_value, baseline_value,
                 change_percent, severity, threshold_type
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            alert.timestamp.isoformat(),
-            alert.metric_name,
-            alert.current_value,
-            alert.baseline_value,
-            alert.change_percent,
-            alert.severity,
-            alert.threshold_type
-        ))
+        """,
+            (
+                alert.timestamp.isoformat(),
+                alert.metric_name,
+                alert.current_value,
+                alert.baseline_value,
+                alert.change_percent,
+                alert.severity,
+                alert.threshold_type,
+            ),
+        )
 
         conn.commit()
         conn.close()
@@ -269,21 +286,20 @@ class RegressionDetector:
             "precision": {"critical": -0.05, "warning": -0.02},
             "recall": {"critical": -0.05, "warning": -0.02},
             "f1_score": {"critical": -0.05, "warning": -0.02},
-
             # Performance metrics (higher is worse)
             "avg_response_time": {"critical": 0.5, "warning": 0.2},
             "p95_response_time": {"critical": 1.0, "warning": 0.3},
             "max_response_time": {"critical": 2.0, "warning": 0.5},
-
             # Quality metrics (lower is worse)
             "avg_confidence_score": {"critical": -0.1, "warning": -0.05},
-
             # Resource usage (higher is worse)
             "peak_memory_usage_mb": {"critical": 0.3, "warning": 0.15},
-            "avg_cpu_usage_percent": {"critical": 0.2, "warning": 0.1}
+            "avg_cpu_usage_percent": {"critical": 0.2, "warning": 0.1},
         }
 
-    def detect_regressions(self, current: PerformanceMetrics, baseline: PerformanceMetrics) -> List[RegressionAlert]:
+    def detect_regressions(
+        self, current: PerformanceMetrics, baseline: PerformanceMetrics
+    ) -> list[RegressionAlert]:
         """Detect regressions by comparing current metrics against baseline."""
         alerts = []
 
@@ -298,8 +314,13 @@ class RegressionDetector:
                 continue  # Skip division by zero
 
             # Calculate change
-            if metric_name in ["avg_response_time", "p95_response_time", "max_response_time",
-                              "peak_memory_usage_mb", "avg_cpu_usage_percent"]:
+            if metric_name in [
+                "avg_response_time",
+                "p95_response_time",
+                "max_response_time",
+                "peak_memory_usage_mb",
+                "avg_cpu_usage_percent",
+            ]:
                 # For these metrics, higher is worse
                 change = (current_value - baseline_value) / baseline_value
                 is_regression = change > 0
@@ -329,7 +350,7 @@ class RegressionDetector:
                 change_percent=change * 100,
                 severity=severity,
                 threshold_type="relative",
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(UTC),
             )
 
             alerts.append(alert)
@@ -345,9 +366,9 @@ class PerformanceTracker:
         self.db = PerformanceDatabase(db_path)
         self.detector = RegressionDetector(self.db)
 
-    async def run_performance_evaluation(self,
-                                       git_commit: Optional[str] = None,
-                                       model_version: Optional[str] = None) -> Tuple[PerformanceMetrics, List[RegressionAlert]]:
+    async def run_performance_evaluation(
+        self, git_commit: str | None = None, model_version: str | None = None
+    ) -> tuple[PerformanceMetrics, list[RegressionAlert]]:
         """Run complete performance evaluation and regression detection."""
 
         # Use the MultiQuestionClarificationEvaluator to run evaluation
@@ -364,6 +385,7 @@ class PerformanceTracker:
 
         # Resource monitoring
         import psutil
+
         process = psutil.Process()
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
         cpu_samples = []
@@ -384,15 +406,19 @@ class PerformanceTracker:
                         request_id=f"regression-{abs(hash(case.name))}",
                         user_query=case.inputs.query,
                         current_stage=ResearchStage.CLARIFICATION,
-                        metadata=ResearchMetadata()
+                        metadata=ResearchMetadata(),
                     )
                     deps = ResearchDependencies(
                         http_client=http_client,
                         api_keys=APIKeys(
-                            openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None,
-                            anthropic=SecretStr(anthropic_key) if (anthropic_key := os.getenv("ANTHROPIC_API_KEY")) else None
+                            openai=SecretStr(openai_key)
+                            if (openai_key := os.getenv("OPENAI_API_KEY"))
+                            else None,
+                            anthropic=SecretStr(anthropic_key)
+                            if (anthropic_key := os.getenv("ANTHROPIC_API_KEY"))
+                            else None,
                         ),
-                        research_state=state
+                        research_state=state,
                     )
 
                     # Run agent
@@ -401,11 +427,17 @@ class PerformanceTracker:
                     response_times.append(response_time)
 
                     # Extract actual output
-                    actual_output = result.output if hasattr(result, 'output') else result
+                    actual_output = result.output if hasattr(result, "output") else result
 
                     # Calculate accuracy
-                    expected = case.expected_output.needs_clarification if case.expected_output else True
-                    actual = actual_output.needs_clarification if hasattr(actual_output, 'needs_clarification') else False
+                    expected = (
+                        case.expected_output.needs_clarification if case.expected_output else True
+                    )
+                    actual = (
+                        actual_output.needs_clarification
+                        if hasattr(actual_output, "needs_clarification")
+                        else False
+                    )
                     is_correct = expected == actual
 
                     # Track confidence (use a default for now)
@@ -414,41 +446,57 @@ class PerformanceTracker:
                     # Sample CPU usage
                     cpu_samples.append(process.cpu_percent())
 
-                    results.append({
-                        'case_name': case.name,
-                        'expected': expected,
-                        'actual': actual,
-                        'correct': is_correct,
-                        'response_time': response_time
-                    })
+                    results.append(
+                        {
+                            "case_name": case.name,
+                            "expected": expected,
+                            "actual": actual,
+                            "correct": is_correct,
+                            "response_time": response_time,
+                        }
+                    )
 
                 except Exception as e:
-                    results.append({
-                        'case_name': case.name,
-                        'expected': case.expected_output.needs_clarification if case.expected_output else True,
-                        'actual': None,
-                        'correct': False,
-                        'response_time': time.time() - case_start_time,
-                        'error': str(e)
-                    })
+                    results.append(
+                        {
+                            "case_name": case.name,
+                            "expected": case.expected_output.needs_clarification
+                            if case.expected_output
+                            else True,
+                            "actual": None,
+                            "correct": False,
+                            "response_time": time.time() - case_start_time,
+                            "error": str(e),
+                        }
+                    )
 
         # Calculate final memory usage
         final_memory = process.memory_info().rss / 1024 / 1024  # MB
         peak_memory = max(initial_memory, final_memory)
 
         # Calculate metrics
-        correct_predictions = sum(1 for r in results if r['correct'])
+        correct_predictions = sum(1 for r in results if r["correct"])
         total_predictions = len(results)
         accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0.0
 
         # Calculate precision, recall, F1
-        true_positives = sum(1 for r in results if r['expected'] and r['actual'] and r['correct'])
-        false_positives = sum(1 for r in results if not r['expected'] and r['actual'])
-        false_negatives = sum(1 for r in results if r['expected'] and not r['actual'])
+        true_positives = sum(1 for r in results if r["expected"] and r["actual"] and r["correct"])
+        false_positives = sum(1 for r in results if not r["expected"] and r["actual"])
+        false_negatives = sum(1 for r in results if r["expected"] and not r["actual"])
 
-        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
-        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
-        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        precision = (
+            true_positives / (true_positives + false_positives)
+            if (true_positives + false_positives) > 0
+            else 0.0
+        )
+        recall = (
+            true_positives / (true_positives + false_negatives)
+            if (true_positives + false_negatives) > 0
+            else 0.0
+        )
+        f1_score = (
+            2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        )
 
         # Create performance metrics
         metrics = PerformanceMetrics(
@@ -465,9 +513,9 @@ class PerformanceTracker:
             avg_cpu_usage_percent=statistics.mean(cpu_samples) if cpu_samples else 0.0,
             total_test_cases=total_predictions,
             failed_test_cases=total_predictions - correct_predictions,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             git_commit=git_commit,
-            model_version=model_version
+            model_version=model_version,
         )
 
         # Save metrics
@@ -482,7 +530,7 @@ class PerformanceTracker:
 
         return metrics, alerts
 
-    def _percentile(self, data: List[float], percentile: float) -> float:
+    def _percentile(self, data: list[float], percentile: float) -> float:
         """Calculate percentile of a list."""
         if not data:
             return 0.0
@@ -493,16 +541,18 @@ class PerformanceTracker:
         weight = index - lower
         return sorted_data[lower] * (1 - weight) + sorted_data[upper] * weight
 
-    def generate_performance_report(self, metrics: PerformanceMetrics, alerts: List[RegressionAlert]) -> str:
+    def generate_performance_report(
+        self, metrics: PerformanceMetrics, alerts: list[RegressionAlert]
+    ) -> str:
         """Generate a human-readable performance report."""
         report = f"""
 # Agent Performance Report
-**Generated:** {metrics.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}
-**Git Commit:** {metrics.git_commit or 'Unknown'}
-**Model Version:** {metrics.model_version or 'Unknown'}
+**Generated:** {metrics.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")}
+**Git Commit:** {metrics.git_commit or "Unknown"}
+**Model Version:** {metrics.model_version or "Unknown"}
 
 ## Overall Performance
-- **Accuracy:** {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy*100:.1f}%)
+- **Accuracy:** {metrics.overall_accuracy:.3f} ({metrics.overall_accuracy * 100:.1f}%)
 - **Precision:** {metrics.precision:.3f}
 - **Recall:** {metrics.recall:.3f}
 - **F1 Score:** {metrics.f1_score:.3f}
@@ -526,7 +576,13 @@ class PerformanceTracker:
         if alerts:
             report += "\n## Regression Alerts\n"
             for alert in alerts:
-                emoji = "🚨" if alert.severity == "critical" else "⚠️" if alert.severity == "warning" else "ℹ️"
+                emoji = (
+                    "🚨"
+                    if alert.severity == "critical"
+                    else "⚠️"
+                    if alert.severity == "warning"
+                    else "ℹ️"
+                )
                 report += f"- {emoji} **{alert.metric_name}**: {alert.change_percent:+.1f}% change (Current: {alert.current_value:.3f}, Baseline: {alert.baseline_value:.3f})\n"
         else:
             report += "\n## ✅ No Regressions Detected\n"
@@ -540,7 +596,9 @@ async def main():
 
     # Get current git commit
     try:
-        git_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()[:8]
+        git_commit = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()[:8]
+        )
     except:
         git_commit = None
 
@@ -550,8 +608,7 @@ async def main():
     # Run evaluation
     print("🚀 Starting performance evaluation...")
     metrics, alerts = await tracker.run_performance_evaluation(
-        git_commit=git_commit,
-        model_version="pydantic-ai-1.0"
+        git_commit=git_commit, model_version="pydantic-ai-1.0"
     )
 
     # Generate report

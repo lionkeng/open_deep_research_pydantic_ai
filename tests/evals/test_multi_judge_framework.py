@@ -12,48 +12,41 @@ sys.path.insert(0, str(project_root))
 
 # Load environment variables
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Suppress logfire prompts
-os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
+os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
+
+from typing import Any
 
 from tests.evals.base_multi_judge import (
+    AgentEvaluationAdapter,
     BaseMultiJudgeEvaluator,
-    VotingMethod,
+    EvaluationDimension,
     JudgeConfiguration,
     JudgeExpertise,
-    AgentEvaluationAdapter,
-    EvaluationDimension
+    VotingMethod,
 )
-from typing import List, Dict, Any, Optional
 
 
 # Simple test adapter
 class SimpleTestAdapter(AgentEvaluationAdapter[str, str]):
     """Simple adapter for testing the framework."""
 
-    def get_evaluation_dimensions(self) -> List[EvaluationDimension]:
+    def get_evaluation_dimensions(self) -> list[EvaluationDimension]:
         return [
             EvaluationDimension(
-                name="quality",
-                description="Overall quality of the output",
-                weight=1.0
+                name="quality", description="Overall quality of the output", weight=1.0
             ),
-            EvaluationDimension(
-                name="relevance",
-                description="Relevance to the input",
-                weight=1.0
-            )
+            EvaluationDimension(name="relevance", description="Relevance to the input", weight=1.0),
         ]
 
     def format_output_for_evaluation(self, output: str) -> str:
         return f"Output: {output}"
 
     def create_evaluation_prompt(
-        self,
-        input: str,
-        output: str,
-        context: Optional[Dict[str, Any]] = None
+        self, input: str, output: str, context: dict[str, Any] | None = None
     ) -> str:
         return f"""
         Input: {input}
@@ -80,18 +73,13 @@ async def test_framework():
     # Use only OpenAI judges for testing
     test_judges = [
         JudgeConfiguration(
-            model="openai:gpt-5-mini",
-            expertise=JudgeExpertise.GENERAL,
-            weight=1.0,
-            temperature=0.0
+            model="openai:gpt-5-mini", expertise=JudgeExpertise.GENERAL, weight=1.0, temperature=0.0
         )
     ]
 
     # Create evaluator
     evaluator = BaseMultiJudgeEvaluator(
-        adapter=adapter,
-        judges=test_judges,
-        voting_method=VotingMethod.WEIGHTED_AVERAGE
+        adapter=adapter, judges=test_judges, voting_method=VotingMethod.WEIGHTED_AVERAGE
     )
 
     # Test evaluation
@@ -104,12 +92,10 @@ async def test_framework():
 
     try:
         result = await evaluator.evaluate(
-            input=test_input,
-            output=test_output,
-            context={"test": True}
+            input=test_input, output=test_output, context={"test": True}
         )
 
-        print(f"\n✅ Evaluation successful!")
+        print("\n✅ Evaluation successful!")
         print(f"Final Score: {result.final_score:.3f}")
         print(f"Consensus Reached: {result.consensus_reached}")
         print(f"Dimension Scores: {result.dimension_scores}")
@@ -120,9 +106,7 @@ async def test_framework():
         output_b = "2 + 2 equals 4"
 
         comparison = await evaluator.compare_outputs(
-            input=test_input,
-            output_a=test_output,
-            output_b=output_b
+            input=test_input, output_a=test_output, output_b=output_b
         )
 
         print(f"Winner: {comparison['winner']}")
@@ -134,6 +118,7 @@ async def test_framework():
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

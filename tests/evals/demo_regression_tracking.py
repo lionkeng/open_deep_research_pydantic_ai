@@ -34,18 +34,19 @@ async def demo_regression_tracking():
     # Run a minimal evaluation (in practice, this runs the full suite)
     try:
         metrics, alerts = await tracker.run_performance_evaluation(
-            git_commit="demo-commit",
-            model_version="v1.0-demo"
+            git_commit="demo-commit", model_version="v1.0-demo"
         )
 
         print("\n✅ Evaluation complete!")
-        print(f"\nMetrics Summary:")
+        print("\nMetrics Summary:")
         print(f"  - Accuracy: {metrics.overall_accuracy:.2%}")
         print(f"  - Precision: {metrics.precision:.2f}")
         print(f"  - Recall: {metrics.recall:.2f}")
         print(f"  - F1 Score: {metrics.f1_score:.2f}")
         print(f"  - Avg Response Time: {metrics.avg_response_time:.3f}s")
-        print(f"  - Test Cases: {metrics.total_test_cases} total, {metrics.failed_test_cases} failed")
+        print(
+            f"  - Test Cases: {metrics.total_test_cases} total, {metrics.failed_test_cases} failed"
+        )
 
         if alerts:
             print(f"\n⚠️  {len(alerts)} regression alerts detected:")

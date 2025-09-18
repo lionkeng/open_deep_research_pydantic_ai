@@ -6,73 +6,69 @@ outputs using the generalized multi-judge consensus framework.
 
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from tests.evals.base_multi_judge import (
-    AgentEvaluationAdapter,
-    EvaluationDimension,
-    JudgeExpertise
-)
 from models.research_executor import ResearchResults
+from tests.evals.base_multi_judge import AgentEvaluationAdapter, EvaluationDimension, JudgeExpertise
 
 
 class ResearchExecutorMultiJudgeAdapter(AgentEvaluationAdapter[str, ResearchResults]):
     """Adapter for evaluating ResearchExecutorAgent outputs with multi-judge consensus."""
 
-    def get_evaluation_dimensions(self) -> List[EvaluationDimension]:
+    def get_evaluation_dimensions(self) -> list[EvaluationDimension]:
         """Define evaluation dimensions for research executor outputs."""
         return [
             EvaluationDimension(
                 name="finding_accuracy",
                 description="How accurate and well-supported are the research findings",
                 scale=(0, 10),
-                weight=1.5
+                weight=1.5,
             ),
             EvaluationDimension(
                 name="source_reliability",
                 description="How credible and diverse are the research sources",
                 scale=(0, 10),
-                weight=1.3
+                weight=1.3,
             ),
             EvaluationDimension(
                 name="insight_depth",
                 description="How deep, actionable, and valuable are the key insights",
                 scale=(0, 10),
-                weight=1.4
+                weight=1.4,
             ),
             EvaluationDimension(
                 name="gap_identification",
                 description="How well are data gaps and limitations identified",
                 scale=(0, 10),
-                weight=1.0
+                weight=1.0,
             ),
             EvaluationDimension(
                 name="evidence_quality",
                 description="How strong and relevant is the supporting evidence",
                 scale=(0, 10),
-                weight=1.2
+                weight=1.2,
             ),
             EvaluationDimension(
                 name="synthesis_coherence",
                 description="How well is information synthesized into a coherent narrative",
                 scale=(0, 10),
-                weight=1.3
+                weight=1.3,
             ),
             EvaluationDimension(
                 name="comprehensiveness",
                 description="How thoroughly does the research address the query",
                 scale=(0, 10),
-                weight=1.4
+                weight=1.4,
             ),
             EvaluationDimension(
                 name="confidence_calibration",
                 description="How appropriate are the confidence levels assigned",
                 scale=(0, 10),
-                weight=1.0
-            )
+                weight=1.0,
+            ),
         ]
 
     def format_output_for_evaluation(self, output: ResearchResults) -> str:
@@ -82,8 +78,16 @@ class ResearchExecutorMultiJudgeAdapter(AgentEvaluationAdapter[str, ResearchResu
         findings_text = []
         if output.findings:
             for i, finding in enumerate(output.findings[:5], 1):  # Limit to first 5 for brevity
-                conf_text = f"Confidence: {finding.confidence_level:.2f}" if finding.confidence_level else "Confidence: N/A"
-                cat_text = f"Category: {finding.category}" if finding.category else "Category: uncategorized"
+                conf_text = (
+                    f"Confidence: {finding.confidence_level:.2f}"
+                    if finding.confidence_level
+                    else "Confidence: N/A"
+                )
+                cat_text = (
+                    f"Category: {finding.category}"
+                    if finding.category
+                    else "Category: uncategorized"
+                )
                 findings_text.append(f"  {i}. {finding.finding} ({conf_text}, {cat_text})")
 
                 # Add supporting evidence if available
@@ -97,7 +101,11 @@ class ResearchExecutorMultiJudgeAdapter(AgentEvaluationAdapter[str, ResearchResu
         sources_text = []
         if output.sources:
             for i, source in enumerate(output.sources[:5], 1):  # Limit to first 5
-                relevance = f"Relevance: {source.relevance_score:.2f}" if source.relevance_score else "Relevance: N/A"
+                relevance = (
+                    f"Relevance: {source.relevance_score:.2f}"
+                    if source.relevance_score
+                    else "Relevance: N/A"
+                )
                 sources_text.append(f"  {i}. {source.title or 'Untitled'} ({relevance})")
                 if source.url:
                     sources_text.append(f"     URL: {source.url}")
@@ -135,13 +143,13 @@ Data Gaps ({len(output.data_gaps)} total):
 {chr(10).join(gaps_text)}
 
 Quality Score: {output.quality_score:.2f}
-Execution Time: {output.execution_time.isoformat() if output.execution_time else 'N/A'}"""
+Execution Time: {output.execution_time.isoformat() if output.execution_time else "N/A"}"""
 
     def create_evaluation_prompt(
         self,
         input: str,  # The research query
         output: ResearchResults,
-        context: Optional[Dict[str, Any]] = None
+        context: dict[str, Any] | None = None,
     ) -> str:
         """Create the evaluation prompt for judges."""
 
@@ -182,9 +190,8 @@ Provide your evaluation as a JSON object with scores for each dimension and your
         """Check if the research results are valid for evaluation."""
 
         # Must have at least some findings or insights
-        has_content = (
-            (output.findings and len(output.findings) > 0) or
-            (output.key_insights and len(output.key_insights) > 0)
+        has_content = (output.findings and len(output.findings) > 0) or (
+            output.key_insights and len(output.key_insights) > 0
         )
 
         # Must have a query
@@ -218,16 +225,13 @@ Consider actionability, real-world applicability, and commercial relevance.
             JudgeExpertise.CREATIVE: """You bring a creative and innovative perspective to research evaluation.
 Look for novel insights, unexpected connections, and creative synthesis of information.
 
-"""
+""",
         }
 
         return contexts.get(expertise, contexts[JudgeExpertise.GENERAL])
 
     def aggregate_dimension_feedback(
-        self,
-        dimension: str,
-        scores: List[float],
-        judge_reasonings: List[str]
+        self, dimension: str, scores: list[float], judge_reasonings: list[str]
     ) -> str:
         """Aggregate feedback for a specific dimension across judges."""
 
@@ -249,13 +253,24 @@ Look for novel insights, unexpected connections, and creative synthesis of infor
         themes = []
         keywords = {
             "finding_accuracy": ["accurate", "correct", "supported", "evidence", "verified"],
-            "source_reliability": ["credible", "authoritative", "diverse", "peer-reviewed", "recent"],
+            "source_reliability": [
+                "credible",
+                "authoritative",
+                "diverse",
+                "peer-reviewed",
+                "recent",
+            ],
             "insight_depth": ["actionable", "valuable", "deep", "surface", "practical"],
             "gap_identification": ["gaps", "limitations", "missing", "incomplete", "unknown"],
             "evidence_quality": ["strong", "weak", "relevant", "documented", "citation"],
             "synthesis_coherence": ["coherent", "organized", "synthesized", "fragmented", "clear"],
             "comprehensiveness": ["thorough", "complete", "comprehensive", "partial", "addressed"],
-            "confidence_calibration": ["appropriate", "overconfident", "underconfident", "calibrated"]
+            "confidence_calibration": [
+                "appropriate",
+                "overconfident",
+                "underconfident",
+                "calibrated",
+            ],
         }
 
         dimension_keywords = keywords.get(dimension, [])
@@ -266,7 +281,9 @@ Look for novel insights, unexpected connections, and creative synthesis of infor
                     themes.append(keyword)
 
         # Create aggregated feedback
-        theme_summary = f"Key aspects: {', '.join(set(themes[:3]))}" if themes else "Various aspects noted"
+        theme_summary = (
+            f"Key aspects: {', '.join(set(themes[:3]))}" if themes else "Various aspects noted"
+        )
 
         return f"{dimension.replace('_', ' ').title()}: {avg_score:.1f}/10 ({consensus}) - {theme_summary}"
 
@@ -275,7 +292,7 @@ Look for novel insights, unexpected connections, and creative synthesis of infor
         input: str,
         output_a: ResearchResults,
         output_b: ResearchResults,
-        context: Optional[Dict[str, Any]] = None
+        context: dict[str, Any] | None = None,
     ) -> str:
         """Create prompt for comparing two research outputs."""
 

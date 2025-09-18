@@ -4,53 +4,48 @@ This module provides the adapter implementation for evaluating ClarificationAgen
 outputs using the generalized multi-judge framework.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from tests.evals.base_multi_judge import (
-    AgentEvaluationAdapter,
-    EvaluationDimension,
-    JudgeExpertise
-)
 from agents.clarification import ClarifyWithUser
-from models.clarification import ClarificationRequest
+from tests.evals.base_multi_judge import AgentEvaluationAdapter, EvaluationDimension, JudgeExpertise
 
 
 class ClarificationMultiJudgeAdapter(AgentEvaluationAdapter[str, ClarifyWithUser]):
     """Adapter for evaluating ClarificationAgent outputs with multi-judge consensus."""
 
-    def get_evaluation_dimensions(self) -> List[EvaluationDimension]:
+    def get_evaluation_dimensions(self) -> list[EvaluationDimension]:
         """Return evaluation dimensions specific to clarification tasks."""
         return [
             EvaluationDimension(
                 name="relevance",
                 description="How relevant are the clarification questions to the original query?",
-                weight=1.2
+                weight=1.2,
             ),
             EvaluationDimension(
                 name="ambiguity_detection",
                 description="How well does the agent identify key ambiguities that need clarification?",
-                weight=1.3  # Highest weight - core functionality
+                weight=1.3,  # Highest weight - core functionality
             ),
             EvaluationDimension(
                 name="helpfulness",
                 description="Would answering these clarification questions lead to better research results?",
-                weight=1.1
+                weight=1.1,
             ),
             EvaluationDimension(
                 name="clarity",
                 description="Are the clarification questions clear, specific, and well-formulated?",
-                weight=1.0
+                weight=1.0,
             ),
             EvaluationDimension(
                 name="completeness",
                 description="Does the clarification cover all major ambiguities in the query?",
-                weight=1.1
+                weight=1.1,
             ),
             EvaluationDimension(
                 name="framework_adherence",
                 description="Does the agent follow the 4-dimension framework (Scope, Audience, Detail, Purpose)?",
-                weight=1.0
-            )
+                weight=1.0,
+            ),
         ]
 
     def format_output_for_evaluation(self, output: ClarifyWithUser) -> str:
@@ -58,10 +53,7 @@ class ClarificationMultiJudgeAdapter(AgentEvaluationAdapter[str, ClarifyWithUser
         if not output.needs_clarification or not output.request:
             return "No clarification needed"
 
-        lines = [
-            f"Needs Clarification: {output.needs_clarification}",
-            "\nQuestions:"
-        ]
+        lines = [f"Needs Clarification: {output.needs_clarification}", "\nQuestions:"]
 
         for q in output.request.questions:
             lines.append(f"- {q.question}")
@@ -72,25 +64,24 @@ class ClarificationMultiJudgeAdapter(AgentEvaluationAdapter[str, ClarifyWithUser
         if output.missing_dimensions:
             lines.append(f"\nMissing Dimensions: {', '.join(output.missing_dimensions)}")
 
-        if hasattr(output, 'assessment_reasoning') and output.assessment_reasoning:
+        if hasattr(output, "assessment_reasoning") and output.assessment_reasoning:
             lines.append(f"\nReasoning: {output.assessment_reasoning}")
 
         return "\n".join(lines)
 
     def create_evaluation_prompt(
-        self,
-        input: str,
-        output: ClarifyWithUser,
-        context: Optional[Dict[str, Any]] = None
+        self, input: str, output: ClarifyWithUser, context: dict[str, Any] | None = None
     ) -> str:
         """Create the evaluation prompt for judges."""
 
         # Format questions if present
         if output.request and output.request.questions:
-            questions_text = "\n".join([
-                f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
-                for q in output.request.questions
-            ])
+            questions_text = "\n".join(
+                [
+                    f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
+                    for q in output.request.questions
+                ]
+            )
         else:
             questions_text = "No clarification questions generated"
 
@@ -103,8 +94,8 @@ class ClarificationMultiJudgeAdapter(AgentEvaluationAdapter[str, ClarifyWithUser
         Questions:
         {questions_text}
 
-        Missing Dimensions Identified: {', '.join(output.missing_dimensions) if output.missing_dimensions else 'None'}
-        Agent's Reasoning: {output.assessment_reasoning if hasattr(output, 'assessment_reasoning') else 'Not provided'}
+        Missing Dimensions Identified: {", ".join(output.missing_dimensions) if output.missing_dimensions else "None"}
+        Agent's Reasoning: {output.assessment_reasoning if hasattr(output, "assessment_reasoning") else "Not provided"}
         """
 
         if context:
@@ -147,6 +138,6 @@ class ClarificationMultiJudgeAdapter(AgentEvaluationAdapter[str, ClarifyWithUser
             JudgeExpertise.GENERAL: (
                 "You are a general-purpose evaluator with broad expertise. "
                 "Consider all aspects of the clarification holistically. "
-            )
+            ),
         }
         return contexts.get(expertise, contexts[JudgeExpertise.GENERAL])

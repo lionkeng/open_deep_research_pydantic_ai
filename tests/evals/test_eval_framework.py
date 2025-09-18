@@ -4,24 +4,20 @@ Test the query transformation evaluation framework with mock data.
 """
 
 import sys
-from pathlib import Path
 import uuid
+from pathlib import Path
 
 # Change to project root directory
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.evals.query_transformation_evals import (
-    QueryTransformationInput,
-    QueryTransformationExpectedOutput,
-    SearchQueryRelevanceEvaluator,
-    ObjectiveCoverageEvaluator,
-    TransformationAccuracyEvaluator
-)
+from pydantic_evals import Case, Dataset
+from pydantic_evals.evaluators import EvaluatorContext
+
 from models.research_plan_models import (
+    ResearchMethodology,
     ResearchObjective,
     ResearchPlan,
-    ResearchMethodology,
     TransformedQuery,
 )
 from models.search_query_models import (
@@ -29,8 +25,13 @@ from models.search_query_models import (
     SearchQueryBatch,
     SearchQueryType,
 )
-from pydantic_evals import Dataset, Case
-from pydantic_evals.evaluators import EvaluatorContext
+from tests.evals.query_transformation_evals import (
+    ObjectiveCoverageEvaluator,
+    QueryTransformationExpectedOutput,
+    QueryTransformationInput,
+    SearchQueryRelevanceEvaluator,
+    TransformationAccuracyEvaluator,
+)
 
 
 def create_mock_transformed_query() -> TransformedQuery:
@@ -45,14 +46,14 @@ def create_mock_transformed_query() -> TransformedQuery:
             id=obj1_id,
             objective="Analyze machine learning applications in healthcare diagnostics",
             priority="PRIMARY",
-            success_criteria="Identify key ML algorithms and their accuracy rates"
+            success_criteria="Identify key ML algorithms and their accuracy rates",
         ),
         ResearchObjective(
             id=obj2_id,
             objective="Evaluate regulatory challenges for AI in medical devices",
             priority="SECONDARY",
-            success_criteria="Document FDA approval processes and requirements"
-        )
+            success_criteria="Document FDA approval processes and requirements",
+        ),
     ]
 
     # Create search queries linked to objectives
@@ -64,7 +65,7 @@ def create_mock_transformed_query() -> TransformedQuery:
             priority=5,
             max_results=10,
             rationale="Core ML algorithms in healthcare",
-            objective_id=obj1_id
+            objective_id=obj1_id,
         ),
         SearchQuery(
             id=str(uuid.uuid4()),
@@ -73,7 +74,7 @@ def create_mock_transformed_query() -> TransformedQuery:
             priority=4,
             max_results=10,
             rationale="Regulatory landscape",
-            objective_id=obj2_id
+            objective_id=obj2_id,
         ),
         SearchQuery(
             id=str(uuid.uuid4()),
@@ -82,15 +83,15 @@ def create_mock_transformed_query() -> TransformedQuery:
             priority=3,
             max_results=10,
             rationale="Performance evaluation",
-            objective_id=obj1_id
-        )
+            objective_id=obj1_id,
+        ),
     ]
 
     # Create methodology
     methodology = ResearchMethodology(
         approach="Systematic literature review and regulatory analysis",
         data_sources=["PubMed", "IEEE", "FDA guidelines", "Industry reports"],
-        analysis_methods=["Comparative analysis", "Meta-analysis", "Regulatory mapping"]
+        analysis_methods=["Comparative analysis", "Meta-analysis", "Regulatory mapping"],
     )
 
     # Create research plan
@@ -100,15 +101,15 @@ def create_mock_transformed_query() -> TransformedQuery:
         expected_deliverables=[
             "Comprehensive report on ML in healthcare",
             "Regulatory compliance guide",
-            "Algorithm performance comparison table"
-        ]
+            "Algorithm performance comparison table",
+        ],
     )
 
     return TransformedQuery(
         original_query="How does machine learning work in healthcare?",
         search_queries=SearchQueryBatch(queries=queries),
         research_plan=plan,
-        confidence_score=0.85
+        confidence_score=0.85,
     )
 
 
@@ -120,13 +121,13 @@ def test_evaluators():
     inputs = QueryTransformationInput(
         query="How does machine learning work in healthcare?",
         complexity="medium",
-        domain="technical"
+        domain="technical",
     )
 
     expected = QueryTransformationExpectedOutput(
         min_search_queries=3,
         max_search_queries=8,
-        expected_search_themes=["machine learning", "healthcare", "algorithms"]
+        expected_search_themes=["machine learning", "healthcare", "algorithms"],
     )
 
     output = create_mock_transformed_query()
@@ -141,14 +142,14 @@ def test_evaluators():
         duration=1.0,
         _span_tree=None,
         attributes={},
-        metrics={}
+        metrics={},
     )
 
     # Test evaluators
     evaluators = [
         ("SearchQueryRelevanceEvaluator", SearchQueryRelevanceEvaluator()),
         ("ObjectiveCoverageEvaluator", ObjectiveCoverageEvaluator()),
-        ("TransformationAccuracyEvaluator", TransformationAccuracyEvaluator())
+        ("TransformationAccuracyEvaluator", TransformationAccuracyEvaluator()),
     ]
 
     results = {}
@@ -171,17 +172,11 @@ def test_dataset_structure():
     # Create a simple case
     case = Case(
         name="test_case",
-        inputs=QueryTransformationInput(
-            query="Test query",
-            complexity="simple"
-        ),
+        inputs=QueryTransformationInput(query="Test query", complexity="simple"),
         expected_output=QueryTransformationExpectedOutput(
-            min_search_queries=2,
-            max_search_queries=5
+            min_search_queries=2, max_search_queries=5
         ),
-        evaluators=[
-            SearchQueryRelevanceEvaluator()
-        ]
+        evaluators=[SearchQueryRelevanceEvaluator()],
     )
 
     # Create dataset
@@ -224,6 +219,7 @@ def main():
     except Exception as e:
         print(f"\nERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

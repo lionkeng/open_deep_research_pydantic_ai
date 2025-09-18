@@ -6,87 +6,73 @@ following pydantic-ai evaluation patterns with custom evaluators, metrics, and L
 """
 
 import asyncio
-import os
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass
 import json
-import httpx
+import os
+from typing import Any
 
+import httpx
 from pydantic import BaseModel, Field, SecretStr
-from pydantic_evals import Dataset, Case
+from pydantic_ai import Agent
+from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_evals.reporting import EvaluationReport
-from pydantic_ai import Agent
 
-from agents.query_transformation import QueryTransformationAgent
 from agents.base import ResearchDependencies
-from models.metadata import ResearchMetadata
-from models.core import ResearchState, ResearchStage
-from models.research_plan_models import TransformedQuery
+from agents.query_transformation import QueryTransformationAgent
 from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
+from models.research_plan_models import TransformedQuery
 
 
 class QueryTransformationInput(BaseModel):
     """Input model for query transformation evaluation."""
+
     query: str = Field(description="User query to transform")
-    context: Optional[str] = Field(
-        default=None,
-        description="Optional context for the query"
-    )
+    context: str | None = Field(default=None, description="Optional context for the query")
     complexity: str = Field(
-        default="medium",
-        description="Expected complexity level: simple, medium, complex"
+        default="medium", description="Expected complexity level: simple, medium, complex"
     )
-    domain: Optional[str] = Field(
-        default=None,
-        description="Domain classification (technical, scientific, business, etc.)"
+    domain: str | None = Field(
+        default=None, description="Domain classification (technical, scientific, business, etc.)"
     )
 
 
 class QueryTransformationExpectedOutput(BaseModel):
     """Expected output for query transformation evaluation."""
-    min_search_queries: Optional[int] = Field(
-        default=None,
-        description="Minimum number of search queries expected"
+
+    min_search_queries: int | None = Field(
+        default=None, description="Minimum number of search queries expected"
     )
-    max_search_queries: Optional[int] = Field(
-        default=None,
-        description="Maximum number of search queries expected"
+    max_search_queries: int | None = Field(
+        default=None, description="Maximum number of search queries expected"
     )
-    min_objectives: Optional[int] = Field(
-        default=None,
-        description="Minimum number of research objectives expected"
+    min_objectives: int | None = Field(
+        default=None, description="Minimum number of research objectives expected"
     )
-    max_objectives: Optional[int] = Field(
-        default=None,
-        description="Maximum number of research objectives expected"
+    max_objectives: int | None = Field(
+        default=None, description="Maximum number of research objectives expected"
     )
-    expected_search_themes: Optional[List[str]] = Field(
-        default=None,
-        description="Expected themes in search queries"
+    expected_search_themes: list[str] | None = Field(
+        default=None, description="Expected themes in search queries"
     )
-    expected_objective_themes: Optional[List[str]] = Field(
-        default=None,
-        description="Expected themes in research objectives"
+    expected_objective_themes: list[str] | None = Field(
+        default=None, description="Expected themes in research objectives"
     )
-    query_types_expected: Optional[List[str]] = Field(
-        default=None,
-        description="Expected search query types (factual, analytical, etc.)"
+    query_types_expected: list[str] | None = Field(
+        default=None, description="Expected search query types (factual, analytical, etc.)"
     )
-    confidence_score: Optional[float] = Field(
+    confidence_score: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Expected confidence score for transformation (0.0-1.0)"
+        description="Expected confidence score for transformation (0.0-1.0)",
     )
-    max_response_time: Optional[float] = Field(
-        default=None,
-        gt=0.0,
-        description="Maximum acceptable response time in seconds"
+    max_response_time: float | None = Field(
+        default=None, gt=0.0, description="Maximum acceptable response time in seconds"
     )
-    transformation_quality: Optional[str] = Field(
-        default=None,
-        description="Expected transformation quality: excellent, good, fair, poor"
+    transformation_quality: str | None = Field(
+        default=None, description="Expected transformation quality: excellent, good, fair, poor"
     )
 
 
@@ -155,7 +141,7 @@ class ObjectiveCoverageEvaluator(Evaluator):
         quality_scores = {
             "specificity": self._evaluate_specificity(objectives),
             "diversity": self._evaluate_diversity(objectives),
-            "alignment": self._evaluate_alignment(objectives, output.original_query)
+            "alignment": self._evaluate_alignment(objectives, output.original_query),
         }
 
         # Theme coverage
@@ -235,7 +221,7 @@ class PlanCoherenceEvaluator(Evaluator):
         coherence_scores = {
             "methodology_quality": self._evaluate_methodology(plan.methodology),
             "deliverables_clarity": self._evaluate_deliverables(plan),
-            "success_metrics": self._evaluate_success_metrics(plan)
+            "success_metrics": self._evaluate_success_metrics(plan),
         }
 
         avg_score = sum(coherence_scores.values()) / len(coherence_scores)
@@ -290,7 +276,7 @@ class QueryDiversityEvaluator(Evaluator):
         diversity_metrics = {
             "lexical_diversity": self._evaluate_lexical_diversity(search_queries),
             "type_diversity": self._evaluate_type_diversity(search_queries),
-            "length_variation": self._evaluate_length_variation(search_queries)
+            "length_variation": self._evaluate_length_variation(search_queries),
         }
 
         avg_score = sum(diversity_metrics.values()) / len(diversity_metrics)
@@ -345,7 +331,7 @@ class QueryDiversityEvaluator(Evaluator):
             return 0.0
 
         variance = sum((l - avg_length) ** 2 for l in lengths) / len(lengths)
-        std_dev = variance ** 0.5
+        std_dev = variance**0.5
         cv = std_dev / avg_length
 
         if cv < 0.1:
@@ -376,7 +362,7 @@ class TransformationAccuracyEvaluator(Evaluator):
         accuracy_metrics = {
             "query_preservation": self._evaluate_query_preservation(output),
             "completeness": self._evaluate_completeness(output),
-            "consistency": self._evaluate_consistency(output)
+            "consistency": self._evaluate_consistency(output),
         }
 
         avg_score = sum(accuracy_metrics.values()) / len(accuracy_metrics)
@@ -449,7 +435,7 @@ class LLMJudgeEvaluator(Evaluator):
             1. Relevance to original query
             2. Completeness of research plan
             3. Quality of search queries
-            4. Overall coherence and usefulness"""
+            4. Overall coherence and usefulness""",
         )
 
     def evaluate(self, ctx: EvaluatorContext) -> float:
@@ -461,12 +447,16 @@ class LLMJudgeEvaluator(Evaluator):
         self,
         query: str,
         output: TransformedQuery,
-        expected: Optional[QueryTransformationExpectedOutput] = None
-    ) -> Dict[str, Any]:
+        expected: QueryTransformationExpectedOutput | None = None,
+    ) -> dict[str, Any]:
         """Use LLM to judge transformation quality."""
 
-        objectives_text = "\n".join([f"- {obj.objective}" for obj in output.research_plan.objectives])
-        queries_text = "\n".join([f"- {q.query} (Type: {q.query_type})" for q in output.search_queries.queries])
+        objectives_text = "\n".join(
+            [f"- {obj.objective}" for obj in output.research_plan.objectives]
+        )
+        queries_text = "\n".join(
+            [f"- {q.query} (Type: {q.query_type})" for q in output.search_queries.queries]
+        )
 
         evaluation_prompt = f"""
         Original Query: {query}
@@ -478,7 +468,7 @@ class LLMJudgeEvaluator(Evaluator):
         Search Queries:
 {queries_text}
 
-        Research Plan: {output.research_plan.methodology.approach if output.research_plan.methodology else 'No methodology'}
+        Research Plan: {output.research_plan.methodology.approach if output.research_plan.methodology else "No methodology"}
 
         Please evaluate this transformation on a scale of 0-10 for:
         1. Relevance (0-10): How well does it address the original query?
@@ -492,13 +482,15 @@ class LLMJudgeEvaluator(Evaluator):
         result = await self.judge_agent.run(evaluation_prompt)
 
         try:
-            eval_data = json.loads(result.output) if isinstance(result.output, str) else result.output
+            eval_data = (
+                json.loads(result.output) if isinstance(result.output, str) else result.output
+            )
 
             scores = [
                 eval_data.get("relevance", 0) / 10,
                 eval_data.get("completeness", 0) / 10,
                 eval_data.get("quality", 0) / 10,
-                eval_data.get("coherence", 0) / 10
+                eval_data.get("coherence", 0) / 10,
             ]
 
             final_score = sum(scores) / len(scores)
@@ -509,13 +501,10 @@ class LLMJudgeEvaluator(Evaluator):
                 "completeness": eval_data.get("completeness"),
                 "quality": eval_data.get("quality"),
                 "coherence": eval_data.get("coherence"),
-                "explanation": eval_data.get("explanation", "")
+                "explanation": eval_data.get("explanation", ""),
             }
         except (json.JSONDecodeError, KeyError) as e:
-            return {
-                "score": None,
-                "error": f"Failed to parse LLM evaluation: {e}"
-            }
+            return {"score": None, "error": f"Failed to parse LLM evaluation: {e}"}
 
 
 def create_query_transformation_dataset() -> Dataset:
@@ -527,6 +516,7 @@ def create_query_transformation_dataset() -> Dataset:
     if yaml_path.exists():
         try:
             from tests.evals.query_transformation_dataset_loader import load_dataset_from_yaml
+
             return load_dataset_from_yaml(yaml_path)
         except ImportError:
             pass  # Fall back to hardcoded dataset
@@ -539,7 +529,7 @@ def create_query_transformation_dataset() -> Dataset:
             inputs=QueryTransformationInput(
                 query="How does machine learning work in healthcare?",
                 complexity="medium",
-                domain="technical"
+                domain="technical",
             ),
             expected_output=QueryTransformationExpectedOutput(
                 min_search_queries=5,
@@ -548,21 +538,21 @@ def create_query_transformation_dataset() -> Dataset:
                 max_objectives=4,
                 expected_search_themes=["machine learning", "healthcare", "algorithms", "medical"],
                 expected_objective_themes=["analyze", "understand", "applications"],
-                query_types_expected=["factual", "analytical", "exploratory"]
+                query_types_expected=["factual", "analytical", "exploratory"],
             ),
             evaluators=[
                 SearchQueryRelevanceEvaluator(),
                 ObjectiveCoverageEvaluator(),
                 PlanCoherenceEvaluator(),
-                TransformationAccuracyEvaluator()
-            ]
+                TransformationAccuracyEvaluator(),
+            ],
         ),
         Case(
             name="golden_specific_technical",
             inputs=QueryTransformationInput(
                 query="Compare PostgreSQL vs MySQL performance for e-commerce",
                 complexity="medium",
-                domain="technical"
+                domain="technical",
             ),
             expected_output=QueryTransformationExpectedOutput(
                 min_search_queries=4,
@@ -570,20 +560,18 @@ def create_query_transformation_dataset() -> Dataset:
                 min_objectives=2,
                 max_objectives=3,
                 expected_search_themes=["PostgreSQL", "MySQL", "performance", "e-commerce"],
-                expected_objective_themes=["compare", "analyze", "evaluate"]
+                expected_objective_themes=["compare", "analyze", "evaluate"],
             ),
             evaluators=[
                 SearchQueryRelevanceEvaluator(),
                 ObjectiveCoverageEvaluator(),
-                QueryDiversityEvaluator()
-            ]
+                QueryDiversityEvaluator(),
+            ],
         ),
         Case(
             name="golden_broad_research",
             inputs=QueryTransformationInput(
-                query="Research climate change impacts",
-                complexity="complex",
-                domain="scientific"
+                query="Research climate change impacts", complexity="complex", domain="scientific"
             ),
             expected_output=QueryTransformationExpectedOutput(
                 min_search_queries=6,
@@ -591,16 +579,16 @@ def create_query_transformation_dataset() -> Dataset:
                 min_objectives=3,
                 max_objectives=5,
                 expected_search_themes=["climate change", "impacts", "environment", "research"],
-                expected_objective_themes=["investigate", "analyze", "assess"]
+                expected_objective_themes=["investigate", "analyze", "assess"],
             ),
             evaluators=[
                 SearchQueryRelevanceEvaluator(),
                 ObjectiveCoverageEvaluator(),
                 PlanCoherenceEvaluator(),
                 QueryDiversityEvaluator(),
-                TransformationAccuracyEvaluator()
-            ]
-        )
+                TransformationAccuracyEvaluator(),
+            ],
+        ),
     ]
 
     # Domain-specific cases
@@ -610,29 +598,27 @@ def create_query_transformation_dataset() -> Dataset:
             inputs=QueryTransformationInput(
                 query="Best practices for microservices architecture",
                 complexity="medium",
-                domain="technical"
+                domain="technical",
             ),
             expected_output=QueryTransformationExpectedOutput(
                 min_search_queries=4,
                 max_search_queries=10,
-                expected_search_themes=["microservices", "architecture", "best practices"]
+                expected_search_themes=["microservices", "architecture", "best practices"],
             ),
-            evaluators=[SearchQueryRelevanceEvaluator(), ObjectiveCoverageEvaluator()]
+            evaluators=[SearchQueryRelevanceEvaluator(), ObjectiveCoverageEvaluator()],
         ),
         Case(
             name="tech_optimization",
             inputs=QueryTransformationInput(
-                query="How to optimize database queries",
-                complexity="simple",
-                domain="technical"
+                query="How to optimize database queries", complexity="simple", domain="technical"
             ),
             expected_output=QueryTransformationExpectedOutput(
                 min_search_queries=3,
                 max_search_queries=6,
-                expected_search_themes=["database", "optimization", "queries"]
+                expected_search_themes=["database", "optimization", "queries"],
             ),
-            evaluators=[SearchQueryRelevanceEvaluator(), QueryDiversityEvaluator()]
-        )
+            evaluators=[SearchQueryRelevanceEvaluator(), QueryDiversityEvaluator()],
+        ),
     ]
 
     # Business cases
@@ -642,14 +628,14 @@ def create_query_transformation_dataset() -> Dataset:
             inputs=QueryTransformationInput(
                 query="Analyze market trends for electric vehicles",
                 complexity="medium",
-                domain="business"
+                domain="business",
             ),
             expected_output=QueryTransformationExpectedOutput(
                 min_search_queries=5,
                 max_search_queries=10,
-                expected_search_themes=["market", "trends", "electric vehicles"]
+                expected_search_themes=["market", "trends", "electric vehicles"],
             ),
-            evaluators=[SearchQueryRelevanceEvaluator(), ObjectiveCoverageEvaluator()]
+            evaluators=[SearchQueryRelevanceEvaluator(), ObjectiveCoverageEvaluator()],
         )
     ]
 
@@ -659,30 +645,25 @@ def create_query_transformation_dataset() -> Dataset:
             name="edge_minimal",
             inputs=QueryTransformationInput(query="AI"),
             expected_output=QueryTransformationExpectedOutput(
-                min_search_queries=3,
-                max_search_queries=8
+                min_search_queries=3, max_search_queries=8
             ),
-            evaluators=[SearchQueryRelevanceEvaluator(), TransformationAccuracyEvaluator()]
+            evaluators=[SearchQueryRelevanceEvaluator(), TransformationAccuracyEvaluator()],
         ),
         Case(
             name="edge_very_specific",
             inputs=QueryTransformationInput(
-                query="What is the molecular structure of caffeine C8H10N4O2?",
-                complexity="simple"
+                query="What is the molecular structure of caffeine C8H10N4O2?", complexity="simple"
             ),
             expected_output=QueryTransformationExpectedOutput(
-                min_search_queries=2,
-                max_search_queries=5
+                min_search_queries=2, max_search_queries=5
             ),
-            evaluators=[SearchQueryRelevanceEvaluator(), TransformationAccuracyEvaluator()]
-        )
+            evaluators=[SearchQueryRelevanceEvaluator(), TransformationAccuracyEvaluator()],
+        ),
     ]
 
     all_cases = golden_cases + technical_cases + business_cases + edge_cases
 
-    return Dataset(
-        cases=all_cases
-    )
+    return Dataset(cases=all_cases)
 
 
 async def run_query_transformation_evaluation():
@@ -704,12 +685,16 @@ async def run_query_transformation_evaluation():
                 session_id="test-session",
                 user_query=inputs.query,
                 current_stage=ResearchStage.RESEARCH_EXECUTION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
                 http_client=http_client,
-                api_keys=APIKeys(openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None),
-                research_state=state
+                api_keys=APIKeys(
+                    openai=SecretStr(openai_key)
+                    if (openai_key := os.getenv("OPENAI_API_KEY"))
+                    else None
+                ),
+                research_state=state,
             )
 
             result = await agent.agent.run(inputs.query, deps=deps)
@@ -736,9 +721,11 @@ def generate_evaluation_report(report: EvaluationReport) -> str:
     all_scores = []
 
     for case in report.cases:
-        case_scores = [eval_result.get("score", 0)
-                      for eval_result in case.evaluations.values()
-                      if eval_result.get("score") is not None]
+        case_scores = [
+            eval_result.get("score", 0)
+            for eval_result in case.evaluations.values()
+            if eval_result.get("score") is not None
+        ]
         if case_scores:
             all_scores.extend(case_scores)
 

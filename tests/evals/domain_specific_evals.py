@@ -4,14 +4,11 @@ This module provides specialized evaluators for different domains (technical, sc
 business, creative) with domain-specific expertise and evaluation criteria.
 """
 
-import json
-import re
-from typing import Dict, List, Any, Optional, Set
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
-from pydantic_evals import Evaluator
 from pydantic_ai import Agent
 
 from agents.clarification import ClarifyWithUser
@@ -19,6 +16,7 @@ from agents.clarification import ClarifyWithUser
 
 class Domain(Enum):
     """Supported evaluation domains."""
+
     TECHNICAL = "technical"
     SCIENTIFIC = "scientific"
     BUSINESS = "business"
@@ -29,26 +27,28 @@ class Domain(Enum):
 
 class DomainContext(BaseModel):
     """Context information for domain-specific evaluation."""
+
     domain: Domain
-    subdomain: Optional[str] = None
-    technical_level: Optional[str] = None  # beginner, intermediate, advanced
-    industry: Optional[str] = None
-    specific_requirements: List[str] = Field(default_factory=list)
+    subdomain: str | None = None
+    technical_level: str | None = None  # beginner, intermediate, advanced
+    industry: str | None = None
+    specific_requirements: list[str] = Field(default_factory=list)
 
 
 class DomainEvaluationResult(BaseModel):
     """Result from domain-specific evaluation."""
+
     domain: Domain
     overall_score: float = Field(ge=0, le=1)
     domain_relevance: float = Field(ge=0, le=1)
     expertise_accuracy: float = Field(ge=0, le=1)
     terminology_appropriateness: float = Field(ge=0, le=1)
     context_understanding: float = Field(ge=0, le=1)
-    detailed_feedback: Dict[str, Any] = Field(default_factory=dict)
-    domain_specific_metrics: Dict[str, float] = Field(default_factory=dict)
+    detailed_feedback: dict[str, Any] = Field(default_factory=dict)
+    domain_specific_metrics: dict[str, float] = Field(default_factory=dict)
 
 
-class BaseDomainEvaluator(Evaluator, ABC):
+class BaseDomainEvaluator(ABC):
     """Base class for domain-specific evaluators."""
 
     def __init__(self, domain: Domain, model: str = "openai:gpt-5-mini"):
@@ -59,23 +59,20 @@ class BaseDomainEvaluator(Evaluator, ABC):
         self.quality_indicators = self._get_quality_indicators()
 
         # Create domain-specific judge agent
-        self.judge_agent = Agent(
-            model=model,
-            system_prompt=self._create_domain_system_prompt()
-        )
+        self.judge_agent = Agent(model=model, system_prompt=self._create_domain_system_prompt())
 
     @abstractmethod
-    def _get_domain_keywords(self) -> Set[str]:
+    def _get_domain_keywords(self) -> set[str]:
         """Get domain-specific keywords for analysis."""
         pass
 
     @abstractmethod
-    def _get_domain_concepts(self) -> Dict[str, List[str]]:
+    def _get_domain_concepts(self) -> dict[str, list[str]]:
         """Get domain concepts and their related terms."""
         pass
 
     @abstractmethod
-    def _get_quality_indicators(self) -> Dict[str, List[str]]:
+    def _get_quality_indicators(self) -> dict[str, list[str]]:
         """Get indicators of high-quality domain-specific clarifications."""
         pass
 
@@ -84,54 +81,55 @@ class BaseDomainEvaluator(Evaluator, ABC):
         """Create domain-specific system prompt for LLM judge."""
         pass
 
-    def evaluate(self, output: ClarifyWithUser, context: DomainContext = None) -> DomainEvaluationResult:
+    @abstractmethod
+    def domain_evaluate(
+        self, output: ClarifyWithUser, context: DomainContext = None
+    ) -> DomainEvaluationResult:
         """Evaluate clarification output for domain-specific quality."""
+        pass
 
-        if not output.needs_clarification or not output.request:
-            return DomainEvaluationResult(
+    @abstractmethod
+    def _calculate_domain_metrics(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, float]:
+        """Calculate domain-specific metrics."""
+        pass
+
+    @abstractmethod
+    def _generate_detailed_feedback(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, Any]:
+        """Generate detailed domain-specific feedback."""
+        pass
+
+    def evaluate(self, ctx) -> dict[str, Any]:
+        """Wrapper to comply with Evaluator interface."""
+        # Extract output from context
+        output = ctx.output if hasattr(ctx, "output") else None
+        if not output:
+            return {"score": 0.0, "error": "No output available"}
+
+        # Create domain context if available
+        domain_context = None
+        if hasattr(ctx, "metadata") and ctx.metadata:
+            domain_context = DomainContext(
+                query=ctx.inputs.query if hasattr(ctx.inputs, "query") else str(ctx.inputs),
                 domain=self.domain,
-                overall_score=0.0,
-                domain_relevance=0.0,
-                expertise_accuracy=0.0,
-                terminology_appropriateness=0.0,
-                context_understanding=0.0,
-                detailed_feedback={"applicable": False}
             )
 
-        # Extract questions text for analysis
-        questions = [q.question for q in output.request.questions]
-        questions_text = " ".join(questions).lower()
+        # Call the domain-specific evaluate
+        result = self.domain_evaluate(output, domain_context)
 
-        # Analyze domain relevance
-        domain_relevance = self._analyze_domain_relevance(questions_text, context)
-
-        # Analyze terminology appropriateness
-        terminology_score = self._analyze_terminology(questions_text, context)
-
-        # Analyze context understanding
-        context_score = self._analyze_context_understanding(output, context)
-
-        # Get domain-specific metrics
-        domain_metrics = self._calculate_domain_metrics(output, context)
-
-        # Calculate overall score
-        overall_score = (
-            domain_relevance * 0.3 +
-            terminology_score * 0.25 +
-            context_score * 0.25 +
-            (sum(domain_metrics.values()) / len(domain_metrics) if domain_metrics else 0.5) * 0.2
-        )
-
-        return DomainEvaluationResult(
-            domain=self.domain,
-            overall_score=overall_score,
-            domain_relevance=domain_relevance,
-            expertise_accuracy=0.8,  # Placeholder - would be calculated by LLM judge
-            terminology_appropriateness=terminology_score,
-            context_understanding=context_score,
-            detailed_feedback=self._generate_detailed_feedback(output, context),
-            domain_specific_metrics=domain_metrics
-        )
+        # Convert DomainEvaluationResult to dict
+        return {
+            "score": result.overall_score,
+            "domain": result.domain.value,
+            "domain_relevance": result.domain_relevance,
+            "expertise_accuracy": result.expertise_accuracy,
+            "terminology_appropriateness": result.terminology_appropriateness,
+            "context_understanding": result.context_understanding,
+            "detailed_feedback": result.detailed_feedback,
+        }
 
     def _analyze_domain_relevance(self, questions_text: str, context: DomainContext) -> float:
         """Analyze how relevant the questions are to the domain."""
@@ -166,20 +164,29 @@ class BaseDomainEvaluator(Evaluator, ABC):
         return quality_score / total_indicators if total_indicators > 0 else 0.5
 
     def _analyze_context_understanding(self, output: ClarifyWithUser, context: DomainContext) -> float:
-        """Analyze how well the agent understood the domain context."""
+        """Analyze how well the output understands the context."""
+        # Basic implementation that can be overridden by subclasses
+        if not output.request or not output.request.questions:
+            return 0.0
 
-        if not context:
-            return 0.5  # Neutral score if no context provided
+        # Check if questions address missing dimensions
+        if hasattr(output, 'missing_dimensions') and output.missing_dimensions:
+            dimension_score = min(len(output.missing_dimensions) / 4, 1.0)
+        else:
+            dimension_score = 0.5
 
-        score = 0.5  # Base score
+        # Check if questions are contextually appropriate
+        if hasattr(output, 'assessment_reasoning') and output.assessment_reasoning:
+            reasoning_score = min(len(output.assessment_reasoning) / 100, 1.0)
+        else:
+            reasoning_score = 0.5
 
-        # Check if technical level is appropriately addressed
-        if context.technical_level:
+        return (dimension_score + reasoning_score) / 2
             questions_text = " ".join(q.question for q in output.request.questions).lower()
             level_indicators = {
                 "beginner": ["basic", "simple", "introduction", "fundamentals", "overview"],
                 "intermediate": ["specific", "detailed", "particular", "aspects", "implementation"],
-                "advanced": ["complex", "advanced", "optimization", "architecture", "deep dive"]
+                "advanced": ["complex", "advanced", "optimization", "architecture", "deep dive"],
             }
 
             if context.technical_level in level_indicators:
@@ -197,7 +204,8 @@ class BaseDomainEvaluator(Evaluator, ABC):
         if context.specific_requirements:
             missing_dims = output.missing_dimensions or []
             requirements_addressed = sum(
-                1 for req in context.specific_requirements
+                1
+                for req in context.specific_requirements
                 if any(req.lower() in dim.lower() for dim in missing_dims)
             )
             if context.specific_requirements:
@@ -206,12 +214,16 @@ class BaseDomainEvaluator(Evaluator, ABC):
         return min(score, 1.0)
 
     @abstractmethod
-    def _calculate_domain_metrics(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, float]:
+    def _calculate_domain_metrics(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, float]:
         """Calculate domain-specific metrics."""
         pass
 
     @abstractmethod
-    def _generate_detailed_feedback(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, Any]:
+    def _generate_detailed_feedback(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, Any]:
         """Generate detailed feedback for the domain."""
         pass
 
@@ -222,26 +234,40 @@ class TechnicalDomainEvaluator(BaseDomainEvaluator):
     def __init__(self, model: str = "openai:gpt-5-mini"):
         super().__init__(Domain.TECHNICAL, model)
 
-    def _get_domain_keywords(self) -> Set[str]:
+    def _get_domain_keywords(self) -> set[str]:
         return {
-            "algorithm", "code", "programming", "software", "development", "architecture",
-            "database", "api", "framework", "library", "debugging", "optimization",
-            "performance", "scalability", "security", "testing", "deployment"
+            "algorithm",
+            "code",
+            "programming",
+            "software",
+            "development",
+            "architecture",
+            "database",
+            "api",
+            "framework",
+            "library",
+            "debugging",
+            "optimization",
+            "performance",
+            "scalability",
+            "security",
+            "testing",
+            "deployment",
         }
 
-    def _get_domain_concepts(self) -> Dict[str, List[str]]:
+    def _get_domain_concepts(self) -> dict[str, list[str]]:
         return {
             "programming_languages": ["python", "javascript", "java", "c++", "rust", "go"],
             "development_methodologies": ["agile", "devops", "ci/cd", "tdd", "microservices"],
             "system_design": ["load balancing", "caching", "distributed systems", "databases"],
-            "security": ["authentication", "encryption", "vulnerabilities", "best practices"]
+            "security": ["authentication", "encryption", "vulnerabilities", "best practices"],
         }
 
-    def _get_quality_indicators(self) -> Dict[str, List[str]]:
+    def _get_quality_indicators(self) -> dict[str, list[str]]:
         return {
             "specificity": ["specific", "particular", "exact", "precise"],
             "technical_depth": ["implementation", "architecture", "design", "technical"],
-            "practical_focus": ["use case", "requirements", "constraints", "environment"]
+            "practical_focus": ["use case", "requirements", "constraints", "environment"],
         }
 
     def _create_domain_system_prompt(self) -> str:
@@ -252,18 +278,27 @@ class TechnicalDomainEvaluator(BaseDomainEvaluator):
 
         Return JSON with scores (0-10) and reasoning."""
 
-    def _calculate_domain_metrics(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, float]:
+    def _calculate_domain_metrics(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, float]:
         questions_text = " ".join(q.question for q in output.request.questions).lower()
 
         return {
             "technical_specificity": self._score_technical_specificity(questions_text),
             "implementation_focus": self._score_implementation_focus(questions_text),
             "architecture_consideration": self._score_architecture_consideration(questions_text),
-            "tool_technology_relevance": self._score_tool_relevance(questions_text)
+            "tool_technology_relevance": self._score_tool_relevance(questions_text),
         }
 
     def _score_technical_specificity(self, text: str) -> float:
-        specific_terms = ["version", "framework", "library", "platform", "environment", "implementation"]
+        specific_terms = [
+            "version",
+            "framework",
+            "library",
+            "platform",
+            "environment",
+            "implementation",
+        ]
         matches = sum(1 for term in specific_terms if term in text)
         return min(matches / 3, 1.0)
 
@@ -282,15 +317,12 @@ class TechnicalDomainEvaluator(BaseDomainEvaluator):
         matches = sum(1 for tool in tools if tool in text)
         return min(matches / 2, 1.0)
 
-    def _generate_detailed_feedback(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, Any]:
+    def _generate_detailed_feedback(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, Any]:
         questions = [q.question for q in output.request.questions]
 
-        feedback = {
-            "strengths": [],
-            "weaknesses": [],
-            "suggestions": [],
-            "technical_coverage": {}
-        }
+        feedback = {"strengths": [], "weaknesses": [], "suggestions": [], "technical_coverage": {}}
 
         questions_text = " ".join(questions).lower()
 
@@ -317,6 +349,56 @@ class TechnicalDomainEvaluator(BaseDomainEvaluator):
 
         return feedback
 
+    def domain_evaluate(
+        self, output: ClarifyWithUser, context: DomainContext = None
+    ) -> DomainEvaluationResult:
+        """Technical domain-specific evaluation."""
+
+        if not output.needs_clarification or not output.request:
+            return DomainEvaluationResult(
+                domain=self.domain,
+                overall_score=0.0,
+                domain_relevance=0.0,
+                expertise_accuracy=0.0,
+                terminology_appropriateness=0.0,
+                context_understanding=0.0,
+                detailed_feedback={"applicable": False},
+            )
+
+        questions = [q.question for q in output.request.questions]
+        questions_text = " ".join(questions).lower()
+
+        # Analyze domain relevance
+        domain_relevance = self._analyze_domain_relevance(questions_text, context)
+
+        # Analyze terminology appropriateness
+        terminology_score = self._analyze_terminology(questions_text, context)
+
+        # Analyze context understanding
+        context_score = self._analyze_context_understanding(output, context)
+
+        # Get domain-specific metrics
+        domain_metrics = self._calculate_domain_metrics(output, context)
+
+        # Calculate overall score
+        overall_score = (
+            domain_relevance * 0.3
+            + terminology_score * 0.25
+            + context_score * 0.25
+            + (sum(domain_metrics.values()) / len(domain_metrics) if domain_metrics else 0.5) * 0.2
+        )
+
+        return DomainEvaluationResult(
+            domain=self.domain,
+            overall_score=overall_score,
+            domain_relevance=domain_relevance,
+            expertise_accuracy=0.8,
+            terminology_appropriateness=terminology_score,
+            context_understanding=context_score,
+            detailed_feedback=self._generate_detailed_feedback(output, context),
+            domain_specific_metrics=domain_metrics,
+        )
+
 
 class ScientificDomainEvaluator(BaseDomainEvaluator):
     """Evaluator for scientific research domain queries."""
@@ -324,26 +406,40 @@ class ScientificDomainEvaluator(BaseDomainEvaluator):
     def __init__(self, model: str = "openai:gpt-5-mini"):
         super().__init__(Domain.SCIENTIFIC, model)
 
-    def _get_domain_keywords(self) -> Set[str]:
+    def _get_domain_keywords(self) -> set[str]:
         return {
-            "research", "study", "analysis", "experiment", "hypothesis", "methodology",
-            "data", "statistical", "peer-reviewed", "publication", "evidence", "theory",
-            "scientific", "academic", "empirical", "quantitative", "qualitative"
+            "research",
+            "study",
+            "analysis",
+            "experiment",
+            "hypothesis",
+            "methodology",
+            "data",
+            "statistical",
+            "peer-reviewed",
+            "publication",
+            "evidence",
+            "theory",
+            "scientific",
+            "academic",
+            "empirical",
+            "quantitative",
+            "qualitative",
         }
 
-    def _get_domain_concepts(self) -> Dict[str, List[str]]:
+    def _get_domain_concepts(self) -> dict[str, list[str]]:
         return {
             "research_methods": ["experiment", "survey", "case study", "meta-analysis"],
             "data_analysis": ["statistics", "correlation", "regression", "significance"],
             "publication": ["peer-review", "journal", "citation", "publication"],
-            "disciplines": ["biology", "chemistry", "physics", "psychology", "medicine"]
+            "disciplines": ["biology", "chemistry", "physics", "psychology", "medicine"],
         }
 
-    def _get_quality_indicators(self) -> Dict[str, List[str]]:
+    def _get_quality_indicators(self) -> dict[str, list[str]]:
         return {
             "methodological_rigor": ["methodology", "protocol", "controlled", "systematic"],
             "evidence_quality": ["peer-reviewed", "credible", "authoritative", "recent"],
-            "scope_precision": ["specific field", "particular aspect", "focused area"]
+            "scope_precision": ["specific field", "particular aspect", "focused area"],
         }
 
     def _create_domain_system_prompt(self) -> str:
@@ -354,14 +450,16 @@ class ScientificDomainEvaluator(BaseDomainEvaluator):
 
         Return JSON with scores (0-10) and reasoning."""
 
-    def _calculate_domain_metrics(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, float]:
+    def _calculate_domain_metrics(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, float]:
         questions_text = " ".join(q.question for q in output.request.questions).lower()
 
         return {
             "methodological_awareness": self._score_methodology_awareness(questions_text),
             "research_scope_clarity": self._score_research_scope(questions_text),
             "evidence_requirements": self._score_evidence_requirements(questions_text),
-            "academic_rigor": self._score_academic_rigor(questions_text)
+            "academic_rigor": self._score_academic_rigor(questions_text),
         }
 
     def _score_methodology_awareness(self, text: str) -> float:
@@ -384,22 +482,34 @@ class ScientificDomainEvaluator(BaseDomainEvaluator):
         matches = sum(1 for term in rigor_terms if term in text)
         return min(matches / 2, 1.0)
 
-    def _generate_detailed_feedback(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, Any]:
+    def _generate_detailed_feedback(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, Any]:
         questions_text = " ".join(q.question for q in output.request.questions).lower()
 
         feedback = {
-            "methodological_coverage": "adequate" if "method" in questions_text else "needs_improvement",
-            "scope_definition": "clear" if any(term in questions_text for term in ["specific", "field", "area"]) else "vague",
-            "evidence_standards": "addressed" if any(term in questions_text for term in ["source", "credible", "quality"]) else "missing",
+            "methodological_coverage": "adequate"
+            if "method" in questions_text
+            else "needs_improvement",
+            "scope_definition": "clear"
+            if any(term in questions_text for term in ["specific", "field", "area"])
+            else "vague",
+            "evidence_standards": "addressed"
+            if any(term in questions_text for term in ["source", "credible", "quality"])
+            else "missing",
             "research_level": self._assess_research_level(questions_text),
-            "suggestions": []
+            "suggestions": [],
         }
 
         if "hypothesis" not in questions_text:
-            feedback["suggestions"].append("Consider asking about research hypothesis or objectives")
+            feedback["suggestions"].append(
+                "Consider asking about research hypothesis or objectives"
+            )
 
         if "time" not in questions_text and "recent" not in questions_text:
-            feedback["suggestions"].append("Consider asking about time frame or currency of research")
+            feedback["suggestions"].append(
+                "Consider asking about time frame or currency of research"
+            )
 
         return feedback
 
@@ -420,26 +530,43 @@ class BusinessDomainEvaluator(BaseDomainEvaluator):
     def __init__(self, model: str = "openai:gpt-5-mini"):
         super().__init__(Domain.BUSINESS, model)
 
-    def _get_domain_keywords(self) -> Set[str]:
+    def _get_domain_keywords(self) -> set[str]:
         return {
-            "business", "company", "market", "revenue", "profit", "strategy", "competitive",
-            "customer", "product", "service", "marketing", "sales", "operations", "finance",
-            "management", "leadership", "organization", "industry", "sector", "roi"
+            "business",
+            "company",
+            "market",
+            "revenue",
+            "profit",
+            "strategy",
+            "competitive",
+            "customer",
+            "product",
+            "service",
+            "marketing",
+            "sales",
+            "operations",
+            "finance",
+            "management",
+            "leadership",
+            "organization",
+            "industry",
+            "sector",
+            "roi",
         }
 
-    def _get_domain_concepts(self) -> Dict[str, List[str]]:
+    def _get_domain_concepts(self) -> dict[str, list[str]]:
         return {
             "business_strategy": ["competitive advantage", "market positioning", "growth strategy"],
             "financial_metrics": ["roi", "profit margin", "cash flow", "revenue"],
             "market_analysis": ["market size", "target audience", "competition"],
-            "operations": ["efficiency", "process optimization", "supply chain"]
+            "operations": ["efficiency", "process optimization", "supply chain"],
         }
 
-    def _get_quality_indicators(self) -> Dict[str, List[str]]:
+    def _get_quality_indicators(self) -> dict[str, list[str]]:
         return {
             "business_focus": ["roi", "value", "impact", "business case"],
             "stakeholder_awareness": ["stakeholder", "customer", "user", "client"],
-            "practical_implementation": ["implementation", "execution", "practical", "actionable"]
+            "practical_implementation": ["implementation", "execution", "practical", "actionable"],
         }
 
     def _create_domain_system_prompt(self) -> str:
@@ -450,14 +577,16 @@ class BusinessDomainEvaluator(BaseDomainEvaluator):
 
         Return JSON with scores (0-10) and reasoning."""
 
-    def _calculate_domain_metrics(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, float]:
+    def _calculate_domain_metrics(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, float]:
         questions_text = " ".join(q.question for q in output.request.questions).lower()
 
         return {
             "business_value_focus": self._score_business_value(questions_text),
             "stakeholder_consideration": self._score_stakeholder_awareness(questions_text),
             "market_context": self._score_market_context(questions_text),
-            "implementation_practicality": self._score_implementation_practicality(questions_text)
+            "implementation_practicality": self._score_implementation_practicality(questions_text),
         }
 
     def _score_business_value(self, text: str) -> float:
@@ -480,15 +609,25 @@ class BusinessDomainEvaluator(BaseDomainEvaluator):
         matches = sum(1 for term in practical_terms if term in text)
         return min(matches / 2, 1.0)
 
-    def _generate_detailed_feedback(self, output: ClarifyWithUser, context: DomainContext) -> Dict[str, Any]:
+    def _generate_detailed_feedback(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> dict[str, Any]:
         questions_text = " ".join(q.question for q in output.request.questions).lower()
 
         return {
             "business_alignment": "strong" if "business" in questions_text else "weak",
-            "stakeholder_focus": "present" if any(term in questions_text for term in ["customer", "user", "client"]) else "missing",
-            "value_proposition": "addressed" if any(term in questions_text for term in ["value", "benefit", "roi"]) else "unclear",
-            "market_awareness": "demonstrated" if "market" in questions_text or "competitive" in questions_text else "lacking",
-            "actionability": "high" if any(term in questions_text for term in ["how", "implement", "execute"]) else "low"
+            "stakeholder_focus": "present"
+            if any(term in questions_text for term in ["customer", "user", "client"])
+            else "missing",
+            "value_proposition": "addressed"
+            if any(term in questions_text for term in ["value", "benefit", "roi"])
+            else "unclear",
+            "market_awareness": "demonstrated"
+            if "market" in questions_text or "competitive" in questions_text
+            else "lacking",
+            "actionability": "high"
+            if any(term in questions_text for term in ["how", "implement", "execute"])
+            else "low",
         }
 
 
@@ -497,29 +636,82 @@ class DomainDetector:
 
     DOMAIN_INDICATORS = {
         Domain.TECHNICAL: [
-            "code", "programming", "software", "algorithm", "database", "api", "framework",
-            "debug", "implementation", "architecture", "development", "system"
+            "code",
+            "programming",
+            "software",
+            "algorithm",
+            "database",
+            "api",
+            "framework",
+            "debug",
+            "implementation",
+            "architecture",
+            "development",
+            "system",
         ],
         Domain.SCIENTIFIC: [
-            "research", "study", "experiment", "hypothesis", "scientific", "analysis",
-            "peer-reviewed", "methodology", "empirical", "statistical"
+            "research",
+            "study",
+            "experiment",
+            "hypothesis",
+            "scientific",
+            "analysis",
+            "peer-reviewed",
+            "methodology",
+            "empirical",
+            "statistical",
         ],
         Domain.BUSINESS: [
-            "business", "market", "revenue", "profit", "customer", "strategy", "company",
-            "sales", "marketing", "roi", "competitive", "industry"
+            "business",
+            "market",
+            "revenue",
+            "profit",
+            "customer",
+            "strategy",
+            "company",
+            "sales",
+            "marketing",
+            "roi",
+            "competitive",
+            "industry",
         ],
         Domain.CREATIVE: [
-            "creative", "design", "art", "artistic", "aesthetic", "creative", "innovative",
-            "original", "inspiration", "concept", "visual"
+            "creative",
+            "design",
+            "art",
+            "artistic",
+            "aesthetic",
+            "creative",
+            "innovative",
+            "original",
+            "inspiration",
+            "concept",
+            "visual",
         ],
         Domain.EDUCATIONAL: [
-            "learn", "teaching", "education", "student", "course", "curriculum", "academic",
-            "school", "university", "educational"
+            "learn",
+            "teaching",
+            "education",
+            "student",
+            "course",
+            "curriculum",
+            "academic",
+            "school",
+            "university",
+            "educational",
         ],
         Domain.MEDICAL: [
-            "medical", "health", "disease", "treatment", "clinical", "patient", "diagnosis",
-            "therapy", "healthcare", "medicine"
-        ]
+            "medical",
+            "health",
+            "disease",
+            "treatment",
+            "clinical",
+            "patient",
+            "diagnosis",
+            "therapy",
+            "healthcare",
+            "medicine",
+        ],
     }
 
     @classmethod
@@ -538,7 +730,9 @@ class DomainDetector:
         return Domain.TECHNICAL
 
     @classmethod
-    def get_evaluator_for_domain(cls, domain: Domain, model: str = "openai:gpt-5-mini") -> BaseDomainEvaluator:
+    def get_evaluator_for_domain(
+        cls, domain: Domain, model: str = "openai:gpt-5-mini"
+    ) -> BaseDomainEvaluator:
         """Get appropriate evaluator for a domain."""
         evaluator_map = {
             Domain.TECHNICAL: TechnicalDomainEvaluator,
@@ -552,10 +746,7 @@ class DomainDetector:
 
     @classmethod
     def evaluate_with_auto_detection(
-        cls,
-        query: str,
-        output: ClarifyWithUser,
-        context: DomainContext = None
+        cls, query: str, output: ClarifyWithUser, context: DomainContext = None
     ) -> DomainEvaluationResult:
         """Automatically detect domain and evaluate."""
         detected_domain = cls.detect_domain(query)
@@ -564,14 +755,14 @@ class DomainDetector:
             context = DomainContext(domain=detected_domain)
 
         evaluator = cls.get_evaluator_for_domain(detected_domain)
-        return evaluator.evaluate(output, context)
+        return evaluator.domain_evaluate(output, context)
 
 
 # Example usage and testing
 async def demo_domain_specific_evaluation():
     """Demonstrate domain-specific evaluation capabilities."""
 
-    from models.clarification import ClarificationRequest, ClarificationQuestion
+    from models.clarification import ClarificationQuestion, ClarificationRequest
 
     # Technical query example
     technical_output = ClarifyWithUser(
@@ -582,17 +773,17 @@ async def demo_domain_specific_evaluation():
                     question="What programming language are you planning to use for this implementation?",
                     question_type="choice",
                     choices=["Python", "JavaScript", "Java", "C++"],
-                    is_required=True
+                    is_required=True,
                 ),
                 ClarificationQuestion(
                     question="What are your performance and scalability requirements?",
                     question_type="text",
-                    is_required=True
-                )
+                    is_required=True,
+                ),
             ]
         ),
         missing_dimensions=["technical_requirements", "implementation_approach"],
-        assessment_reasoning="The query lacks specific technical details and requirements."
+        assessment_reasoning="The query lacks specific technical details and requirements.",
     )
 
     # Evaluate with technical domain evaluator
@@ -600,10 +791,10 @@ async def demo_domain_specific_evaluation():
     tech_context = DomainContext(
         domain=Domain.TECHNICAL,
         technical_level="intermediate",
-        specific_requirements=["performance", "scalability"]
+        specific_requirements=["performance", "scalability"],
     )
 
-    result = technical_evaluator.evaluate(technical_output, tech_context)
+    result = technical_evaluator.domain_evaluate(technical_output, tech_context)
 
     print("=== Technical Domain Evaluation ===")
     print(f"Overall Score: {result.overall_score:.3f}")
@@ -623,6 +814,32 @@ async def demo_domain_specific_evaluation():
     print(f"Auto-evaluation score: {auto_result.overall_score:.3f}")
 
 
+class DomainEvaluationOrchestrator:
+    """Orchestrator for domain-specific evaluations."""
+
+    def __init__(self):
+        self.detector = DomainDetector()
+        self.evaluators = {}
+
+    def evaluate(self, output, query: str = None) -> DomainEvaluationResult:
+        """Evaluate output with appropriate domain evaluator."""
+        # Detect domain from query
+        if query:
+            domain = DomainDetector.detect_domain(query)
+        else:
+            domain = Domain.TECHNICAL
+
+        # Get appropriate evaluator
+        evaluator = DomainDetector.get_evaluator_for_domain(domain)
+
+        # Create context
+        context = DomainContext(query=query, domain=domain) if query else None
+
+        # Evaluate
+        return evaluator.domain_evaluate(output, context)
+
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(demo_domain_specific_evaluation())

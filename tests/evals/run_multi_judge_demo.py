@@ -16,30 +16,32 @@ sys.path.insert(0, str(project_root))
 
 # Load environment variables
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Suppress logfire prompts
-os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
+os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
 import httpx
 from pydantic import SecretStr
 
+from agents.base import ResearchDependencies
+from agents.clarification import ClarificationAgent
+from agents.query_transformation import QueryTransformationAgent
+from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
+from models.research_plan_models import TransformedQuery
 from tests.evals.base_multi_judge import (
     BaseMultiJudgeEvaluator,
-    VotingMethod,
     JudgeConfiguration,
-    JudgeExpertise
+    JudgeExpertise,
+    VotingMethod,
 )
 from tests.evals.clarification_multi_judge_adapter import ClarificationMultiJudgeAdapter
-from tests.evals.query_transformation_multi_judge_adapter import QueryTransformationMultiJudgeAdapter
-
-from agents.clarification import ClarificationAgent, ClarifyWithUser
-from agents.query_transformation import QueryTransformationAgent
-from agents.base import ResearchDependencies
-from models.core import ResearchState, ResearchStage
-from models.metadata import ResearchMetadata
-from models.api_models import APIKeys
-from models.research_plan_models import TransformedQuery
+from tests.evals.query_transformation_multi_judge_adapter import (
+    QueryTransformationMultiJudgeAdapter,
+)
 
 
 async def evaluate_clarification_agent():
@@ -51,9 +53,7 @@ async def evaluate_clarification_agent():
     # Create adapter and evaluator
     adapter = ClarificationMultiJudgeAdapter()
     evaluator = BaseMultiJudgeEvaluator(
-        adapter=adapter,
-        voting_method=VotingMethod.CONFIDENCE_WEIGHTED,
-        consensus_threshold=0.7
+        adapter=adapter, voting_method=VotingMethod.CONFIDENCE_WEIGHTED, consensus_threshold=0.7
     )
 
     # Initialize agent
@@ -63,7 +63,7 @@ async def evaluate_clarification_agent():
     test_queries = [
         "Tell me about machine learning",
         "How can I optimize my website for better performance?",
-        "What are the best practices for remote team management?"
+        "What are the best practices for remote team management?",
     ]
 
     async with httpx.AsyncClient(timeout=30.0) as http_client:
@@ -76,15 +76,19 @@ async def evaluate_clarification_agent():
                 request_id=f"multi-judge-demo-{abs(hash(query))}",
                 user_query=query,
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=APIKeys(
-                    openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None,
-                    anthropic=SecretStr(anthropic_key) if (anthropic_key := os.getenv("ANTHROPIC_API_KEY")) else None
+                    openai=SecretStr(openai_key)
+                    if (openai_key := os.getenv("OPENAI_API_KEY"))
+                    else None,
+                    anthropic=SecretStr(anthropic_key)
+                    if (anthropic_key := os.getenv("ANTHROPIC_API_KEY"))
+                    else None,
                 ),
-                research_state=state
+                research_state=state,
             )
 
             try:
@@ -94,9 +98,7 @@ async def evaluate_clarification_agent():
 
                 # Evaluate with multi-judge consensus
                 consensus = await evaluator.evaluate(
-                    input=query,
-                    output=output,
-                    context={"demo": True, "agent": "clarification"}
+                    input=query, output=output, context={"demo": True, "agent": "clarification"}
                 )
 
                 # Display results
@@ -104,17 +106,17 @@ async def evaluate_clarification_agent():
                 if output.request and output.request.questions:
                     print(f"   Generated {len(output.request.questions)} questions")
 
-                print(f"\n🎯 Consensus Results:")
+                print("\n🎯 Consensus Results:")
                 print(f"   Final Score: {consensus.final_score:.3f}")
                 print(f"   Consensus Reached: {consensus.consensus_reached}")
                 print(f"   Agreement Score: {consensus.agreement_score:.3f}")
                 print(f"   Voting Method: {consensus.voting_method.value}")
 
-                print(f"\n📊 Dimension Scores:")
+                print("\n📊 Dimension Scores:")
                 for dim, score in consensus.dimension_scores.items():
                     print(f"   {dim}: {score:.2f}")
 
-                print(f"\n👥 Judge Participation:")
+                print("\n👥 Judge Participation:")
                 successful = sum(1 for j in consensus.judge_results if j.success)
                 print(f"   {successful}/{len(consensus.judge_results)} judges successful")
 
@@ -137,14 +139,14 @@ async def evaluate_query_transformation_agent():
             model="openai:gpt-5",
             expertise=JudgeExpertise.SCIENTIFIC,  # Good for research methodology
             weight=1.3,
-            temperature=0.1
+            temperature=0.1,
         ),
         JudgeConfiguration(
             model="openai:gpt-5-mini",
             expertise=JudgeExpertise.TECHNICAL,
             weight=1.0,
-            temperature=0.0
-        )
+            temperature=0.0,
+        ),
     ]
 
     # Add Claude judge if API key is available
@@ -154,7 +156,7 @@ async def evaluate_query_transformation_agent():
                 model="anthropic:claude-3-sonnet-20240229",
                 expertise=JudgeExpertise.GENERAL,
                 weight=1.2,
-                temperature=0.1
+                temperature=0.1,
             )
         )
 
@@ -162,7 +164,7 @@ async def evaluate_query_transformation_agent():
         adapter=adapter,
         judges=custom_judges,
         voting_method=VotingMethod.EXPERT_WEIGHTED,  # Use expert weighting
-        consensus_threshold=0.75
+        consensus_threshold=0.75,
     )
 
     # Initialize agent
@@ -172,7 +174,7 @@ async def evaluate_query_transformation_agent():
     test_queries = [
         "What are the latest advances in quantum computing?",
         "How does climate change affect global agriculture?",
-        "Compare different JavaScript frameworks for web development"
+        "Compare different JavaScript frameworks for web development",
     ]
 
     async with httpx.AsyncClient(timeout=30.0) as http_client:
@@ -185,15 +187,19 @@ async def evaluate_query_transformation_agent():
                 request_id=f"multi-judge-demo-{abs(hash(query))}",
                 user_query=query,
                 current_stage=ResearchStage.RESEARCH_EXECUTION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=APIKeys(
-                    openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None,
-                    anthropic=SecretStr(anthropic_key) if (anthropic_key := os.getenv("ANTHROPIC_API_KEY")) else None
+                    openai=SecretStr(openai_key)
+                    if (openai_key := os.getenv("OPENAI_API_KEY"))
+                    else None,
+                    anthropic=SecretStr(anthropic_key)
+                    if (anthropic_key := os.getenv("ANTHROPIC_API_KEY"))
+                    else None,
                 ),
-                research_state=state
+                research_state=state,
             )
 
             try:
@@ -205,33 +211,35 @@ async def evaluate_query_transformation_agent():
                 consensus = await evaluator.evaluate(
                     input=query,
                     output=output,
-                    context={"demo": True, "agent": "query_transformation"}
+                    context={"demo": True, "agent": "query_transformation"},
                 )
 
                 # Display results
-                print(f"✅ Transformation Complete:")
+                print("✅ Transformation Complete:")
                 print(f"   {len(output.research_plan.objectives)} objectives")
                 print(f"   {len(output.search_queries.queries)} search queries")
                 print(f"   Confidence: {output.confidence_score:.2f}")
 
-                print(f"\n🎯 Consensus Results:")
+                print("\n🎯 Consensus Results:")
                 print(f"   Final Score: {consensus.final_score:.3f}")
                 print(f"   Consensus Reached: {consensus.consensus_reached}")
                 print(f"   Agreement Score: {consensus.agreement_score:.3f}")
                 print(f"   Voting Method: {consensus.voting_method.value}")
 
-                print(f"\n📊 Dimension Scores:")
+                print("\n📊 Dimension Scores:")
                 for dim, score in consensus.dimension_scores.items():
                     print(f"   {dim}: {score:.2f}")
 
-                print(f"\n👥 Judge Participation:")
+                print("\n👥 Judge Participation:")
                 successful = sum(1 for j in consensus.judge_results if j.success)
                 print(f"   {successful}/{len(consensus.judge_results)} judges successful")
 
                 # Show disagreement analysis
                 if consensus.disagreement_analysis.get("dimension_variances"):
-                    print(f"\n📈 Dimension Agreement Levels:")
-                    for dim, agreement in consensus.disagreement_analysis.get("dimension_agreements", {}).items():
+                    print("\n📈 Dimension Agreement Levels:")
+                    for dim, agreement in consensus.disagreement_analysis.get(
+                        "dimension_agreements", {}
+                    ).items():
                         print(f"   {dim}: {agreement:.2%} agreement")
 
             except Exception as e:
@@ -248,10 +256,7 @@ async def compare_agent_outputs():
 
     # Create query transformation evaluator
     adapter = QueryTransformationMultiJudgeAdapter()
-    evaluator = BaseMultiJudgeEvaluator(
-        adapter=adapter,
-        voting_method=VotingMethod.MAJORITY
-    )
+    evaluator = BaseMultiJudgeEvaluator(adapter=adapter, voting_method=VotingMethod.MAJORITY)
 
     # Initialize agent
     agent = QueryTransformationAgent()
@@ -262,15 +267,19 @@ async def compare_agent_outputs():
             request_id="comparison-demo",
             user_query=query,
             current_stage=ResearchStage.RESEARCH_EXECUTION,
-            metadata=ResearchMetadata()
+            metadata=ResearchMetadata(),
         )
         deps = ResearchDependencies(
             http_client=http_client,
             api_keys=APIKeys(
-                openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None,
-                anthropic=SecretStr(anthropic_key) if (anthropic_key := os.getenv("ANTHROPIC_API_KEY")) else None
+                openai=SecretStr(openai_key)
+                if (openai_key := os.getenv("OPENAI_API_KEY"))
+                else None,
+                anthropic=SecretStr(anthropic_key)
+                if (anthropic_key := os.getenv("ANTHROPIC_API_KEY"))
+                else None,
             ),
-            research_state=state
+            research_state=state,
         )
 
         try:
@@ -293,8 +302,12 @@ async def compare_agent_outputs():
             # Restore original temperature
             agent.agent.model.temperature = original_temp
 
-            print(f"\n📊 Output A: {len(output_a.search_queries.queries)} queries, confidence {output_a.confidence_score:.2f}")
-            print(f"📊 Output B: {len(output_b.search_queries.queries)} queries, confidence {output_b.confidence_score:.2f}")
+            print(
+                f"\n📊 Output A: {len(output_a.search_queries.queries)} queries, confidence {output_a.confidence_score:.2f}"
+            )
+            print(
+                f"📊 Output B: {len(output_b.search_queries.queries)} queries, confidence {output_b.confidence_score:.2f}"
+            )
 
             # Compare outputs
             print("\n🔄 Running pairwise comparison...")
@@ -302,7 +315,7 @@ async def compare_agent_outputs():
                 input=query,
                 output_a=output_a,
                 output_b=output_b,
-                context={"comparison_type": "temperature_variation"}
+                context={"comparison_type": "temperature_variation"},
             )
 
             print(f"\n🏆 Winner: {comparison['winner']}")
@@ -310,8 +323,10 @@ async def compare_agent_outputs():
             print(f"   Vote Breakdown: {comparison['vote_breakdown']}")
 
             print("\n👥 Individual Judge Decisions:")
-            for judge_comp in comparison['judge_comparisons']:
-                print(f"   {judge_comp['judge']}: {judge_comp['winner']} (confidence: {judge_comp['confidence']})")
+            for judge_comp in comparison["judge_comparisons"]:
+                print(
+                    f"   {judge_comp['judge']}: {judge_comp['winner']} (confidence: {judge_comp['confidence']})"
+                )
 
         except Exception as e:
             print(f"❌ Error: {e}")

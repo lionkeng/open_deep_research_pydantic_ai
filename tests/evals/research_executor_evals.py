@@ -7,29 +7,29 @@ following pydantic-ai evaluation patterns with custom evaluators, metrics, and L
 
 import asyncio
 import concurrent.futures
+import json
 import os
 import sys
-from typing import Dict, List, Any, Optional
-import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from typing import Any
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import httpx
 from pydantic import BaseModel, Field, SecretStr
-from pydantic_evals import Dataset, Case
+from pydantic_ai import Agent
+from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_evals.reporting import EvaluationReport
-from pydantic_ai import Agent
 
-from agents.research_executor import ResearchExecutorAgent
 from agents.base import ResearchDependencies
-from models.metadata import ResearchMetadata
-from models.core import ResearchState, ResearchStage
-from models.research_executor import ResearchResults, ResearchFinding, ResearchSource
+from agents.research_executor import ResearchExecutorAgent
 from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
+from models.research_executor import ResearchFinding, ResearchResults, ResearchSource
 
 # Constants for evaluation scoring weights
 LLM_RELEVANCE_WEIGHT = 0.8
@@ -44,79 +44,56 @@ FALLBACK_INSIGHT_MULTIPLIER = 0.6
 
 class ResearchExecutorInput(BaseModel):
     """Input model for research executor evaluation."""
+
     query: str = Field(description="Research query to execute")
-    research_brief: Optional[str] = Field(
-        default=None,
-        description="Research plan or brief for execution"
+    research_brief: str | None = Field(
+        default=None, description="Research plan or brief for execution"
     )
-    methodology: Optional[str] = Field(
+    methodology: str | None = Field(default=None, description="Research methodology to follow")
+    domain: str | None = Field(
         default=None,
-        description="Research methodology to follow"
-    )
-    domain: Optional[str] = Field(
-        default=None,
-        description="Domain classification (technical, scientific, business, medical, etc.)"
+        description="Domain classification (technical, scientific, business, medical, etc.)",
     )
     complexity: str = Field(
-        default="medium",
-        description="Expected complexity level: simple, medium, complex"
+        default="medium", description="Expected complexity level: simple, medium, complex"
     )
-    temporal_relevance: Optional[bool] = Field(
-        default=None,
-        description="Whether temporal relevance is important"
+    temporal_relevance: bool | None = Field(
+        default=None, description="Whether temporal relevance is important"
     )
 
 
 class ResearchExecutorExpectedOutput(BaseModel):
     """Expected output for research executor evaluation."""
-    min_findings: Optional[int] = Field(
-        default=None,
-        description="Minimum number of findings expected"
+
+    min_findings: int | None = Field(
+        default=None, description="Minimum number of findings expected"
     )
-    max_findings: Optional[int] = Field(
-        default=None,
-        description="Maximum number of findings expected"
+    max_findings: int | None = Field(
+        default=None, description="Maximum number of findings expected"
     )
-    min_sources: Optional[int] = Field(
-        default=None,
-        description="Minimum number of sources expected"
+    min_sources: int | None = Field(default=None, description="Minimum number of sources expected")
+    max_sources: int | None = Field(default=None, description="Maximum number of sources expected")
+    expected_categories: list[str] | None = Field(
+        default=None, description="Expected finding categories"
     )
-    max_sources: Optional[int] = Field(
-        default=None,
-        description="Maximum number of sources expected"
+    expected_insights_themes: list[str] | None = Field(
+        default=None, description="Expected themes in key insights"
     )
-    expected_categories: Optional[List[str]] = Field(
-        default=None,
-        description="Expected finding categories"
+    expected_gaps: list[str] | None = Field(
+        default=None, description="Expected data gaps to be identified"
     )
-    expected_insights_themes: Optional[List[str]] = Field(
-        default=None,
-        description="Expected themes in key insights"
+    min_quality_score: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Minimum expected quality score"
     )
-    expected_gaps: Optional[List[str]] = Field(
-        default=None,
-        description="Expected data gaps to be identified"
+    source_credibility_threshold: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Minimum average source credibility"
     )
-    min_quality_score: Optional[float] = Field(
+    confidence_calibration: str | None = Field(
         default=None,
-        ge=0.0,
-        le=1.0,
-        description="Minimum expected quality score"
+        description="Expected confidence calibration: well-calibrated, overconfident, underconfident",
     )
-    source_credibility_threshold: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Minimum average source credibility"
-    )
-    confidence_calibration: Optional[str] = Field(
-        default=None,
-        description="Expected confidence calibration: well-calibrated, overconfident, underconfident"
-    )
-    max_response_time: Optional[float] = Field(
-        default=None,
-        gt=0.0,
-        description="Maximum acceptable response time in seconds"
+    max_response_time: float | None = Field(
+        default=None, gt=0.0, description="Maximum acceptable response time in seconds"
     )
 
 
@@ -155,7 +132,7 @@ Return a JSON object with:
     "findings_scores": [list of scores for each finding],
     "overall_relevance": average score,
     "reasoning": "brief explanation of the scoring"
-}"""
+}""",
         )
 
     def evaluate(self, ctx: EvaluatorContext) -> float:
@@ -170,14 +147,18 @@ Return a JSON object with:
 
         async def run_evaluation():
             # Format findings for evaluation
-            findings_text = "\n\n".join([
-                (f"Finding {i+1}:\n"
-                 f"- Content: {finding.finding}\n"
-                 f"- Evidence: {', '.join(finding.supporting_evidence) if finding.supporting_evidence else 'None'}\n"
-                 f"- Confidence: {f'{finding.confidence_level:.2f}' if finding.confidence_level is not None else 'N/A'}\n"
-                 f"- Category: {finding.category or 'uncategorized'}")
-                for i, finding in enumerate(output.findings)
-            ])
+            findings_text = "\n\n".join(
+                [
+                    (
+                        f"Finding {i + 1}:\n"
+                        f"- Content: {finding.finding}\n"
+                        f"- Evidence: {', '.join(finding.supporting_evidence) if finding.supporting_evidence else 'None'}\n"
+                        f"- Confidence: {f'{finding.confidence_level:.2f}' if finding.confidence_level is not None else 'N/A'}\n"
+                        f"- Category: {finding.category or 'uncategorized'}"
+                    )
+                    for i, finding in enumerate(output.findings)
+                ]
+            )
 
             evaluation_prompt = f"""
 Query: {output.query}
@@ -195,6 +176,7 @@ Consider semantic similarity, not just exact word matches.
                 # Parse the LLM's evaluation
                 if isinstance(result.output, str):
                     import json
+
                     eval_data = json.loads(result.output)
                 else:
                     eval_data = result.output
@@ -206,25 +188,38 @@ Consider semantic similarity, not just exact word matches.
                 category_coverage = 1.0
                 if expected.expected_categories:
                     finding_categories = set(f.category for f in output.findings if f.category)
-                    covered_categories = finding_categories.intersection(set(expected.expected_categories))
+                    covered_categories = finding_categories.intersection(
+                        set(expected.expected_categories)
+                    )
                     category_coverage = len(covered_categories) / len(expected.expected_categories)
 
                 # Combine LLM relevance score with category coverage
-                final_score = (llm_relevance * LLM_RELEVANCE_WEIGHT + category_coverage * CATEGORY_COVERAGE_WEIGHT)
+                final_score = (
+                    llm_relevance * LLM_RELEVANCE_WEIGHT
+                    + category_coverage * CATEGORY_COVERAGE_WEIGHT
+                )
 
                 return final_score
 
-            except Exception as e:
+            except Exception:
                 # Fallback to a simple heuristic if LLM evaluation fails
                 # Check if findings have good confidence and evidence
-                avg_confidence = sum(f.confidence_level or 0.5 for f in output.findings) / len(output.findings)
-                has_evidence = sum(1 for f in output.findings if f.supporting_evidence) / len(output.findings)
-                return (avg_confidence * FALLBACK_CONFIDENCE_WEIGHT + has_evidence * FALLBACK_EVIDENCE_WEIGHT) * FALLBACK_SCORE_MULTIPLIER  # Conservative score
+                avg_confidence = sum(f.confidence_level or 0.5 for f in output.findings) / len(
+                    output.findings
+                )
+                has_evidence = sum(1 for f in output.findings if f.supporting_evidence) / len(
+                    output.findings
+                )
+                return (
+                    avg_confidence * FALLBACK_CONFIDENCE_WEIGHT
+                    + has_evidence * FALLBACK_EVIDENCE_WEIGHT
+                ) * FALLBACK_SCORE_MULTIPLIER  # Conservative score
 
         # Run the async evaluation
         # Check if there's already an event loop running
         try:
             asyncio.get_running_loop()
+
             # If we're in an async context, create a new event loop in a thread
             def run_in_new_loop():
                 new_loop = asyncio.new_event_loop()
@@ -255,12 +250,18 @@ class SourceCredibilityEvaluator(Evaluator):
 
         # Calculate average source credibility
         credibility_scores = [s.relevance_score for s in output.sources if s.relevance_score]
-        avg_credibility = sum(credibility_scores) / len(credibility_scores) if credibility_scores else 0.5
+        avg_credibility = (
+            sum(credibility_scores) / len(credibility_scores) if credibility_scores else 0.5
+        )
 
         # Check against threshold
         threshold_score = 1.0
         if expected.source_credibility_threshold:
-            threshold_score = 1.0 if avg_credibility >= expected.source_credibility_threshold else avg_credibility / expected.source_credibility_threshold
+            threshold_score = (
+                1.0
+                if avg_credibility >= expected.source_credibility_threshold
+                else avg_credibility / expected.source_credibility_threshold
+            )
 
         # Evaluate source diversity
         diversity_score = self._evaluate_source_diversity(output.sources)
@@ -279,16 +280,16 @@ class SourceCredibilityEvaluator(Evaluator):
             recency_score = self._evaluate_source_recency(output.sources)
 
         final_score = (
-            avg_credibility * 0.3 +
-            threshold_score * 0.2 +
-            diversity_score * 0.2 +
-            count_score * 0.15 +
-            recency_score * 0.15
+            avg_credibility * 0.3
+            + threshold_score * 0.2
+            + diversity_score * 0.2
+            + count_score * 0.15
+            + recency_score * 0.15
         )
 
         return final_score
 
-    def _evaluate_source_diversity(self, sources: List[ResearchSource]) -> float:
+    def _evaluate_source_diversity(self, sources: list[ResearchSource]) -> float:
         """Evaluate diversity of sources."""
         if not sources:
             return 0.0
@@ -298,7 +299,7 @@ class SourceCredibilityEvaluator(Evaluator):
         for source in sources:
             if source.url:
                 # Extract domain from URL
-                parts = source.url.split('/')
+                parts = source.url.split("/")
                 if len(parts) > 2:
                     domain = parts[2]
                     domains.add(domain)
@@ -307,7 +308,7 @@ class SourceCredibilityEvaluator(Evaluator):
         diversity_ratio = len(domains) / len(sources) if sources else 0
         return min(1.0, diversity_ratio * 1.5)  # Boost slightly as perfect diversity is rare
 
-    def _evaluate_source_recency(self, sources: List[ResearchSource]) -> float:
+    def _evaluate_source_recency(self, sources: list[ResearchSource]) -> float:
         """Evaluate recency of sources."""
         recent_sources = 0
         total_dated_sources = 0
@@ -316,7 +317,7 @@ class SourceCredibilityEvaluator(Evaluator):
             if source.date:
                 total_dated_sources += 1
                 # Check if source is within last 2 years
-                if source.date > datetime.now(timezone.utc) - timedelta(days=730):
+                if source.date > datetime.now(UTC) - timedelta(days=730):
                     recent_sources += 1
 
         if total_dated_sources == 0:
@@ -367,7 +368,7 @@ Return a JSON object with:
     "strengths": "what makes the insights valuable",
     "weaknesses": "what could be improved",
     "reasoning": "brief explanation of the scoring"
-}"""
+}""",
         )
 
     def evaluate(self, ctx: EvaluatorContext) -> float:
@@ -382,14 +383,19 @@ Return a JSON object with:
 
         async def run_evaluation():
             # Format insights for evaluation
-            insights_text = "\n\n".join([
-                f"Insight {i+1}: {insight}"
-                for i, insight in enumerate(output.key_insights)
-            ])
+            insights_text = "\n\n".join(
+                [f"Insight {i + 1}: {insight}" for i, insight in enumerate(output.key_insights)]
+            )
 
             # Also include findings summary for context
-            findings_summary = f"Based on {len(output.findings)} research findings" if output.findings else "No findings available"
-            sources_summary = f"From {len(output.sources)} sources" if output.sources else "No sources cited"
+            findings_summary = (
+                f"Based on {len(output.findings)} research findings"
+                if output.findings
+                else "No findings available"
+            )
+            sources_summary = (
+                f"From {len(output.sources)} sources" if output.sources else "No sources cited"
+            )
 
             evaluation_prompt = f"""
 Query: {output.query}
@@ -412,6 +418,7 @@ Remember: This is about QUALITY not RELEVANCE. A relevant but shallow insight sh
                 # Parse the LLM's evaluation
                 if isinstance(result.output, str):
                     import json
+
                     eval_data = json.loads(result.output)
                 else:
                     eval_data = result.output
@@ -423,8 +430,11 @@ Remember: This is about QUALITY not RELEVANCE. A relevant but shallow insight sh
                 theme_bonus = 0.0
                 if expected.expected_insights_themes:
                     all_insights_text = " ".join(output.key_insights).lower()
-                    theme_coverage = sum(1 for theme in expected.expected_insights_themes
-                                       if theme.lower() in all_insights_text)
+                    theme_coverage = sum(
+                        1
+                        for theme in expected.expected_insights_themes
+                        if theme.lower() in all_insights_text
+                    )
                     theme_bonus = (theme_coverage / len(expected.expected_insights_themes)) * 0.1
 
                 # Adjust for insight count (too few or too many is suboptimal)
@@ -440,24 +450,33 @@ Remember: This is about QUALITY not RELEVANCE. A relevant but shallow insight sh
 
                 return final_score
 
-            except Exception as e:
+            except Exception:
                 # Fallback to a simple heuristic if LLM evaluation fails
                 # Check for basic quality indicators
-                avg_length = sum(len(insight.split()) for insight in output.key_insights) / len(output.key_insights)
+                avg_length = sum(len(insight.split()) for insight in output.key_insights) / len(
+                    output.key_insights
+                )
                 length_score = min(1.0, avg_length / 30)  # Prefer insights with ~30 words
 
                 # Check for actionability keywords
                 actionable_keywords = ["recommend", "should", "must", "consider", "implement"]
-                actionability = sum(1 for insight in output.key_insights
-                                  if any(kw in insight.lower() for kw in actionable_keywords))
+                actionability = sum(
+                    1
+                    for insight in output.key_insights
+                    if any(kw in insight.lower() for kw in actionable_keywords)
+                )
                 actionability_score = actionability / len(output.key_insights)
 
-                return (length_score * INSIGHT_DEPTH_WEIGHT + actionability_score * INSIGHT_ACTIONABILITY_WEIGHT) * FALLBACK_INSIGHT_MULTIPLIER  # Conservative score
+                return (
+                    length_score * INSIGHT_DEPTH_WEIGHT
+                    + actionability_score * INSIGHT_ACTIONABILITY_WEIGHT
+                ) * FALLBACK_INSIGHT_MULTIPLIER  # Conservative score
 
         # Run the async evaluation
         # Check if there's already an event loop running
         try:
             asyncio.get_running_loop()
+
             # If we're in an async context, create a new event loop in a thread
             def run_in_new_loop():
                 new_loop = asyncio.new_event_loop()
@@ -508,8 +527,7 @@ class DataGapIdentificationEvaluator(Evaluator):
             if expected.expected_gaps:
                 gap_text = " ".join(output.data_gaps).lower()
                 covered_gaps = sum(
-                    1 for expected_gap in expected.expected_gaps
-                    if expected_gap.lower() in gap_text
+                    1 for expected_gap in expected.expected_gaps if expected_gap.lower() in gap_text
                 )
                 gap_coverage = covered_gaps / len(expected.expected_gaps)
                 scores.append(gap_coverage)
@@ -543,7 +561,9 @@ class ComprehensiveEvaluator(Evaluator):
             "has_insights": len(output.key_insights) > 0,
             "has_quality_score": output.quality_score > 0,
             "findings_have_evidence": any(f.supporting_evidence for f in output.findings),
-            "findings_have_confidence": all(f.confidence_level is not None for f in output.findings),
+            "findings_have_confidence": all(
+                f.confidence_level is not None for f in output.findings
+            ),
             "sources_have_relevance": any(s.relevance_score is not None for s in output.sources),
             "metadata_present": bool(output.metadata),
         }
@@ -567,10 +587,10 @@ class ComprehensiveEvaluator(Evaluator):
         coherence_score = self._evaluate_coherence(output)
 
         final_score = (
-            completeness_score * 0.3 +
-            finding_count_score * 0.2 +
-            quality_score_check * 0.2 +
-            coherence_score * 0.3
+            completeness_score * 0.3
+            + finding_count_score * 0.2
+            + quality_score_check * 0.2
+            + coherence_score * 0.3
         )
 
         return final_score
@@ -589,7 +609,11 @@ class ComprehensiveEvaluator(Evaluator):
         insight_words = set(insights_text.split())
 
         overlap = finding_words.intersection(insight_words)
-        coherence = len(overlap) / min(len(finding_words), len(insight_words)) if finding_words and insight_words else 0
+        coherence = (
+            len(overlap) / min(len(finding_words), len(insight_words))
+            if finding_words and insight_words
+            else 0
+        )
 
         return min(1.0, coherence * 2)  # Boost as perfect overlap is rare
 
@@ -605,7 +629,9 @@ class ConfidenceCalibrationEvaluator(Evaluator):
         if not output.findings:
             return 0.5
 
-        confidence_levels = [f.confidence_level for f in output.findings if f.confidence_level is not None]
+        confidence_levels = [
+            f.confidence_level for f in output.findings if f.confidence_level is not None
+        ]
 
         if not confidence_levels:
             return 0.3  # No confidence levels provided
@@ -628,7 +654,10 @@ class ConfidenceCalibrationEvaluator(Evaluator):
         # Check expected calibration
         calibration_match = 1.0
         if expected.confidence_calibration:
-            if expected.confidence_calibration == "well-calibrated" and 0.4 <= avg_confidence <= 0.8:
+            if (
+                expected.confidence_calibration == "well-calibrated"
+                and 0.4 <= avg_confidence <= 0.8
+            ):
                 calibration_match = 1.0
             elif expected.confidence_calibration == "overconfident" and avg_confidence > 0.8:
                 calibration_match = 1.0
@@ -639,21 +668,23 @@ class ConfidenceCalibrationEvaluator(Evaluator):
 
         # Check variance (should have some variation)
         if len(confidence_levels) > 1:
-            variance = sum((c - avg_confidence) ** 2 for c in confidence_levels) / len(confidence_levels)
+            variance = sum((c - avg_confidence) ** 2 for c in confidence_levels) / len(
+                confidence_levels
+            )
             variance_score = min(1.0, variance * 10)  # Some variance is good
         else:
             variance_score = 0.5
 
         final_score = (
-            distribution_score * 0.3 +
-            evidence_correlation_score * 0.3 +
-            calibration_match * 0.2 +
-            variance_score * 0.2
+            distribution_score * 0.3
+            + evidence_correlation_score * 0.3
+            + calibration_match * 0.2
+            + variance_score * 0.2
         )
 
         return final_score
 
-    def _evaluate_evidence_correlation(self, findings: List[ResearchFinding]) -> float:
+    def _evaluate_evidence_correlation(self, findings: list[ResearchFinding]) -> float:
         """Check if confidence correlates with evidence quality."""
         correlations = []
 
@@ -711,7 +742,9 @@ class EvidenceSupportEvaluator(Evaluator):
                     score += 0.1
 
                 # Check evidence quality (length as proxy)
-                avg_evidence_length = sum(len(e.split()) for e in finding.supporting_evidence) / evidence_count
+                avg_evidence_length = (
+                    sum(len(e.split()) for e in finding.supporting_evidence) / evidence_count
+                )
                 if avg_evidence_length > 20:
                     score += 0.2
                 elif avg_evidence_length > 10:
@@ -875,9 +908,18 @@ class CrossReferenceEvaluator(Evaluator):
 
         # Check for conflicting or corroborating evidence mentions
         verification_keywords = [
-            "confirm", "corroborate", "agree", "consistent",
-            "conflict", "contradict", "disagree", "inconsistent",
-            "however", "although", "despite", "whereas"
+            "confirm",
+            "corroborate",
+            "agree",
+            "consistent",
+            "conflict",
+            "contradict",
+            "disagree",
+            "inconsistent",
+            "however",
+            "although",
+            "despite",
+            "whereas",
         ]
 
         verification_mentions = 0
@@ -886,7 +928,9 @@ class CrossReferenceEvaluator(Evaluator):
             if keyword in all_text:
                 verification_mentions += 1
 
-        verification_score = min(1.0, verification_mentions / 3)  # Expect at least 3 verification mentions
+        verification_score = min(
+            1.0, verification_mentions / 3
+        )  # Expect at least 3 verification mentions
         scores.append(verification_score)
 
         return sum(scores) / len(scores)
@@ -907,7 +951,7 @@ class LLMJudgeEvaluator(Evaluator):
             4. Identification of data gaps
             5. Overall coherence and synthesis
             6. Evidence quality and support
-            7. Appropriate confidence calibration"""
+            7. Appropriate confidence calibration""",
         )
 
     def evaluate(self, ctx: EvaluatorContext) -> float:
@@ -919,21 +963,25 @@ class LLMJudgeEvaluator(Evaluator):
         self,
         query: str,
         output: ResearchResults,
-        expected: Optional[ResearchExecutorExpectedOutput] = None
-    ) -> Dict[str, Any]:
+        expected: ResearchExecutorExpectedOutput | None = None,
+    ) -> dict[str, Any]:
         """Use LLM to judge research quality."""
 
         # Format findings
-        findings_text = "\n".join([
-            f"- {f.finding} (Confidence: {f.confidence_level:.2f}, Category: {f.category or 'uncategorized'})"
-            for f in output.findings
-        ])
+        findings_text = "\n".join(
+            [
+                f"- {f.finding} (Confidence: {f.confidence_level:.2f}, Category: {f.category or 'uncategorized'})"
+                for f in output.findings
+            ]
+        )
 
         # Format sources
-        sources_text = "\n".join([
-            f"- {s.title} ({s.url or 'no url'}, Relevance: {s.relevance_score:.2f if s.relevance_score else 'unknown'})"
-            for s in output.sources
-        ])
+        sources_text = "\n".join(
+            [
+                f"- {s.title} ({s.url or 'no url'}, Relevance: {s.relevance_score:.2f if s.relevance_score else 'unknown'})"
+                for s in output.sources
+            ]
+        )
 
         # Format insights
         insights_text = "\n".join([f"- {insight}" for insight in output.key_insights])
@@ -975,7 +1023,9 @@ class LLMJudgeEvaluator(Evaluator):
         result = await self.judge_agent.run(evaluation_prompt)
 
         try:
-            eval_data = json.loads(result.output) if isinstance(result.output, str) else result.output
+            eval_data = (
+                json.loads(result.output) if isinstance(result.output, str) else result.output
+            )
 
             scores = [
                 eval_data.get("comprehensiveness", 0) / 10,
@@ -984,7 +1034,7 @@ class LLMJudgeEvaluator(Evaluator):
                 eval_data.get("insight_depth", 0) / 10,
                 eval_data.get("gap_identification", 0) / 10,
                 eval_data.get("synthesis_quality", 0) / 10,
-                eval_data.get("confidence_calibration", 0) / 10
+                eval_data.get("confidence_calibration", 0) / 10,
             ]
 
             final_score = sum(scores) / len(scores)
@@ -998,13 +1048,10 @@ class LLMJudgeEvaluator(Evaluator):
                 "gap_identification": eval_data.get("gap_identification"),
                 "synthesis_quality": eval_data.get("synthesis_quality"),
                 "confidence_calibration": eval_data.get("confidence_calibration"),
-                "explanation": eval_data.get("explanation", "")
+                "explanation": eval_data.get("explanation", ""),
             }
         except (json.JSONDecodeError, KeyError) as e:
-            return {
-                "score": None,
-                "error": f"Failed to parse LLM evaluation: {e}"
-            }
+            return {"score": None, "error": f"Failed to parse LLM evaluation: {e}"}
 
 
 class MultiJudgeConsensusEvaluator(Evaluator):
@@ -1012,9 +1059,9 @@ class MultiJudgeConsensusEvaluator(Evaluator):
 
     def __init__(
         self,
-        models: List[str] = None,
+        models: list[str] = None,
         consensus_threshold: float = 0.6,
-        weight_by_confidence: bool = True
+        weight_by_confidence: bool = True,
     ):
         """Initialize multi-judge evaluator.
 
@@ -1023,10 +1070,7 @@ class MultiJudgeConsensusEvaluator(Evaluator):
             consensus_threshold: Minimum agreement threshold for consensus
             weight_by_confidence: Whether to weight votes by confidence scores
         """
-        self.models = models or [
-            "openai:gpt-5-mini",
-            "openai:gpt-5"
-        ]
+        self.models = models or ["openai:gpt-5-mini", "openai:gpt-5"]
         self.consensus_threshold = consensus_threshold
         self.weight_by_confidence = weight_by_confidence
 
@@ -1044,7 +1088,7 @@ class MultiJudgeConsensusEvaluator(Evaluator):
                 5. Synthesis Quality (0-10)
                 6. Confidence in evaluation (0-10)
 
-                Return a JSON object with numeric scores and brief reasoning."""
+                Return a JSON object with numeric scores and brief reasoning.""",
             )
 
     def evaluate(self, ctx: EvaluatorContext) -> float:
@@ -1055,15 +1099,25 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         self,
         query: str,
         output: ResearchResults,
-        expected: Optional[ResearchExecutorExpectedOutput] = None
-    ) -> Dict[str, Any]:
+        expected: ResearchExecutorExpectedOutput | None = None,
+    ) -> dict[str, Any]:
         """Use multiple LLM judges with consensus voting."""
 
         # Format research output for evaluation
-        findings_summary = f"{len(output.findings)} findings with average confidence {sum(f.confidence_level for f in output.findings if f.confidence_level) / len(output.findings):.2f}" if output.findings else "No findings"
+        findings_summary = (
+            f"{len(output.findings)} findings with average confidence {sum(f.confidence_level for f in output.findings if f.confidence_level) / len(output.findings):.2f}"
+            if output.findings
+            else "No findings"
+        )
         sources_summary = f"{len(output.sources)} sources" if output.sources else "No sources"
-        insights_summary = f"{len(output.key_insights)} key insights" if output.key_insights else "No insights"
-        gaps_summary = f"{len(output.data_gaps)} data gaps identified" if output.data_gaps else "No gaps identified"
+        insights_summary = (
+            f"{len(output.key_insights)} key insights" if output.key_insights else "No insights"
+        )
+        gaps_summary = (
+            f"{len(output.data_gaps)} data gaps identified"
+            if output.data_gaps
+            else "No gaps identified"
+        )
 
         evaluation_prompt = f"""
         Research Query: {query}
@@ -1075,8 +1129,8 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         - {gaps_summary}
         - Overall Quality Score: {output.quality_score:.2f}
 
-        Sample Finding: {output.findings[0].finding if output.findings else 'None'}
-        Sample Insight: {output.key_insights[0] if output.key_insights else 'None'}
+        Sample Finding: {output.findings[0].finding if output.findings else "None"}
+        Sample Insight: {output.key_insights[0] if output.key_insights else "None"}
 
         Evaluate this research on:
         1. Comprehensiveness: How thoroughly was the query addressed?
@@ -1094,7 +1148,9 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         for model, judge in self.judges.items():
             try:
                 result = await judge.run(evaluation_prompt)
-                eval_data = json.loads(result.output) if isinstance(result.output, str) else result.output
+                eval_data = (
+                    json.loads(result.output) if isinstance(result.output, str) else result.output
+                )
 
                 evaluation = {
                     "model": model,
@@ -1105,40 +1161,50 @@ class MultiJudgeConsensusEvaluator(Evaluator):
                     "synthesis_quality": eval_data.get("synthesis_quality", 0),
                     "confidence": eval_data.get("confidence", 5),
                     "reasoning": eval_data.get("reasoning", ""),
-                    "individual_score": sum([
-                        eval_data.get("comprehensiveness", 0),
-                        eval_data.get("source_quality", 0),
-                        eval_data.get("finding_relevance", 0),
-                        eval_data.get("insight_value", 0),
-                        eval_data.get("synthesis_quality", 0)
-                    ]) / 50  # Normalize to 0-1
+                    "individual_score": sum(
+                        [
+                            eval_data.get("comprehensiveness", 0),
+                            eval_data.get("source_quality", 0),
+                            eval_data.get("finding_relevance", 0),
+                            eval_data.get("insight_value", 0),
+                            eval_data.get("synthesis_quality", 0),
+                        ]
+                    )
+                    / 50,  # Normalize to 0-1
                 }
                 judge_evaluations.append(evaluation)
 
             except Exception as e:
-                judge_evaluations.append({
-                    "model": model,
-                    "error": str(e),
-                    "individual_score": None
-                })
+                judge_evaluations.append(
+                    {"model": model, "error": str(e), "individual_score": None}
+                )
 
         # Calculate consensus metrics
         valid_evaluations = [e for e in judge_evaluations if e.get("individual_score") is not None]
 
         if not valid_evaluations:
-            return {"score": None, "error": "All judges failed", "judge_evaluations": judge_evaluations}
+            return {
+                "score": None,
+                "error": "All judges failed",
+                "judge_evaluations": judge_evaluations,
+            }
 
         # Calculate weighted or simple average
         if self.weight_by_confidence:
             total_weight = sum(e["confidence"] for e in valid_evaluations)
             if total_weight > 0:
-                consensus_score = sum(
-                    e["individual_score"] * e["confidence"] for e in valid_evaluations
-                ) / total_weight
+                consensus_score = (
+                    sum(e["individual_score"] * e["confidence"] for e in valid_evaluations)
+                    / total_weight
+                )
             else:
-                consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(valid_evaluations)
+                consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(
+                    valid_evaluations
+                )
         else:
-            consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(valid_evaluations)
+            consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(
+                valid_evaluations
+            )
 
         # Calculate agreement metrics
         scores = [e["individual_score"] for e in valid_evaluations]
@@ -1156,7 +1222,7 @@ class MultiJudgeConsensusEvaluator(Evaluator):
             "failed_judges": len(judge_evaluations) - len(valid_evaluations),
             "judge_evaluations": judge_evaluations,
             "score_variance": score_variance,
-            "weighted_by_confidence": self.weight_by_confidence
+            "weighted_by_confidence": self.weight_by_confidence,
         }
 
 
@@ -1169,6 +1235,7 @@ def create_research_executor_dataset() -> Dataset:
     if yaml_path.exists():
         try:
             from tests.evals.research_executor_dataset_loader import load_dataset_from_yaml
+
             return load_dataset_from_yaml(yaml_path)
         except ImportError:
             pass  # Fall back to hardcoded dataset
@@ -1181,7 +1248,7 @@ def create_research_executor_dataset() -> Dataset:
                 query="Compare React vs Angular for enterprise applications",
                 domain="technical",
                 complexity="medium",
-                temporal_relevance=True
+                temporal_relevance=True,
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=5,
@@ -1190,15 +1257,15 @@ def create_research_executor_dataset() -> Dataset:
                 max_sources=10,
                 expected_categories=["technical", "business"],
                 expected_insights_themes=["performance", "scalability", "ecosystem"],
-                min_quality_score=0.7
+                min_quality_score=0.7,
             ),
             evaluators=[
                 FindingsRelevanceEvaluator(),
                 SourceCredibilityEvaluator(),
                 InsightQualityEvaluator(),
                 ComprehensiveEvaluator(),
-                LLMJudgeEvaluator()
-            ]
+                LLMJudgeEvaluator(),
+            ],
         ),
         Case(
             name="golden_scientific_research",
@@ -1206,7 +1273,7 @@ def create_research_executor_dataset() -> Dataset:
                 query="Latest developments in CRISPR gene editing for cancer treatment",
                 domain="scientific",
                 complexity="complex",
-                temporal_relevance=True
+                temporal_relevance=True,
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=6,
@@ -1216,37 +1283,37 @@ def create_research_executor_dataset() -> Dataset:
                 expected_categories=["scientific", "medical"],
                 expected_gaps=["clinical trials", "long-term effects"],
                 source_credibility_threshold=0.7,
-                min_quality_score=0.75
+                min_quality_score=0.75,
             ),
             evaluators=[
                 FindingsRelevanceEvaluator(),
                 SourceCredibilityEvaluator(),
                 DataGapIdentificationEvaluator(),
                 CrossReferenceEvaluator(),
-                MultiJudgeConsensusEvaluator()
-            ]
+                MultiJudgeConsensusEvaluator(),
+            ],
         ),
         Case(
             name="golden_business_analysis",
             inputs=ResearchExecutorInput(
                 query="Market opportunities for AI-powered customer service solutions",
                 domain="business",
-                complexity="medium"
+                complexity="medium",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=4,
                 max_findings=12,
                 expected_categories=["business", "technical", "economic"],
                 expected_insights_themes=["roi", "automation", "customer satisfaction"],
-                confidence_calibration="well-calibrated"
+                confidence_calibration="well-calibrated",
             ),
             evaluators=[
                 FindingsRelevanceEvaluator(),
                 InsightQualityEvaluator(),
                 CategoryCoverageEvaluator(),
-                ConfidenceCalibrationEvaluator()
-            ]
-        )
+                ConfidenceCalibrationEvaluator(),
+            ],
+        ),
     ]
 
     # Domain-specific cases
@@ -1256,29 +1323,31 @@ def create_research_executor_dataset() -> Dataset:
             inputs=ResearchExecutorInput(
                 query="Best practices for Kubernetes security in production",
                 domain="technical",
-                complexity="medium"
+                complexity="medium",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=5,
                 expected_categories=["technical", "security"],
-                expected_insights_themes=["rbac", "network policies", "secrets management"]
+                expected_insights_themes=["rbac", "network policies", "secrets management"],
             ),
-            evaluators=[FindingsRelevanceEvaluator(), InsightQualityEvaluator()]
+            evaluators=[FindingsRelevanceEvaluator(), InsightQualityEvaluator()],
         ),
         Case(
             name="tech_database_optimization",
             inputs=ResearchExecutorInput(
                 query="PostgreSQL performance tuning for high-volume transactions",
                 domain="technical",
-                complexity="complex"
+                complexity="complex",
             ),
             expected_output=ResearchExecutorExpectedOutput(
-                min_findings=6,
-                expected_categories=["technical"],
-                source_credibility_threshold=0.6
+                min_findings=6, expected_categories=["technical"], source_credibility_threshold=0.6
             ),
-            evaluators=[FindingsRelevanceEvaluator(), SourceCredibilityEvaluator(), EvidenceSupportEvaluator()]
-        )
+            evaluators=[
+                FindingsRelevanceEvaluator(),
+                SourceCredibilityEvaluator(),
+                EvidenceSupportEvaluator(),
+            ],
+        ),
     ]
 
     scientific_cases = [
@@ -1288,29 +1357,29 @@ def create_research_executor_dataset() -> Dataset:
                 query="Impact of microplastics on marine ecosystems",
                 domain="scientific",
                 complexity="complex",
-                temporal_relevance=True
+                temporal_relevance=True,
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=5,
                 expected_categories=["scientific", "environmental"],
-                expected_gaps=["long-term studies", "mitigation strategies"]
+                expected_gaps=["long-term studies", "mitigation strategies"],
             ),
-            evaluators=[FindingsRelevanceEvaluator(), DataGapIdentificationEvaluator()]
+            evaluators=[FindingsRelevanceEvaluator(), DataGapIdentificationEvaluator()],
         ),
         Case(
             name="sci_quantum_computing",
             inputs=ResearchExecutorInput(
                 query="Quantum computing applications in drug discovery",
                 domain="scientific",
-                complexity="complex"
+                complexity="complex",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=4,
                 expected_categories=["scientific", "technical"],
-                confidence_calibration="underconfident"  # Emerging field
+                confidence_calibration="underconfident",  # Emerging field
             ),
-            evaluators=[FindingsRelevanceEvaluator(), ConfidenceCalibrationEvaluator()]
-        )
+            evaluators=[FindingsRelevanceEvaluator(), ConfidenceCalibrationEvaluator()],
+        ),
     ]
 
     business_cases = [
@@ -1320,29 +1389,29 @@ def create_research_executor_dataset() -> Dataset:
                 query="Emerging trends in social commerce for Gen Z consumers",
                 domain="business",
                 complexity="medium",
-                temporal_relevance=True
+                temporal_relevance=True,
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=5,
                 expected_categories=["business", "social"],
-                expected_insights_themes=["tiktok", "instagram", "live shopping"]
+                expected_insights_themes=["tiktok", "instagram", "live shopping"],
             ),
-            evaluators=[FindingsRelevanceEvaluator(), InsightQualityEvaluator()]
+            evaluators=[FindingsRelevanceEvaluator(), InsightQualityEvaluator()],
         ),
         Case(
             name="biz_supply_chain",
             inputs=ResearchExecutorInput(
                 query="Blockchain adoption in supply chain management",
                 domain="business",
-                complexity="medium"
+                complexity="medium",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=4,
                 expected_categories=["business", "technical"],
-                expected_gaps=["roi data", "scalability concerns"]
+                expected_gaps=["roi data", "scalability concerns"],
             ),
-            evaluators=[FindingsRelevanceEvaluator(), DataGapIdentificationEvaluator()]
-        )
+            evaluators=[FindingsRelevanceEvaluator(), DataGapIdentificationEvaluator()],
+        ),
     ]
 
     medical_cases = [
@@ -1352,92 +1421,92 @@ def create_research_executor_dataset() -> Dataset:
                 query="Recent breakthroughs in Alzheimer's disease treatment",
                 domain="medical",
                 complexity="complex",
-                temporal_relevance=True
+                temporal_relevance=True,
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=5,
                 min_sources=4,
                 expected_categories=["medical", "scientific"],
                 source_credibility_threshold=0.8,  # High standard for medical
-                expected_gaps=["clinical trial results", "side effects"]
+                expected_gaps=["clinical trial results", "side effects"],
             ),
             evaluators=[
                 FindingsRelevanceEvaluator(),
                 SourceCredibilityEvaluator(),
                 DataGapIdentificationEvaluator(),
-                CrossReferenceEvaluator()
-            ]
+                CrossReferenceEvaluator(),
+            ],
         ),
         Case(
             name="med_telemedicine",
             inputs=ResearchExecutorInput(
                 query="Effectiveness of telemedicine for mental health treatment",
                 domain="medical",
-                complexity="medium"
+                complexity="medium",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=4,
                 expected_categories=["medical", "social"],
-                expected_insights_themes=["accessibility", "outcomes", "patient satisfaction"]
+                expected_insights_themes=["accessibility", "outcomes", "patient satisfaction"],
             ),
-            evaluators=[FindingsRelevanceEvaluator(), InsightQualityEvaluator(), EvidenceSupportEvaluator()]
-        )
+            evaluators=[
+                FindingsRelevanceEvaluator(),
+                InsightQualityEvaluator(),
+                EvidenceSupportEvaluator(),
+            ],
+        ),
     ]
 
     # Edge cases
     edge_cases = [
         Case(
             name="edge_minimal_query",
-            inputs=ResearchExecutorInput(
-                query="AI",
-                complexity="simple"
-            ),
-            expected_output=ResearchExecutorExpectedOutput(
-                min_findings=3,
-                max_findings=8
-            ),
-            evaluators=[FindingsRelevanceEvaluator(), ComprehensiveEvaluator()]
+            inputs=ResearchExecutorInput(query="AI", complexity="simple"),
+            expected_output=ResearchExecutorExpectedOutput(min_findings=3, max_findings=8),
+            evaluators=[FindingsRelevanceEvaluator(), ComprehensiveEvaluator()],
         ),
         Case(
             name="edge_highly_specific",
             inputs=ResearchExecutorInput(
                 query="Performance comparison of BERT-base vs RoBERTa-base on GLUE benchmark tasks",
                 domain="technical",
-                complexity="complex"
+                complexity="complex",
             ),
             expected_output=ResearchExecutorExpectedOutput(
-                min_findings=2,
-                max_findings=6,
-                expected_categories=["technical", "scientific"]
+                min_findings=2, max_findings=6, expected_categories=["technical", "scientific"]
             ),
-            evaluators=[FindingsRelevanceEvaluator(), SourceCredibilityEvaluator()]
+            evaluators=[FindingsRelevanceEvaluator(), SourceCredibilityEvaluator()],
         ),
         Case(
             name="edge_multi_domain",
             inputs=ResearchExecutorInput(
                 query="Legal, ethical, and technical challenges of autonomous vehicles",
-                complexity="complex"
+                complexity="complex",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=6,
                 expected_categories=["technical", "regulatory", "social"],
-                expected_gaps=["liability frameworks", "edge cases"]
+                expected_gaps=["liability frameworks", "edge cases"],
             ),
-            evaluators=[CategoryCoverageEvaluator(), DataGapIdentificationEvaluator()]
+            evaluators=[CategoryCoverageEvaluator(), DataGapIdentificationEvaluator()],
         ),
         Case(
             name="edge_contradictory",
             inputs=ResearchExecutorInput(
                 query="Benefits and risks of nuclear energy for climate change mitigation",
-                complexity="complex"
+                complexity="complex",
             ),
             expected_output=ResearchExecutorExpectedOutput(
                 min_findings=5,
                 expected_categories=["environmental", "technical", "economic"],
-                confidence_calibration="well-calibrated"
+                confidence_calibration="well-calibrated",
             ),
-            evaluators=[FindingsRelevanceEvaluator(), CrossReferenceEvaluator(), ConfidenceCalibrationEvaluator()]
-        )
+            evaluators=[
+                FindingsRelevanceEvaluator(),
+                CrossReferenceEvaluator(),
+                ConfidenceCalibrationEvaluator(),
+            ],
+        ),
     ]
 
     # Performance benchmark cases
@@ -1445,38 +1514,36 @@ def create_research_executor_dataset() -> Dataset:
         Case(
             name="perf_simple_factual",
             inputs=ResearchExecutorInput(
-                query="What is the GDP of United States in 2023?",
-                complexity="simple"
+                query="What is the GDP of United States in 2023?", complexity="simple"
             ),
             expected_output=ResearchExecutorExpectedOutput(
-                min_findings=1,
-                max_findings=3,
-                max_response_time=5.0
+                min_findings=1, max_findings=3, max_response_time=5.0
             ),
-            evaluators=[FindingsRelevanceEvaluator(), ComprehensiveEvaluator()]
+            evaluators=[FindingsRelevanceEvaluator(), ComprehensiveEvaluator()],
         ),
         Case(
             name="perf_complex_synthesis",
             inputs=ResearchExecutorInput(
                 query="Comprehensive analysis of global renewable energy adoption trends, technological innovations, policy frameworks, and economic impacts across developed and developing nations",
-                complexity="complex"
+                complexity="complex",
             ),
-            expected_output=ResearchExecutorExpectedOutput(
-                min_findings=8,
-                max_response_time=30.0
-            ),
-            evaluators=[FindingsRelevanceEvaluator(), ComprehensiveEvaluator(), InsightQualityEvaluator()]
-        )
+            expected_output=ResearchExecutorExpectedOutput(min_findings=8, max_response_time=30.0),
+            evaluators=[
+                FindingsRelevanceEvaluator(),
+                ComprehensiveEvaluator(),
+                InsightQualityEvaluator(),
+            ],
+        ),
     ]
 
     all_cases = (
-        golden_cases +
-        technical_cases +
-        scientific_cases +
-        business_cases +
-        medical_cases +
-        edge_cases +
-        performance_cases
+        golden_cases
+        + technical_cases
+        + scientific_cases
+        + business_cases
+        + medical_cases
+        + edge_cases
+        + performance_cases
     )
 
     return Dataset(cases=all_cases)
@@ -1501,7 +1568,7 @@ async def run_research_executor_evaluation():
                 session_id="test-session",
                 user_query=inputs.query,
                 current_stage=ResearchStage.RESEARCH_EXECUTION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
 
             # Add research brief and methodology to metadata if provided
@@ -1509,14 +1576,18 @@ async def run_research_executor_evaluation():
                 state.metadata.query.transformed_query = {
                     "research_plan": {
                         "brief": inputs.research_brief or "",
-                        "methodology": inputs.methodology or ""
+                        "methodology": inputs.methodology or "",
                     }
                 }
 
             deps = ResearchDependencies(
                 http_client=http_client,
-                api_keys=APIKeys(openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None),
-                research_state=state
+                api_keys=APIKeys(
+                    openai=SecretStr(openai_key)
+                    if (openai_key := os.getenv("OPENAI_API_KEY"))
+                    else None
+                ),
+                research_state=state,
             )
 
             result = await agent.agent.run(inputs.query, deps=deps)
@@ -1543,9 +1614,11 @@ def generate_evaluation_report(report: EvaluationReport) -> str:
     all_scores = []
 
     for case in report.cases:
-        case_scores = [eval_result.get("score", 0)
-                      for eval_result in case.evaluations.values()
-                      if eval_result.get("score") is not None]
+        case_scores = [
+            eval_result.get("score", 0)
+            for eval_result in case.evaluations.values()
+            if eval_result.get("score") is not None
+        ]
         if case_scores:
             all_scores.extend(case_scores)
 

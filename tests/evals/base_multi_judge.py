@@ -9,22 +9,21 @@ import asyncio
 import json
 import statistics
 import time
-from typing import Dict, List, Any, Optional, Tuple, Generic, TypeVar, Protocol
 from dataclasses import dataclass
 from enum import Enum
-from abc import ABC, abstractmethod
+from typing import Any, Generic, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-
 # Type variables for generic agent inputs/outputs
-TInput = TypeVar('TInput')
-TOutput = TypeVar('TOutput')
+TInput = TypeVar("TInput")
+TOutput = TypeVar("TOutput")
 
 
 class VotingMethod(Enum):
     """Different voting methods for multi-judge consensus."""
+
     MAJORITY = "majority"
     WEIGHTED_AVERAGE = "weighted_average"
     CONFIDENCE_WEIGHTED = "confidence_weighted"
@@ -33,6 +32,7 @@ class VotingMethod(Enum):
 
 class JudgeExpertise(Enum):
     """Judge expertise levels for different domains."""
+
     GENERAL = "general"
     TECHNICAL = "technical"
     SCIENTIFIC = "scientific"
@@ -43,51 +43,55 @@ class JudgeExpertise(Enum):
 @dataclass
 class JudgeConfiguration:
     """Configuration for a single judge."""
+
     model: str
     expertise: JudgeExpertise
     weight: float = 1.0
     temperature: float = 0.0
-    system_prompt_override: Optional[str] = None
+    system_prompt_override: str | None = None
 
 
 @dataclass
 class EvaluationDimension:
     """Represents a single evaluation dimension."""
+
     name: str
     description: str
-    scale: Tuple[int, int] = (0, 10)
+    scale: tuple[int, int] = (0, 10)
     weight: float = 1.0
 
 
 class JudgmentResult(BaseModel):
     """Result from a single judge evaluation."""
+
     judge_id: str
     model: str
     expertise: JudgeExpertise
-    scores: Dict[str, float] = Field(default_factory=dict)
+    scores: dict[str, float] = Field(default_factory=dict)
     confidence: float = Field(default=5.0, ge=0, le=10)
     reasoning: str = Field(default="")
     execution_time: float = Field(default=0.0)
     success: bool = Field(default=True)
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class ConsensusResult(BaseModel):
     """Result from multi-judge consensus evaluation."""
+
     final_score: float
     consensus_reached: bool
     agreement_score: float
     voting_method: VotingMethod
-    judge_results: List[JudgmentResult] = Field(default_factory=list)
-    dimension_scores: Dict[str, float] = Field(default_factory=dict)
-    disagreement_analysis: Dict[str, Any] = Field(default_factory=dict)
-    execution_metadata: Dict[str, Any] = Field(default_factory=dict)
+    judge_results: list[JudgmentResult] = Field(default_factory=list)
+    dimension_scores: dict[str, float] = Field(default_factory=dict)
+    disagreement_analysis: dict[str, Any] = Field(default_factory=dict)
+    execution_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentEvaluationAdapter(Protocol[TInput, TOutput]):
     """Protocol for adapting agent-specific evaluation logic."""
 
-    def get_evaluation_dimensions(self) -> List[EvaluationDimension]:
+    def get_evaluation_dimensions(self) -> list[EvaluationDimension]:
         """Return the evaluation dimensions for this agent type."""
         ...
 
@@ -96,10 +100,7 @@ class AgentEvaluationAdapter(Protocol[TInput, TOutput]):
         ...
 
     def create_evaluation_prompt(
-        self,
-        input: TInput,
-        output: TOutput,
-        context: Optional[Dict[str, Any]] = None
+        self, input: TInput, output: TOutput, context: dict[str, Any] | None = None
     ) -> str:
         """Create the evaluation prompt for judges."""
         ...
@@ -119,10 +120,10 @@ class BaseMultiJudgeEvaluator(Generic[TInput, TOutput]):
     def __init__(
         self,
         adapter: AgentEvaluationAdapter[TInput, TOutput],
-        judges: Optional[List[JudgeConfiguration]] = None,
+        judges: list[JudgeConfiguration] | None = None,
         voting_method: VotingMethod = VotingMethod.CONFIDENCE_WEIGHTED,
         consensus_threshold: float = 0.7,
-        max_disagreement_std: float = 2.0
+        max_disagreement_std: float = 2.0,
     ):
         """Initialize the multi-judge evaluator.
 
@@ -145,45 +146,50 @@ class BaseMultiJudgeEvaluator(Generic[TInput, TOutput]):
         for judge in self.judges:
             self.judge_agents[judge.model] = self._create_judge_agent(judge)
 
-    def _create_default_judges(self) -> List[JudgeConfiguration]:
+    def _create_default_judges(self) -> list[JudgeConfiguration]:
         """Create default judge configuration."""
         # Check for available API keys
         import os
+
         judges = []
 
         # Always add OpenAI judges if API key is available
         if os.getenv("OPENAI_API_KEY"):
-            judges.extend([
-                JudgeConfiguration(
-                    model="openai:gpt-5",
-                    expertise=JudgeExpertise.GENERAL,
-                    weight=1.2,
-                    temperature=0.1
-                ),
-                JudgeConfiguration(
-                    model="openai:gpt-5-mini",
-                    expertise=JudgeExpertise.GENERAL,
-                    weight=1.0,
-                    temperature=0.0
-                )
-            ])
+            judges.extend(
+                [
+                    JudgeConfiguration(
+                        model="openai:gpt-5",
+                        expertise=JudgeExpertise.GENERAL,
+                        weight=1.2,
+                        temperature=0.1,
+                    ),
+                    JudgeConfiguration(
+                        model="openai:gpt-5-mini",
+                        expertise=JudgeExpertise.GENERAL,
+                        weight=1.0,
+                        temperature=0.0,
+                    ),
+                ]
+            )
 
         # Add Anthropic judges if API key is available
         if os.getenv("ANTHROPIC_API_KEY"):
-            judges.extend([
-                JudgeConfiguration(
-                    model="anthropic:claude-3-sonnet-20240229",
-                    expertise=JudgeExpertise.TECHNICAL,
-                    weight=1.1,
-                    temperature=0.1
-                ),
-                JudgeConfiguration(
-                    model="anthropic:claude-3-haiku-20240307",
-                    expertise=JudgeExpertise.GENERAL,
-                    weight=0.9,
-                    temperature=0.0
-                )
-            ])
+            judges.extend(
+                [
+                    JudgeConfiguration(
+                        model="anthropic:claude-3-sonnet-20240229",
+                        expertise=JudgeExpertise.TECHNICAL,
+                        weight=1.1,
+                        temperature=0.1,
+                    ),
+                    JudgeConfiguration(
+                        model="anthropic:claude-3-haiku-20240307",
+                        expertise=JudgeExpertise.GENERAL,
+                        weight=0.9,
+                        temperature=0.0,
+                    ),
+                ]
+            )
 
         # Fallback to a single judge if no API keys
         if not judges:
@@ -192,7 +198,7 @@ class BaseMultiJudgeEvaluator(Generic[TInput, TOutput]):
                     model="openai:gpt-5-mini",
                     expertise=JudgeExpertise.GENERAL,
                     weight=1.0,
-                    temperature=0.0
+                    temperature=0.0,
                 )
             )
 
@@ -211,7 +217,9 @@ class BaseMultiJudgeEvaluator(Generic[TInput, TOutput]):
         # Get expertise context from adapter
         expertise_context = self.adapter.get_expertise_context(judge.expertise)
 
-        system_prompt = judge.system_prompt_override or f"""You are an expert evaluator of AI agent outputs.
+        system_prompt = (
+            judge.system_prompt_override
+            or f"""You are an expert evaluator of AI agent outputs.
 
 {expertise_context}Your task is to evaluate the quality of agent outputs based on these dimensions:
 
@@ -222,26 +230,21 @@ For each dimension, provide a score on the specified scale and include your conf
 Return your evaluation as a JSON object with the following structure:
 {{
     "scores": {{
-        {', '.join([f'"{dim.name}": X' for dim in self.dimensions])}
+        {", ".join([f'"{dim.name}": X' for dim in self.dimensions])}
     }},
     "confidence": X,
     "reasoning": "Brief explanation of your evaluation focusing on key strengths and weaknesses"
 }}
 
 Be precise, objective, and consider the specific context when evaluating."""
+        )
 
         # Create agent with model settings
         # Note: pydantic-ai handles temperature through model string or model_settings
-        return Agent(
-            model=judge.model,
-            system_prompt=system_prompt
-        )
+        return Agent(model=judge.model, system_prompt=system_prompt)
 
     async def evaluate(
-        self,
-        input: TInput,
-        output: TOutput,
-        context: Optional[Dict[str, Any]] = None
+        self, input: TInput, output: TOutput, context: dict[str, Any] | None = None
     ) -> ConsensusResult:
         """Perform multi-judge evaluation of agent output."""
 
@@ -252,7 +255,10 @@ Be precise, objective, and consider the specific context when evaluating."""
                 consensus_reached=True,
                 agreement_score=1.0,
                 voting_method=self.voting_method,
-                execution_metadata={"applicable": False, "reason": "Output not valid for evaluation"}
+                execution_metadata={
+                    "applicable": False,
+                    "reason": "Output not valid for evaluation",
+                },
             )
 
         # Create evaluation prompt using adapter
@@ -275,13 +281,15 @@ Be precise, objective, and consider the specific context when evaluating."""
 
         for i, result in enumerate(judgment_results):
             if isinstance(result, Exception):
-                failed_judgments.append(JudgmentResult(
-                    judge_id=f"judge_{i}",
-                    model=self.judges[i].model,
-                    expertise=self.judges[i].expertise,
-                    success=False,
-                    error_message=str(result)
-                ))
+                failed_judgments.append(
+                    JudgmentResult(
+                        judge_id=f"judge_{i}",
+                        model=self.judges[i].model,
+                        expertise=self.judges[i].expertise,
+                        success=False,
+                        error_message=str(result),
+                    )
+                )
             else:
                 valid_judgments.append(result)
 
@@ -291,16 +299,12 @@ Be precise, objective, and consider the specific context when evaluating."""
             "total_execution_time": execution_time,
             "num_judges": len(self.judges),
             "successful_judges": len(valid_judgments),
-            "failed_judges": len(failed_judgments)
+            "failed_judges": len(failed_judgments),
         }
 
         return consensus_result
 
-    async def _get_single_judgment(
-        self,
-        judge: JudgeConfiguration,
-        prompt: str
-    ) -> JudgmentResult:
+    async def _get_single_judgment(self, judge: JudgeConfiguration, prompt: str) -> JudgmentResult:
         """Get judgment from a single judge."""
         start_time = time.time()
 
@@ -323,7 +327,7 @@ Be precise, objective, and consider the specific context when evaluating."""
                 confidence=eval_data.get("confidence", 5.0),
                 reasoning=eval_data.get("reasoning", ""),
                 execution_time=execution_time,
-                success=True
+                success=True,
             )
 
         except Exception as e:
@@ -334,13 +338,11 @@ Be precise, objective, and consider the specific context when evaluating."""
                 expertise=judge.expertise,
                 execution_time=execution_time,
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     def _calculate_consensus(
-        self,
-        valid_judgments: List[JudgmentResult],
-        failed_judgments: List[JudgmentResult]
+        self, valid_judgments: list[JudgmentResult], failed_judgments: list[JudgmentResult]
     ) -> ConsensusResult:
         """Calculate consensus from valid judgments."""
 
@@ -351,7 +353,7 @@ Be precise, objective, and consider the specific context when evaluating."""
                 agreement_score=0.0,
                 voting_method=self.voting_method,
                 judge_results=failed_judgments,
-                execution_metadata={"error": "No valid judgments received"}
+                execution_metadata={"error": "No valid judgments received"},
             )
 
         # Calculate scores for each dimension
@@ -385,7 +387,9 @@ Be precise, objective, and consider the specific context when evaluating."""
                     dimension_score = statistics.median(dim_scores)
                 else:
                     # Weighted average
-                    dimension_score = sum(s * w for s, w in zip(dim_scores, dim_weights)) / sum(dim_weights)
+                    dimension_score = sum(
+                        s * w for s, w in zip(dim_scores, dim_weights, strict=False)
+                    ) / sum(dim_weights)
 
                 dimension_scores[dim_name] = dimension_score
 
@@ -410,14 +414,12 @@ Be precise, objective, and consider the specific context when evaluating."""
             voting_method=self.voting_method,
             judge_results=valid_judgments + failed_judgments,
             dimension_scores=dimension_scores,
-            disagreement_analysis=agreement_analysis
+            disagreement_analysis=agreement_analysis,
         )
 
     def _analyze_agreement(
-        self,
-        valid_judgments: List[JudgmentResult],
-        dimension_scores: Dict[str, float]
-    ) -> Dict[str, Any]:
+        self, valid_judgments: list[JudgmentResult], dimension_scores: dict[str, float]
+    ) -> dict[str, Any]:
         """Analyze agreement between judges."""
 
         if len(valid_judgments) < 2:
@@ -425,7 +427,7 @@ Be precise, objective, and consider the specific context when evaluating."""
                 "consensus_reached": True,
                 "agreement_score": 1.0,
                 "score_variance": 0.0,
-                "dimension_agreements": {}
+                "dimension_agreements": {},
             }
 
         # Calculate variance for each dimension
@@ -459,8 +461,8 @@ Be precise, objective, and consider the specific context when evaluating."""
 
         # Determine if consensus is reached
         consensus_reached = (
-            overall_agreement >= self.consensus_threshold and
-            overall_variance <= self.max_disagreement_std ** 2
+            overall_agreement >= self.consensus_threshold
+            and overall_variance <= self.max_disagreement_std**2
         )
 
         return {
@@ -468,7 +470,7 @@ Be precise, objective, and consider the specific context when evaluating."""
             "agreement_score": overall_agreement,
             "score_variance": overall_variance,
             "dimension_agreements": dimension_agreements,
-            "dimension_variances": dimension_variances
+            "dimension_variances": dimension_variances,
         }
 
     async def compare_outputs(
@@ -476,8 +478,8 @@ Be precise, objective, and consider the specific context when evaluating."""
         input: TInput,
         output_a: TOutput,
         output_b: TOutput,
-        context: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Compare two agent outputs using pairwise comparison."""
 
         # Format outputs for comparison
@@ -523,12 +525,14 @@ Be precise, objective, and consider the specific context when evaluating."""
                     if winner in votes:
                         votes[winner] += 1
 
-                    judge_comparisons.append({
-                        "judge": self.judges[i].model,
-                        "winner": winner,
-                        "confidence": comp_data.get("confidence", 5),
-                        "reasoning": comp_data.get("reasoning", "")
-                    })
+                    judge_comparisons.append(
+                        {
+                            "judge": self.judges[i].model,
+                            "winner": winner,
+                            "confidence": comp_data.get("confidence", 5),
+                            "reasoning": comp_data.get("reasoning", ""),
+                        }
+                    )
 
                 except Exception:
                     votes["tie"] += 1
@@ -549,5 +553,5 @@ Be precise, objective, and consider the specific context when evaluating."""
             "confidence": confidence,
             "vote_breakdown": votes,
             "judge_comparisons": judge_comparisons,
-            "total_judges": len(self.judges)
+            "total_judges": len(self.judges),
         }

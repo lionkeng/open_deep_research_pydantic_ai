@@ -71,7 +71,7 @@ class TestSystemHealth:
             base_path / "evals" / "domain_specific_evals.py",
             base_path / "evals" / "regression_tracker.py",
             base_path / "evals" / "evaluation_runner.py",
-            base_path / "unit" / "agents" / "test_clarification_agent_unit.py",
+            base_path / "unit" / "agents" / "test_clarification_agent.py",
             base_path / "integration" / "test_clarification_workflows.py"
         ]
 

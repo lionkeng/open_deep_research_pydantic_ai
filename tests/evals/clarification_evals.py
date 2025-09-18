@@ -6,89 +6,84 @@ including custom evaluators, metrics, and LLM-as-judge patterns.
 """
 
 import asyncio
-import os
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass
 import json
+import os
+from typing import Any
+
 import httpx
-
 from pydantic import BaseModel, Field, SecretStr
-from pydantic_evals import Dataset, Case
-from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 from pydantic_ai import Agent
+from pydantic_evals import Case, Dataset
+from pydantic_evals.evaluators import Evaluator, EvaluatorContext
+from pydantic_evals.reporting import EvaluationReport
 
-from agents.clarification import ClarificationAgent, ClarifyWithUser
 from agents.base import ResearchDependencies
-from models.metadata import ResearchMetadata
-from models.core import ResearchState, ResearchStage
-from models.clarification import ClarificationQuestion, ClarificationRequest
+from agents.clarification import ClarificationAgent, ClarifyWithUser
 from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
 
 
 class ClarificationInput(BaseModel):
     """Input model for clarification evaluation."""
+
     query: str = Field(description="User query to evaluate")
-    context: Optional[List[Dict[str, str]]] = Field(
-        default=None,
-        description="Optional conversation context"
+    context: list[dict[str, str]] | None = Field(
+        default=None, description="Optional conversation context"
     )
 
 
 class ClarificationExpectedOutput(BaseModel):
     """Expected output for clarification evaluation."""
+
     needs_clarification: bool = Field(description="Whether clarification is needed")
-    min_questions: Optional[int] = Field(
-        default=None,
-        description="Minimum number of questions expected"
+    min_questions: int | None = Field(
+        default=None, description="Minimum number of questions expected"
     )
-    max_questions: Optional[int] = Field(
-        default=None,
-        description="Maximum number of questions expected"
+    max_questions: int | None = Field(
+        default=None, description="Maximum number of questions expected"
     )
-    dimension_categories: Optional[List[str]] = Field(
-        default=None,
-        description="Expected dimension categories from 4-framework"
+    dimension_categories: list[str] | None = Field(
+        default=None, description="Expected dimension categories from 4-framework"
     )
-    key_themes: Optional[List[str]] = Field(
-        default=None,
-        description="Key themes that should appear in clarification questions"
+    key_themes: list[str] | None = Field(
+        default=None, description="Key themes that should appear in clarification questions"
     )
-    expected_question_types: Optional[List[str]] = Field(
-        default=None,
-        description="Expected question types (text, choice, multi_choice)"
+    expected_question_types: list[str] | None = Field(
+        default=None, description="Expected question types (text, choice, multi_choice)"
     )
-    confidence_score: Optional[float] = Field(
+    confidence_score: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Expected confidence score for the clarification decision (0.0-1.0)"
+        description="Expected confidence score for the clarification decision (0.0-1.0)",
     )
-    expected_questions: Optional[List[str]] = Field(
+    expected_questions: list[str] | None = Field(
         default=None,
-        description="Sample expected clarification questions for golden standard cases"
+        description="Sample expected clarification questions for golden standard cases",
     )
-    max_response_time: Optional[float] = Field(
-        default=None,
-        gt=0.0,
-        description="Maximum acceptable response time in seconds"
+    max_response_time: float | None = Field(
+        default=None, gt=0.0, description="Maximum acceptable response time in seconds"
     )
-    domain: Optional[str] = Field(
+    domain: str | None = Field(
         default=None,
-        description="Domain classification for domain-specific evaluation (technical, scientific, business, etc.)"
+        description="Domain classification for domain-specific evaluation (technical, scientific, business, etc.)",
     )
 
 
 class BinaryAccuracyEvaluator(Evaluator):
     """Evaluates binary correctness of clarification decision."""
 
-    def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
+    def evaluate(
+        self, output: ClarifyWithUser, expected: ClarificationExpectedOutput
+    ) -> dict[str, Any]:
         """Evaluate if clarification decision matches expected."""
         correct = output.needs_clarification == expected.needs_clarification
         return {
             "score": 1.0 if correct else 0.0,
             "correct": correct,
             "predicted": output.needs_clarification,
-            "expected": expected.needs_clarification
+            "expected": expected.needs_clarification,
         }
 
 
@@ -96,13 +91,38 @@ class DimensionCoverageEvaluator(Evaluator):
     """Evaluates coverage of the 4-dimension framework."""
 
     DIMENSION_KEYWORDS = {
-        "audience_level": ["audience", "level", "technical", "background", "expertise", "beginner", "expert"],
+        "audience_level": [
+            "audience",
+            "level",
+            "technical",
+            "background",
+            "expertise",
+            "beginner",
+            "expert",
+        ],
         "scope_focus": ["scope", "focus", "aspect", "specific", "broad", "area", "domain"],
-        "source_quality": ["source", "credibility", "academic", "industry", "quality", "reliability"],
-        "deliverable": ["deliverable", "format", "output", "report", "summary", "presentation", "depth"]
+        "source_quality": [
+            "source",
+            "credibility",
+            "academic",
+            "industry",
+            "quality",
+            "reliability",
+        ],
+        "deliverable": [
+            "deliverable",
+            "format",
+            "output",
+            "report",
+            "summary",
+            "presentation",
+            "depth",
+        ],
     }
 
-    def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
+    def evaluate(
+        self, output: ClarifyWithUser, expected: ClarificationExpectedOutput
+    ) -> dict[str, Any]:
         """Evaluate dimension framework coverage."""
         if not output.needs_clarification or not output.request:
             # If no clarification needed, this evaluator is not applicable
@@ -110,11 +130,9 @@ class DimensionCoverageEvaluator(Evaluator):
 
         # Combine all text for analysis
         questions_text = " ".join([q.question for q in output.request.questions])
-        all_text = " ".join([
-            questions_text,
-            " ".join(output.missing_dimensions),
-            output.assessment_reasoning
-        ]).lower()
+        all_text = " ".join(
+            [questions_text, " ".join(output.missing_dimensions), output.assessment_reasoning]
+        ).lower()
 
         # Check which dimensions are covered
         covered_dimensions = []
@@ -128,9 +146,14 @@ class DimensionCoverageEvaluator(Evaluator):
         # Check against expected dimensions if provided
         dimension_match_score = 1.0
         if expected.dimension_categories:
-            matched = sum(1 for exp_dim in expected.dimension_categories
-                         if any(exp_dim in dim for dim in covered_dimensions))
-            dimension_match_score = matched / len(expected.dimension_categories) if expected.dimension_categories else 0
+            matched = sum(
+                1
+                for exp_dim in expected.dimension_categories
+                if any(exp_dim in dim for dim in covered_dimensions)
+            )
+            dimension_match_score = (
+                matched / len(expected.dimension_categories) if expected.dimension_categories else 0
+            )
 
         final_score = (coverage_score + dimension_match_score) / 2
 
@@ -139,14 +162,16 @@ class DimensionCoverageEvaluator(Evaluator):
             "covered_dimensions": covered_dimensions,
             "coverage_rate": coverage_score,
             "dimension_match_score": dimension_match_score,
-            "total_dimensions": len(self.DIMENSION_KEYWORDS)
+            "total_dimensions": len(self.DIMENSION_KEYWORDS),
         }
 
 
 class QuestionRelevanceEvaluator(Evaluator):
     """Evaluates relevance and quality of clarification questions."""
 
-    def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
+    def evaluate(
+        self, output: ClarifyWithUser, expected: ClarificationExpectedOutput
+    ) -> dict[str, Any]:
         """Evaluate question relevance and quality."""
         if not output.needs_clarification or not output.request or not output.request.questions:
             return {"score": None, "applicable": False}
@@ -168,8 +193,9 @@ class QuestionRelevanceEvaluator(Evaluator):
             # Check theme coverage if expected themes provided
             if expected.key_themes:
                 question_lower = question.question.lower()
-                theme_matches = sum(1 for theme in expected.key_themes
-                                  if theme.lower() in question_lower)
+                theme_matches = sum(
+                    1 for theme in expected.key_themes if theme.lower() in question_lower
+                )
                 theme_score = theme_matches / len(expected.key_themes) if expected.key_themes else 0
                 q_scores.append(theme_score)
 
@@ -180,7 +206,9 @@ class QuestionRelevanceEvaluator(Evaluator):
         scores.append(avg_question_score)
 
         # Check if reasoning is provided
-        reasoning_score = min(len(output.assessment_reasoning) / 100, 1.0) if output.assessment_reasoning else 0
+        reasoning_score = (
+            min(len(output.assessment_reasoning) / 100, 1.0) if output.assessment_reasoning else 0
+        )
         scores.append(reasoning_score)
 
         # Check question count expectations
@@ -200,7 +228,7 @@ class QuestionRelevanceEvaluator(Evaluator):
             "num_questions": len(output.request.questions),
             "has_reasoning": bool(output.assessment_reasoning),
             "question_scores": question_scores,
-            "theme_coverage": theme_score if expected.key_themes else None
+            "theme_coverage": theme_score if expected.key_themes else None,
         }
 
 
@@ -210,23 +238,50 @@ class ConsistencyEvaluator(Evaluator):
     def __init__(self, num_runs: int = 3):
         self.num_runs = num_runs
 
-    async def evaluate_async(self, agent: ClarificationAgent, query: str) -> Dict[str, Any]:
+    def evaluate(self, ctx: EvaluatorContext) -> dict[str, Any]:
+        """Synchronous wrapper for evaluate_async."""
+        # For async evaluators, we need to run them in an event loop
+        import asyncio
+
+        # Create an agent and run async evaluation
+        agent = ClarificationAgent()
+        query = ctx.inputs.query if hasattr(ctx.inputs, "query") else str(ctx.inputs)
+
+        # Run the async function in event loop
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # If loop is already running, schedule as a task
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, self.evaluate_async(agent, query))
+                result = future.result()
+        else:
+            result = loop.run_until_complete(self.evaluate_async(agent, query))
+
+        return result
+
+    async def evaluate_async(self, agent: ClarificationAgent, query: str) -> dict[str, Any]:
         """Run multiple times and check consistency."""
         results = []
 
         # Create dependencies
         async with httpx.AsyncClient() as http_client:
             for _ in range(self.num_runs):
-                state = ResearchState(
-                    request_id=f"consistency-test-{_}",
-                    user_query=query
-                )
+                state = ResearchState(request_id=f"consistency-test-{_}", user_query=query)
                 deps = ResearchDependencies(
                     http_client=http_client,
                     api_keys=APIKeys(
-                        openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None
+                        openai=SecretStr(openai_key)
+                        if (openai_key := os.getenv("OPENAI_API_KEY"))
+                        else None
                     ),
-                    research_state=state
+                    research_state=state,
                 )
 
                 result = await agent.agent.run(query, deps=deps)
@@ -253,14 +308,16 @@ class ConsistencyEvaluator(Evaluator):
             "decision_consistency": decision_consistency,
             "dimension_consistency": dimension_consistency,
             "num_runs": self.num_runs,
-            "all_decisions": decisions
+            "all_decisions": decisions,
         }
 
 
 class MultiQuestionEvaluator(Evaluator):
     """Evaluates multi-question clarification capabilities."""
 
-    def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
+    def evaluate(
+        self, output: ClarifyWithUser, expected: ClarificationExpectedOutput
+    ) -> dict[str, Any]:
         """Evaluate multi-question generation and diversity."""
         if not output.needs_clarification or not output.request:
             return {"score": None, "applicable": False}
@@ -278,7 +335,7 @@ class MultiQuestionEvaluator(Evaluator):
         scores.append(count_score)
 
         # 2. Question type diversity
-        question_types = set(q.question_type for q in questions)
+        question_types = {q.question_type for q in questions}
         expected_types = expected.expected_question_types or ["text", "choice", "multi_choice"]
         type_coverage = len(question_types.intersection(expected_types)) / len(expected_types)
         scores.append(type_coverage)
@@ -292,13 +349,15 @@ class MultiQuestionEvaluator(Evaluator):
         scores.append(balance_score)
 
         # 4. Question uniqueness (no duplicate questions)
-        unique_questions = len(set(q.question.lower().strip() for q in questions))
+        unique_questions = len({q.question.lower().strip() for q in questions})
         uniqueness_score = unique_questions / len(questions) if questions else 0
         scores.append(uniqueness_score)
 
         # 5. Question ordering
         ordered_questions = output.request.get_sorted_questions()
-        ordering_score = 1.0 if ordered_questions == sorted(questions, key=lambda q: q.order) else 0.5
+        ordering_score = (
+            1.0 if ordered_questions == sorted(questions, key=lambda q: q.order) else 0.5
+        )
         scores.append(ordering_score)
 
         final_score = sum(scores) / len(scores)
@@ -311,7 +370,7 @@ class MultiQuestionEvaluator(Evaluator):
             "optional_count": optional_count,
             "uniqueness_score": uniqueness_score,
             "type_coverage": type_coverage,
-            "balance_score": balance_score
+            "balance_score": balance_score,
         }
 
 
@@ -327,29 +386,63 @@ class LLMJudgeEvaluator(Evaluator):
             1. Relevance to the original query
             2. Identification of key ambiguities
             3. Helpfulness for providing better answers
-            4. Clarity and specificity of the question"""
+            4. Clarity and specificity of the question""",
         )
+
+    def evaluate(self, ctx: EvaluatorContext) -> dict[str, Any]:
+        """Synchronous wrapper for evaluate_async."""
+        import asyncio
+
+        query = ctx.inputs.query if hasattr(ctx.inputs, "query") else str(ctx.inputs)
+        output = ctx.output if hasattr(ctx, "output") else None
+        expected = ctx.expected_output if hasattr(ctx, "expected_output") else None
+
+        if not output:
+            return {"score": None, "error": "No output available"}
+
+        # Run the async function
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # If loop is already running, schedule as a task
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, self.evaluate_async(query, output, expected))
+                result = future.result()
+        else:
+            result = loop.run_until_complete(self.evaluate_async(query, output, expected))
+
+        return result
 
     async def evaluate_async(
         self,
         query: str,
         output: ClarifyWithUser,
-        expected: Optional[ClarificationExpectedOutput] = None
-    ) -> Dict[str, Any]:
+        expected: ClarificationExpectedOutput | None = None,
+    ) -> dict[str, Any]:
         """Use LLM to judge clarification quality."""
 
         if not output.needs_clarification or not output.request:
             return {"score": None, "applicable": False}
 
-        questions_text = "\n".join([f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
-                                    for q in output.request.questions])
+        questions_text = "\n".join(
+            [
+                f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
+                for q in output.request.questions
+            ]
+        )
 
         evaluation_prompt = f"""
         Original Query: {query}
 
         Clarification Response:
         - Questions:\n{questions_text}
-        - Missing Dimensions: {', '.join(output.missing_dimensions)}
+        - Missing Dimensions: {", ".join(output.missing_dimensions)}
         - Reasoning: {output.assessment_reasoning}
 
         Please evaluate this clarification on a scale of 0-10 for:
@@ -365,13 +458,15 @@ class LLMJudgeEvaluator(Evaluator):
 
         # Parse the LLM's evaluation (assuming it returns structured JSON)
         try:
-            eval_data = json.loads(result.output) if isinstance(result.output, str) else result.output
+            eval_data = (
+                json.loads(result.output) if isinstance(result.output, str) else result.output
+            )
 
             scores = [
                 eval_data.get("relevance", 0) / 10,
                 eval_data.get("ambiguity_detection", 0) / 10,
                 eval_data.get("helpfulness", 0) / 10,
-                eval_data.get("clarity", 0) / 10
+                eval_data.get("clarity", 0) / 10,
             ]
 
             final_score = sum(scores) / len(scores)
@@ -382,13 +477,10 @@ class LLMJudgeEvaluator(Evaluator):
                 "ambiguity_detection": eval_data.get("ambiguity_detection"),
                 "helpfulness": eval_data.get("helpfulness"),
                 "clarity": eval_data.get("clarity"),
-                "explanation": eval_data.get("explanation", "")
+                "explanation": eval_data.get("explanation", ""),
             }
         except (json.JSONDecodeError, KeyError) as e:
-            return {
-                "score": None,
-                "error": f"Failed to parse LLM evaluation: {e}"
-            }
+            return {"score": None, "error": f"Failed to parse LLM evaluation: {e}"}
 
 
 class MultiJudgeConsensusEvaluator(Evaluator):
@@ -396,9 +488,9 @@ class MultiJudgeConsensusEvaluator(Evaluator):
 
     def __init__(
         self,
-        models: List[str] = None,
+        models: list[str] = None,
         consensus_threshold: float = 0.6,
-        weight_by_confidence: bool = True
+        weight_by_confidence: bool = True,
     ):
         """Initialize multi-judge evaluator.
 
@@ -410,7 +502,7 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         self.models = models or [
             "openai:gpt-5-mini",
             "openai:gpt-5",
-            "anthropic:claude-3-haiku-20240307"
+            "anthropic:claude-3-haiku-20240307",
         ]
         self.consensus_threshold = consensus_threshold
         self.weight_by_confidence = weight_by_confidence
@@ -428,29 +520,63 @@ class MultiJudgeConsensusEvaluator(Evaluator):
                 4. Clarity and specificity of the question (0-10)
                 5. Confidence in your evaluation (0-10)
 
-                Return a JSON object with numeric scores and brief reasoning."""
+                Return a JSON object with numeric scores and brief reasoning.""",
             )
+
+    def evaluate(self, ctx: EvaluatorContext) -> dict[str, Any]:
+        """Synchronous wrapper for evaluate_async."""
+        import asyncio
+
+        query = ctx.inputs.query if hasattr(ctx.inputs, "query") else str(ctx.inputs)
+        output = ctx.output if hasattr(ctx, "output") else None
+        expected = ctx.expected_output if hasattr(ctx, "expected_output") else None
+
+        if not output:
+            return {"score": None, "error": "No output available"}
+
+        # Run the async function
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # If loop is already running, schedule as a task
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, self.evaluate_async(query, output, expected))
+                result = future.result()
+        else:
+            result = loop.run_until_complete(self.evaluate_async(query, output, expected))
+
+        return result
 
     async def evaluate_async(
         self,
         query: str,
         output: ClarifyWithUser,
-        expected: Optional[ClarificationExpectedOutput] = None
-    ) -> Dict[str, Any]:
+        expected: ClarificationExpectedOutput | None = None,
+    ) -> dict[str, Any]:
         """Use multiple LLM judges with consensus voting."""
 
         if not output.needs_clarification or not output.request:
             return {"score": None, "applicable": False}
 
-        questions_text = "\n".join([f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
-                                    for q in output.request.questions])
+        questions_text = "\n".join(
+            [
+                f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
+                for q in output.request.questions
+            ]
+        )
 
         evaluation_prompt = f"""
         Original Query: {query}
 
         Clarification Response:
         - Questions:\n{questions_text}
-        - Missing Dimensions: {', '.join(output.missing_dimensions)}
+        - Missing Dimensions: {", ".join(output.missing_dimensions)}
         - Reasoning: {output.assessment_reasoning}
 
         Evaluate this clarification on a scale of 0-10 for:
@@ -468,7 +594,9 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         for model, judge in self.judges.items():
             try:
                 result = await judge.run(evaluation_prompt)
-                eval_data = json.loads(result.output) if isinstance(result.output, str) else result.output
+                eval_data = (
+                    json.loads(result.output) if isinstance(result.output, str) else result.output
+                )
 
                 evaluation = {
                     "model": model,
@@ -478,40 +606,50 @@ class MultiJudgeConsensusEvaluator(Evaluator):
                     "clarity": eval_data.get("clarity", 0),
                     "confidence": eval_data.get("confidence", 5),
                     "reasoning": eval_data.get("reasoning", ""),
-                    "individual_score": sum([
-                        eval_data.get("relevance", 0),
-                        eval_data.get("ambiguity_detection", 0),
-                        eval_data.get("helpfulness", 0),
-                        eval_data.get("clarity", 0)
-                    ]) / 40  # Normalize to 0-1
+                    "individual_score": sum(
+                        [
+                            eval_data.get("relevance", 0),
+                            eval_data.get("ambiguity_detection", 0),
+                            eval_data.get("helpfulness", 0),
+                            eval_data.get("clarity", 0),
+                        ]
+                    )
+                    / 40,  # Normalize to 0-1
                 }
                 judge_evaluations.append(evaluation)
 
             except Exception as e:
                 # If a judge fails, record the failure
-                judge_evaluations.append({
-                    "model": model,
-                    "error": str(e),
-                    "individual_score": None
-                })
+                judge_evaluations.append(
+                    {"model": model, "error": str(e), "individual_score": None}
+                )
 
         # Calculate consensus metrics
         valid_evaluations = [e for e in judge_evaluations if e.get("individual_score") is not None]
 
         if not valid_evaluations:
-            return {"score": None, "error": "All judges failed", "judge_evaluations": judge_evaluations}
+            return {
+                "score": None,
+                "error": "All judges failed",
+                "judge_evaluations": judge_evaluations,
+            }
 
         # Calculate weighted or simple average
         if self.weight_by_confidence:
             total_weight = sum(e["confidence"] for e in valid_evaluations)
             if total_weight > 0:
-                consensus_score = sum(
-                    e["individual_score"] * e["confidence"] for e in valid_evaluations
-                ) / total_weight
+                consensus_score = (
+                    sum(e["individual_score"] * e["confidence"] for e in valid_evaluations)
+                    / total_weight
+                )
             else:
-                consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(valid_evaluations)
+                consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(
+                    valid_evaluations
+                )
         else:
-            consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(valid_evaluations)
+            consensus_score = sum(e["individual_score"] for e in valid_evaluations) / len(
+                valid_evaluations
+            )
 
         # Calculate agreement metrics
         scores = [e["individual_score"] for e in valid_evaluations]
@@ -529,7 +667,7 @@ class MultiJudgeConsensusEvaluator(Evaluator):
             "failed_judges": len(judge_evaluations) - len(valid_evaluations),
             "judge_evaluations": judge_evaluations,
             "score_variance": score_variance,
-            "weighted_by_confidence": self.weight_by_confidence
+            "weighted_by_confidence": self.weight_by_confidence,
         }
 
 
@@ -540,7 +678,7 @@ class SemanticSimilarityEvaluator(Evaluator):
         self.similarity_threshold = similarity_threshold
         self.embeddings_cache = {}
 
-    async def get_embedding(self, text: str) -> List[float]:
+    async def get_embedding(self, text: str) -> list[float]:
         """Get text embedding using OpenAI's embedding model."""
         if text in self.embeddings_cache:
             return self.embeddings_cache[text]
@@ -548,16 +686,18 @@ class SemanticSimilarityEvaluator(Evaluator):
         # In a real implementation, you would use OpenAI's embedding API
         # For now, we'll simulate with a simple hash-based approach
         import hashlib
+
         hash_obj = hashlib.md5(text.encode())
         # Simulate 1536-dimensional embedding
         embedding = [float(ord(c)) / 255.0 for c in hash_obj.hexdigest()[:768]] * 2
         self.embeddings_cache[text] = embedding
         return embedding
 
-    def cosine_similarity(self, a: List[float], b: List[float]) -> float:
+    def cosine_similarity(self, a: list[float], b: list[float]) -> float:
         """Calculate cosine similarity between two vectors."""
         import math
-        dot_product = sum(x * y for x, y in zip(a, b))
+
+        dot_product = sum(x * y for x, y in zip(a, b, strict=False))
         magnitude_a = math.sqrt(sum(x * x for x in a))
         magnitude_b = math.sqrt(sum(x * x for x in b))
 
@@ -566,10 +706,8 @@ class SemanticSimilarityEvaluator(Evaluator):
         return dot_product / (magnitude_a * magnitude_b)
 
     async def evaluate_similarity_to_baseline(
-        self,
-        output: ClarifyWithUser,
-        baseline_questions: List[str]
-    ) -> Dict[str, Any]:
+        self, output: ClarifyWithUser, baseline_questions: list[str]
+    ) -> dict[str, Any]:
         """Evaluate similarity to baseline clarification questions."""
 
         if not output.needs_clarification or not output.request:
@@ -592,10 +730,11 @@ class SemanticSimilarityEvaluator(Evaluator):
         # Calculate maximum similarity for each current question to any baseline
         max_similarities = []
         for curr_emb in current_embeddings:
-            max_sim = max(
-                self.cosine_similarity(curr_emb, base_emb)
-                for base_emb in baseline_embeddings
-            ) if baseline_embeddings else 0.0
+            max_sim = (
+                max(self.cosine_similarity(curr_emb, base_emb) for base_emb in baseline_embeddings)
+                if baseline_embeddings
+                else 0.0
+            )
             max_similarities.append(max_sim)
 
         # Overall similarity score
@@ -607,8 +746,47 @@ class SemanticSimilarityEvaluator(Evaluator):
             "meets_threshold": meets_threshold,
             "question_similarities": max_similarities,
             "num_questions": len(current_questions),
-            "num_baseline": len(baseline_questions)
+            "num_baseline": len(baseline_questions),
         }
+
+    def evaluate(self, ctx: EvaluatorContext) -> dict[str, Any]:
+        """Synchronous wrapper for async similarity evaluation."""
+        import asyncio
+
+        output = ctx.output if hasattr(ctx, "output") else None
+        expected = ctx.expected_output if hasattr(ctx, "expected_output") else None
+
+        if not output:
+            return {"score": None, "error": "No output available"}
+
+        # Get baseline questions from expected output if available
+        baseline_questions = (
+            expected.expected_questions
+            if expected and hasattr(expected, "expected_questions")
+            else []
+        )
+
+        # Run the async function
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run, self.evaluate_similarity_to_baseline(output, baseline_questions)
+                )
+                result = future.result()
+        else:
+            result = loop.run_until_complete(
+                self.evaluate_similarity_to_baseline(output, baseline_questions)
+            )
+
+        return result
 
 
 class PerformanceBenchmarkEvaluator(Evaluator):
@@ -619,11 +797,8 @@ class PerformanceBenchmarkEvaluator(Evaluator):
         self.performance_history = []
 
     def evaluate_performance(
-        self,
-        response_time: float,
-        token_count: int = None,
-        memory_usage: float = None
-    ) -> Dict[str, Any]:
+        self, response_time: float, token_count: int = None, memory_usage: float = None
+    ) -> dict[str, Any]:
         """Evaluate performance metrics."""
 
         # Response time score (1.0 if under max, decreasing exponentially)
@@ -660,7 +835,7 @@ class PerformanceBenchmarkEvaluator(Evaluator):
             "time_score": time_score,
             "token_efficiency": token_efficiency,
             "memory_efficiency": memory_efficiency,
-            "overall_score": performance_score
+            "overall_score": performance_score,
         }
         self.performance_history.append(performance_data)
 
@@ -670,8 +845,21 @@ class PerformanceBenchmarkEvaluator(Evaluator):
             "time_score": time_score,
             "token_efficiency": token_efficiency,
             "memory_efficiency": memory_efficiency,
-            "meets_time_threshold": response_time <= self.max_response_time
+            "meets_time_threshold": response_time <= self.max_response_time,
         }
+
+    def evaluate(self, ctx: EvaluatorContext) -> dict[str, Any]:
+        """Evaluate performance based on duration in context."""
+        # Get performance metrics from context
+        response_time = ctx.duration if hasattr(ctx, "duration") else 1.0
+        token_count = (
+            ctx.attributes.get("token_count", None) if hasattr(ctx, "attributes") else None
+        )
+        memory_usage = (
+            ctx.attributes.get("memory_usage", None) if hasattr(ctx, "attributes") else None
+        )
+
+        return self.evaluate_performance(response_time, token_count, memory_usage)
 
 
 class RobustnessEvaluator(Evaluator):
@@ -686,11 +874,7 @@ class RobustnessEvaluator(Evaluator):
             {"type": "code_snippet", "input": "Fix this: ```python\ndef foo(): return x```"},
         ]
 
-    async def evaluate_robustness(
-        self,
-        agent,
-        dependencies
-    ) -> Dict[str, Any]:
+    async def evaluate_robustness(self, agent, dependencies) -> dict[str, Any]:
         """Test agent robustness across various edge cases."""
 
         results = []
@@ -705,25 +889,29 @@ class RobustnessEvaluator(Evaluator):
 
                 # Check if result is properly structured
                 is_valid = (
-                    hasattr(result, 'data') and
-                    hasattr(result.data, 'need_clarification') and
-                    isinstance(result.data.need_clarification, bool)
+                    hasattr(result, "data")
+                    and hasattr(result.data, "need_clarification")
+                    and isinstance(result.data.need_clarification, bool)
                 )
 
-                results.append({
-                    "test_type": test_case["type"],
-                    "success": True,
-                    "valid_structure": is_valid,
-                    "needs_clarification": result.data.need_clarification if is_valid else None
-                })
+                results.append(
+                    {
+                        "test_type": test_case["type"],
+                        "success": True,
+                        "valid_structure": is_valid,
+                        "needs_clarification": result.data.need_clarification if is_valid else None,
+                    }
+                )
 
             except Exception as e:
-                results.append({
-                    "test_type": test_case["type"],
-                    "success": False,
-                    "error": str(e),
-                    "valid_structure": False
-                })
+                results.append(
+                    {
+                        "test_type": test_case["type"],
+                        "success": False,
+                        "error": str(e),
+                        "valid_structure": False,
+                    }
+                )
 
         # Calculate robustness score
         successful_tests = sum(1 for r in results if r["success"] and r["valid_structure"])
@@ -733,8 +921,56 @@ class RobustnessEvaluator(Evaluator):
             "score": robustness_score,
             "successful_tests": successful_tests,
             "total_tests": len(results),
-            "test_results": results
+            "test_results": results,
         }
+
+    def evaluate(self, ctx: EvaluatorContext) -> dict[str, Any]:
+        """Synchronous wrapper for robustness evaluation."""
+        import asyncio
+        import os
+
+        import httpx
+        from pydantic import SecretStr
+
+        from agents.base import ResearchDependencies
+        from agents.clarification import ClarificationAgent
+        from models.api_models import APIKeys
+        from models.core import ResearchState
+
+        # Create agent and dependencies for testing
+        agent = ClarificationAgent()
+
+        # Run the async function
+        async def run_robustness_test():
+            async with httpx.AsyncClient() as http_client:
+                state = ResearchState(request_id="robustness-test", user_query="test")
+                deps = ResearchDependencies(
+                    http_client=http_client,
+                    api_keys=APIKeys(
+                        openai=SecretStr(openai_key)
+                        if (openai_key := os.getenv("OPENAI_API_KEY"))
+                        else None
+                    ),
+                    research_state=state,
+                )
+                return await self.evaluate_robustness(agent, deps)
+
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, run_robustness_test())
+                result = future.result()
+        else:
+            result = loop.run_until_complete(run_robustness_test())
+
+        return result
 
 
 class DimensionFrameworkEvaluator(Evaluator):
@@ -744,26 +980,28 @@ class DimensionFrameworkEvaluator(Evaluator):
         "audience_level": {
             "primary": ["audience", "level", "technical", "background", "expertise"],
             "secondary": ["beginner", "expert", "intermediate", "novice", "advanced"],
-            "weight": 1.0
+            "weight": 1.0,
         },
         "scope_focus": {
             "primary": ["scope", "focus", "aspect", "specific", "broad"],
             "secondary": ["area", "domain", "field", "topic", "subject"],
-            "weight": 1.2  # Higher weight as it's often most important
+            "weight": 1.2,  # Higher weight as it's often most important
         },
         "source_quality": {
             "primary": ["source", "credibility", "academic", "industry", "quality"],
             "secondary": ["reliability", "peer-reviewed", "authoritative", "recent"],
-            "weight": 0.8
+            "weight": 0.8,
         },
         "deliverable": {
             "primary": ["deliverable", "format", "output", "report", "summary"],
             "secondary": ["presentation", "document", "analysis", "findings"],
-            "weight": 1.0
-        }
+            "weight": 1.0,
+        },
     }
 
-    def evaluate(self, output: ClarifyWithUser, expected: ClarificationExpectedOutput) -> Dict[str, Any]:
+    def evaluate(
+        self, output: ClarifyWithUser, expected: ClarificationExpectedOutput
+    ) -> dict[str, Any]:
         """Enhanced dimension framework evaluation with weighted scoring."""
 
         if not output.needs_clarification or not output.request:
@@ -771,11 +1009,9 @@ class DimensionFrameworkEvaluator(Evaluator):
 
         # Combine all text for analysis
         questions_text = " ".join([q.question for q in output.request.questions])
-        all_text = " ".join([
-            questions_text,
-            " ".join(output.missing_dimensions),
-            output.assessment_reasoning
-        ]).lower()
+        all_text = " ".join(
+            [questions_text, " ".join(output.missing_dimensions), output.assessment_reasoning]
+        ).lower()
 
         # Detailed dimension analysis
         dimension_analysis = {}
@@ -801,7 +1037,9 @@ class DimensionFrameworkEvaluator(Evaluator):
                 "weighted_score": weighted_score,
                 "primary_matches": primary_matches,
                 "secondary_matches": secondary_matches,
-                "keywords_found": [kw for kw in keywords["primary"] + keywords["secondary"] if kw in all_text]
+                "keywords_found": [
+                    kw for kw in keywords["primary"] + keywords["secondary"] if kw in all_text
+                ],
             }
 
         # Overall framework coverage
@@ -811,16 +1049,18 @@ class DimensionFrameworkEvaluator(Evaluator):
         expected_coverage = 1.0
         if expected and expected.dimension_categories:
             covered_expected = sum(
-                1 for exp_dim in expected.dimension_categories
+                1
+                for exp_dim in expected.dimension_categories
                 if dimension_analysis.get(exp_dim, {}).get("score", 0) > 0
             )
             expected_coverage = covered_expected / len(expected.dimension_categories)
 
         # Bonus for comprehensive coverage (covering 3+ dimensions)
-        comprehensive_bonus = 0.1 if sum(
-            1 for analysis in dimension_analysis.values()
-            if analysis["score"] > 0.3
-        ) >= 3 else 0
+        comprehensive_bonus = (
+            0.1
+            if sum(1 for analysis in dimension_analysis.values() if analysis["score"] > 0.3) >= 3
+            else 0
+        )
 
         final_score = min(1.0, (framework_coverage + expected_coverage + comprehensive_bonus) / 2)
 
@@ -830,8 +1070,12 @@ class DimensionFrameworkEvaluator(Evaluator):
             "expected_coverage": expected_coverage,
             "comprehensive_bonus": comprehensive_bonus,
             "dimension_analysis": dimension_analysis,
-            "dimensions_covered": sum(1 for analysis in dimension_analysis.values() if analysis["score"] > 0),
-            "strong_dimensions": [dim for dim, analysis in dimension_analysis.items() if analysis["score"] > 0.5]
+            "dimensions_covered": sum(
+                1 for analysis in dimension_analysis.values() if analysis["score"] > 0
+            ),
+            "strong_dimensions": [
+                dim for dim, analysis in dimension_analysis.items() if analysis["score"] > 0.5
+            ],
         }
 
 
@@ -845,39 +1089,36 @@ def create_clarification_dataset() -> Dataset:
             name="golden_bitcoin_price",
             inputs=ClarificationInput(query="What is the current Bitcoin price in USD?"),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.9
+                needs_clarification=False, confidence_score=0.9
             ),
-            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator()],
         ),
         Case(
             name="golden_specific_code",
-            inputs=ClarificationInput(query="Implement quicksort in Python with O(n log n) complexity"),
-            expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.95
+            inputs=ClarificationInput(
+                query="Implement quicksort in Python with O(n log n) complexity"
             ),
-            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator()]
+            expected_output=ClarificationExpectedOutput(
+                needs_clarification=False, confidence_score=0.95
+            ),
+            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator()],
         ),
         Case(
             name="golden_factual_query",
             inputs=ClarificationInput(query="What year was the iPhone first released?"),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.98
+                needs_clarification=False, confidence_score=0.98
             ),
-            evaluators=[BinaryAccuracyEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator()],
         ),
         Case(
             name="golden_calculation",
             inputs=ClarificationInput(query="Calculate the area of a circle with radius 5 meters"),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.95
+                needs_clarification=False, confidence_score=0.95
             ),
-            evaluators=[BinaryAccuracyEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator()],
         ),
-
         # GOLDEN: Ambiguous queries (SHOULD need clarification)
         Case(
             name="golden_broad_ai",
@@ -887,14 +1128,18 @@ def create_clarification_dataset() -> Dataset:
                 dimension_categories=["audience_level", "scope_focus", "deliverable"],
                 key_themes=["artificial intelligence", "specific", "aspect", "level"],
                 confidence_score=0.9,
-                expected_questions=["What aspect of AI?", "For what audience level?", "What format do you need?"]
+                expected_questions=[
+                    "What aspect of AI?",
+                    "For what audience level?",
+                    "What format do you need?",
+                ],
             ),
             evaluators=[
                 BinaryAccuracyEvaluator(),
                 DimensionCoverageEvaluator(),
                 QuestionRelevanceEvaluator(),
-                MultiJudgeConsensusEvaluator()
-            ]
+                MultiJudgeConsensusEvaluator(),
+            ],
         ),
         Case(
             name="golden_ambiguous_python",
@@ -904,31 +1149,40 @@ def create_clarification_dataset() -> Dataset:
                 dimension_categories=["scope_focus"],
                 key_themes=["programming", "language", "snake", "specific", "aspect"],
                 confidence_score=0.85,
-                expected_questions=["Do you mean Python programming language or the snake?"]
+                expected_questions=["Do you mean Python programming language or the snake?"],
             ),
             evaluators=[
                 BinaryAccuracyEvaluator(),
                 DimensionCoverageEvaluator(),
-                QuestionRelevanceEvaluator()
-            ]
+                QuestionRelevanceEvaluator(),
+            ],
         ),
         Case(
             name="golden_vague_research",
             inputs=ClarificationInput(query="Research climate change"),
             expected_output=ClarificationExpectedOutput(
                 needs_clarification=True,
-                dimension_categories=["scope_focus", "deliverable", "source_quality", "audience_level"],
+                dimension_categories=[
+                    "scope_focus",
+                    "deliverable",
+                    "source_quality",
+                    "audience_level",
+                ],
                 key_themes=["aspect", "focus", "specific", "purpose", "timeframe"],
                 confidence_score=0.88,
-                expected_questions=["What specific aspect of climate change?", "What type of deliverable?", "What time period?"]
+                expected_questions=[
+                    "What specific aspect of climate change?",
+                    "What type of deliverable?",
+                    "What time period?",
+                ],
             ),
             evaluators=[
                 BinaryAccuracyEvaluator(),
                 DimensionCoverageEvaluator(),
                 QuestionRelevanceEvaluator(),
-                SemanticSimilarityEvaluator()
-            ]
-        )
+                SemanticSimilarityEvaluator(),
+            ],
+        ),
     ]
 
     # Technical Domain-Specific Cases
@@ -940,9 +1194,9 @@ def create_clarification_dataset() -> Dataset:
                 needs_clarification=True,
                 dimension_categories=["scope_focus", "source_quality"],
                 key_themes=["programming language", "performance metric", "specific bottleneck"],
-                domain="technical"
+                domain="technical",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), DimensionFrameworkEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), DimensionFrameworkEvaluator()],
         ),
         Case(
             name="tech_database_design",
@@ -951,19 +1205,19 @@ def create_clarification_dataset() -> Dataset:
                 needs_clarification=True,
                 dimension_categories=["scope_focus", "deliverable", "audience_level"],
                 key_themes=["application type", "data volume", "requirements"],
-                domain="technical"
+                domain="technical",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), DimensionCoverageEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), DimensionCoverageEvaluator()],
         ),
         Case(
             name="tech_specific_api",
-            inputs=ClarificationInput(query="Write a REST API endpoint for user authentication with JWT tokens using FastAPI"),
-            expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.9,
-                domain="technical"
+            inputs=ClarificationInput(
+                query="Write a REST API endpoint for user authentication with JWT tokens using FastAPI"
             ),
-            evaluators=[BinaryAccuracyEvaluator()]
+            expected_output=ClarificationExpectedOutput(
+                needs_clarification=False, confidence_score=0.9, domain="technical"
+            ),
+            evaluators=[BinaryAccuracyEvaluator()],
         ),
         Case(
             name="tech_microservices",
@@ -972,10 +1226,10 @@ def create_clarification_dataset() -> Dataset:
                 needs_clarification=True,
                 dimension_categories=["audience_level", "scope_focus", "deliverable"],
                 key_themes=["specific aspect", "comparison", "implementation"],
-                domain="technical"
+                domain="technical",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), QuestionRelevanceEvaluator()]
-        )
+            evaluators=[BinaryAccuracyEvaluator(), QuestionRelevanceEvaluator()],
+        ),
     ]
 
     # Scientific Domain-Specific Cases
@@ -987,19 +1241,19 @@ def create_clarification_dataset() -> Dataset:
                 needs_clarification=True,
                 dimension_categories=["audience_level", "scope_focus", "deliverable"],
                 key_themes=["specific aspect", "mathematical level", "applications"],
-                domain="scientific"
+                domain="scientific",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), DimensionCoverageEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), DimensionCoverageEvaluator()],
         ),
         Case(
             name="sci_specific_experiment",
-            inputs=ClarificationInput(query="Design a double-blind placebo-controlled trial for testing antidepressant efficacy in adults aged 18-65 with major depressive disorder"),
-            expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.95,
-                domain="scientific"
+            inputs=ClarificationInput(
+                query="Design a double-blind placebo-controlled trial for testing antidepressant efficacy in adults aged 18-65 with major depressive disorder"
             ),
-            evaluators=[BinaryAccuracyEvaluator()]
+            expected_output=ClarificationExpectedOutput(
+                needs_clarification=False, confidence_score=0.95, domain="scientific"
+            ),
+            evaluators=[BinaryAccuracyEvaluator()],
         ),
         Case(
             name="sci_climate_research",
@@ -1008,10 +1262,10 @@ def create_clarification_dataset() -> Dataset:
                 needs_clarification=True,
                 dimension_categories=["scope_focus", "deliverable", "source_quality"],
                 key_themes=["specific organisms", "geographic region", "timeframe"],
-                domain="scientific"
+                domain="scientific",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), DimensionFrameworkEvaluator()]
-        )
+            evaluators=[BinaryAccuracyEvaluator(), DimensionFrameworkEvaluator()],
+        ),
     ]
 
     # Business Domain-Specific Cases
@@ -1023,31 +1277,36 @@ def create_clarification_dataset() -> Dataset:
                 needs_clarification=True,
                 dimension_categories=["scope_focus", "deliverable", "audience_level"],
                 key_themes=["product type", "target market", "geographic scope", "timeframe"],
-                domain="business"
+                domain="business",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), DimensionCoverageEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), DimensionCoverageEvaluator()],
         ),
         Case(
             name="biz_roi_calculation",
-            inputs=ClarificationInput(query="Calculate ROI for a $100K marketing campaign that generated $300K in revenue over 6 months"),
-            expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                confidence_score=0.9,
-                domain="business"
+            inputs=ClarificationInput(
+                query="Calculate ROI for a $100K marketing campaign that generated $300K in revenue over 6 months"
             ),
-            evaluators=[BinaryAccuracyEvaluator()]
+            expected_output=ClarificationExpectedOutput(
+                needs_clarification=False, confidence_score=0.9, domain="business"
+            ),
+            evaluators=[BinaryAccuracyEvaluator()],
         ),
         Case(
             name="biz_strategy_consulting",
             inputs=ClarificationInput(query="Help me develop a business strategy"),
             expected_output=ClarificationExpectedOutput(
                 needs_clarification=True,
-                dimension_categories=["scope_focus", "deliverable", "audience_level", "source_quality"],
+                dimension_categories=[
+                    "scope_focus",
+                    "deliverable",
+                    "audience_level",
+                    "source_quality",
+                ],
                 key_themes=["industry", "company stage", "specific goals", "timeframe"],
-                domain="business"
+                domain="business",
             ),
-            evaluators=[BinaryAccuracyEvaluator(), MultiJudgeConsensusEvaluator()]
-        )
+            evaluators=[BinaryAccuracyEvaluator(), MultiJudgeConsensusEvaluator()],
+        ),
     ]
 
     # Edge Cases and Robustness Testing
@@ -1056,48 +1315,50 @@ def create_clarification_dataset() -> Dataset:
             name="edge_minimal_query",
             inputs=ClarificationInput(query="?"),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=True,
-                key_themes=["question", "help", "clarify"]
+                needs_clarification=True, key_themes=["question", "help", "clarify"]
             ),
-            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()],
         ),
         Case(
             name="edge_empty_query",
             inputs=ClarificationInput(query=""),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=True,
-                key_themes=["empty", "help", "question"]
+                needs_clarification=True, key_themes=["empty", "help", "question"]
             ),
-            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()],
         ),
         Case(
             name="edge_very_long_query",
-            inputs=ClarificationInput(query="What is machine learning and how does it work and what are the applications and can you tell me about neural networks and deep learning and artificial intelligence and data science and big data and analytics and statistics and algorithms and programming languages like Python and R and frameworks like TensorFlow and PyTorch and scikit-learn? " * 5),
+            inputs=ClarificationInput(
+                query="What is machine learning and how does it work and what are the applications and can you tell me about neural networks and deep learning and artificial intelligence and data science and big data and analytics and statistics and algorithms and programming languages like Python and R and frameworks like TensorFlow and PyTorch and scikit-learn? "
+                * 5
+            ),
             expected_output=ClarificationExpectedOutput(
                 needs_clarification=True,
-                dimension_categories=["scope_focus", "deliverable", "audience_level"]
+                dimension_categories=["scope_focus", "deliverable", "audience_level"],
             ),
-            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()],
         ),
         Case(
             name="edge_special_characters",
             inputs=ClarificationInput(query="What is 机器学习 and how does it relate to café? 🤖"),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=True,
-                dimension_categories=["audience_level", "scope_focus"]
+                needs_clarification=True, dimension_categories=["audience_level", "scope_focus"]
             ),
-            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), RobustnessEvaluator()],
         ),
         Case(
             name="edge_contradictory",
-            inputs=ClarificationInput(query="I need a simple but comprehensive and brief yet detailed explanation of everything about AI but nothing specific"),
+            inputs=ClarificationInput(
+                query="I need a simple but comprehensive and brief yet detailed explanation of everything about AI but nothing specific"
+            ),
             expected_output=ClarificationExpectedOutput(
                 needs_clarification=True,
                 dimension_categories=["scope_focus", "deliverable", "audience_level"],
-                key_themes=["contradictory", "clarification needed"]
+                key_themes=["contradictory", "clarification needed"],
             ),
-            evaluators=[BinaryAccuracyEvaluator(), QuestionRelevanceEvaluator()]
-        )
+            evaluators=[BinaryAccuracyEvaluator(), QuestionRelevanceEvaluator()],
+        ),
     ]
 
     # Performance Benchmark Cases
@@ -1106,36 +1367,40 @@ def create_clarification_dataset() -> Dataset:
             name="perf_concurrent_simple",
             inputs=ClarificationInput(query="What is the capital of France?"),
             expected_output=ClarificationExpectedOutput(
-                needs_clarification=False,
-                max_response_time=2.0
+                needs_clarification=False, max_response_time=2.0
             ),
-            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator()]
+            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator()],
         ),
         Case(
             name="perf_concurrent_complex",
-            inputs=ClarificationInput(query="Analyze the geopolitical implications of renewable energy adoption on global trade relationships"),
-            expected_output=ClarificationExpectedOutput(
-                needs_clarification=True,
-                max_response_time=10.0
+            inputs=ClarificationInput(
+                query="Analyze the geopolitical implications of renewable energy adoption on global trade relationships"
             ),
-            evaluators=[BinaryAccuracyEvaluator(), PerformanceBenchmarkEvaluator(), MultiJudgeConsensusEvaluator()]
-        )
+            expected_output=ClarificationExpectedOutput(
+                needs_clarification=True, max_response_time=10.0
+            ),
+            evaluators=[
+                BinaryAccuracyEvaluator(),
+                PerformanceBenchmarkEvaluator(),
+                MultiJudgeConsensusEvaluator(),
+            ],
+        ),
     ]
 
     # Combine all cases
     all_cases = (
-        golden_standard_cases +
-        technical_cases +
-        scientific_cases +
-        business_cases +
-        edge_cases +
-        performance_cases
+        golden_standard_cases
+        + technical_cases
+        + scientific_cases
+        + business_cases
+        + edge_cases
+        + performance_cases
     )
 
     return Dataset(
         name="clarification_agent_comprehensive_evaluation",
         cases=all_cases,
-        description="Comprehensive evaluation dataset with golden standards, domain-specific scenarios, edge cases, and performance benchmarks for ClarificationAgent"
+        description="Comprehensive evaluation dataset with golden standards, domain-specific scenarios, edge cases, and performance benchmarks for ClarificationAgent",
     )
 
 
@@ -1158,12 +1423,16 @@ async def run_clarification_evaluation():
                 session_id="test-session",
                 user_query=inputs.query,
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
                 http_client=http_client,
-                api_keys=APIKeys(openai=SecretStr(openai_key) if (openai_key := os.getenv("OPENAI_API_KEY")) else None),
-                research_state=state
+                api_keys=APIKeys(
+                    openai=SecretStr(openai_key)
+                    if (openai_key := os.getenv("OPENAI_API_KEY"))
+                    else None
+                ),
+                research_state=state,
             )
 
             result = await agent.agent.run(inputs.query, deps=deps)
@@ -1175,7 +1444,7 @@ async def run_clarification_evaluation():
     return report
 
 
-def generate_evaluation_report(report: Report) -> str:
+def generate_evaluation_report(report: EvaluationReport) -> str:
     """Generate human-readable evaluation report."""
 
     output = ["=" * 60]
@@ -1187,9 +1456,11 @@ def generate_evaluation_report(report: Report) -> str:
     output.append("-" * 40)
 
     total_cases = len(report.cases)
-    binary_scores = [case.evaluations.get("BinaryAccuracyEvaluator", {}).get("score", 0)
-                     for case in report.cases
-                     if "BinaryAccuracyEvaluator" in case.evaluations]
+    binary_scores = [
+        case.evaluations.get("BinaryAccuracyEvaluator", {}).get("score", 0)
+        for case in report.cases
+        if "BinaryAccuracyEvaluator" in case.evaluations
+    ]
 
     if binary_scores:
         accuracy = sum(binary_scores) / len(binary_scores)
@@ -1211,8 +1482,9 @@ def generate_evaluation_report(report: Report) -> str:
     output.append("\nCOMMON PATTERNS:")
     output.append("-" * 40)
 
-    clarification_needed = sum(1 for case in report.cases
-                              if case.output and case.output.needs_clarification)
+    clarification_needed = sum(
+        1 for case in report.cases if case.output and case.output.needs_clarification
+    )
     output.append(f"Cases needing clarification: {clarification_needed}/{total_cases}")
 
     # Dimension coverage analysis
@@ -1223,6 +1495,7 @@ def generate_evaluation_report(report: Report) -> str:
 
     if all_dimensions:
         from collections import Counter
+
         dimension_counts = Counter(all_dimensions)
         output.append("\nMost common missing dimensions:")
         for dim, count in dimension_counts.most_common(5):

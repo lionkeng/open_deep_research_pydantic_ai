@@ -37,22 +37,22 @@ def test_yaml_dataset_loading():
     # Check categories by looking at case names
     categories = set()
     for case in dataset.cases:
-        if hasattr(case, 'name'):
+        if hasattr(case, "name"):
             # Extract category from case name pattern
-            if 'golden' in case.name.lower():
-                categories.add('golden_standard')
-            elif 'tech' in case.name.lower():
-                categories.add('technical')
-            elif 'sci' in case.name.lower():
-                categories.add('scientific')
-            elif 'biz' in case.name.lower() or 'business' in case.name.lower():
-                categories.add('business')
-            elif 'edge' in case.name.lower():
-                categories.add('edge_cases')
-            elif 'cross' in case.name.lower():
-                categories.add('cross_domain')
-            elif 'perf' in case.name.lower():
-                categories.add('performance')
+            if "golden" in case.name.lower():
+                categories.add("golden_standard")
+            elif "tech" in case.name.lower():
+                categories.add("technical")
+            elif "sci" in case.name.lower():
+                categories.add("scientific")
+            elif "biz" in case.name.lower() or "business" in case.name.lower():
+                categories.add("business")
+            elif "edge" in case.name.lower():
+                categories.add("edge_cases")
+            elif "cross" in case.name.lower():
+                categories.add("cross_domain")
+            elif "perf" in case.name.lower():
+                categories.add("performance")
 
     print(f"\n✓ Categories found: {', '.join(sorted(categories))}")
 
@@ -78,6 +78,7 @@ def main():
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

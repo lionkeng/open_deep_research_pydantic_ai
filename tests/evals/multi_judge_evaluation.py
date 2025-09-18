@@ -7,26 +7,20 @@ Implements 2024 best practices for LLM-as-a-Judge evaluation systems.
 
 import asyncio
 import json
-import os
 import statistics
-from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_evals import Evaluator
 
-from agents.clarification import ClarificationAgent, ClarifyWithUser
-from agents.base import ResearchDependencies
-from models.core import ResearchState, ResearchStage
-from models.metadata import ResearchMetadata
-from models.api_models import APIKeys
-from pydantic import SecretStr
+from agents.clarification import ClarifyWithUser
 
 
 class VotingMethod(Enum):
     """Different voting methods for multi-judge consensus."""
+
     MAJORITY = "majority"
     WEIGHTED_AVERAGE = "weighted_average"
     CONFIDENCE_WEIGHTED = "confidence_weighted"
@@ -35,6 +29,7 @@ class VotingMethod(Enum):
 
 class JudgeExpertise(Enum):
     """Judge expertise levels for different domains."""
+
     GENERAL = "general"
     TECHNICAL = "technical"
     SCIENTIFIC = "scientific"
@@ -45,45 +40,49 @@ class JudgeExpertise(Enum):
 @dataclass
 class JudgeConfiguration:
     """Configuration for a single judge."""
+
     model: str
     expertise: JudgeExpertise
     weight: float = 1.0
     temperature: float = 0.0
-    system_prompt_override: Optional[str] = None
+    system_prompt_override: str | None = None
 
 
 @dataclass
 class EvaluationDimension:
     """Represents a single evaluation dimension."""
+
     name: str
     description: str
-    scale: Tuple[int, int] = (0, 10)
+    scale: tuple[int, int] = (0, 10)
     weight: float = 1.0
 
 
 class JudgmentResult(BaseModel):
     """Result from a single judge evaluation."""
+
     judge_id: str
     model: str
     expertise: JudgeExpertise
-    scores: Dict[str, float] = Field(default_factory=dict)
+    scores: dict[str, float] = Field(default_factory=dict)
     confidence: float = Field(default=5.0, ge=0, le=10)
     reasoning: str = Field(default="")
     execution_time: float = Field(default=0.0)
     success: bool = Field(default=True)
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class ConsensusResult(BaseModel):
     """Result from multi-judge consensus evaluation."""
+
     final_score: float
     consensus_reached: bool
     agreement_score: float
     voting_method: VotingMethod
-    judge_results: List[JudgmentResult] = Field(default_factory=list)
-    dimension_scores: Dict[str, float] = Field(default_factory=dict)
-    disagreement_analysis: Dict[str, Any] = Field(default_factory=dict)
-    execution_metadata: Dict[str, Any] = Field(default_factory=dict)
+    judge_results: list[JudgmentResult] = Field(default_factory=list)
+    dimension_scores: dict[str, float] = Field(default_factory=dict)
+    disagreement_analysis: dict[str, Any] = Field(default_factory=dict)
+    execution_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AdvancedMultiJudgeEvaluator:
@@ -91,11 +90,11 @@ class AdvancedMultiJudgeEvaluator:
 
     def __init__(
         self,
-        judges: List[JudgeConfiguration] = None,
-        dimensions: List[EvaluationDimension] = None,
+        judges: list[JudgeConfiguration] = None,
+        dimensions: list[EvaluationDimension] = None,
         voting_method: VotingMethod = VotingMethod.CONFIDENCE_WEIGHTED,
         consensus_threshold: float = 0.7,
-        max_disagreement_std: float = 2.0
+        max_disagreement_std: float = 2.0,
     ):
         """Initialize the multi-judge evaluator.
 
@@ -117,63 +116,63 @@ class AdvancedMultiJudgeEvaluator:
         for judge in self.judges:
             self.judge_agents[judge.model] = self._create_judge_agent(judge)
 
-    def _create_default_judges(self) -> List[JudgeConfiguration]:
+    def _create_default_judges(self) -> list[JudgeConfiguration]:
         """Create default judge configuration."""
         return [
             JudgeConfiguration(
                 model="openai:gpt-5",
                 expertise=JudgeExpertise.GENERAL,
                 weight=1.2,  # Higher weight for more capable model
-                temperature=0.1
+                temperature=0.1,
             ),
             JudgeConfiguration(
                 model="openai:gpt-5-mini",
                 expertise=JudgeExpertise.GENERAL,
                 weight=1.0,
-                temperature=0.0
+                temperature=0.0,
             ),
             JudgeConfiguration(
                 model="anthropic:claude-3-sonnet-20240229",
                 expertise=JudgeExpertise.TECHNICAL,
                 weight=1.1,
-                temperature=0.1
+                temperature=0.1,
             ),
             JudgeConfiguration(
                 model="anthropic:claude-3-haiku-20240307",
                 expertise=JudgeExpertise.GENERAL,
                 weight=0.9,
-                temperature=0.0
-            )
+                temperature=0.0,
+            ),
         ]
 
-    def _create_default_dimensions(self) -> List[EvaluationDimension]:
+    def _create_default_dimensions(self) -> list[EvaluationDimension]:
         """Create default evaluation dimensions."""
         return [
             EvaluationDimension(
                 name="relevance",
                 description="How relevant are the clarification questions to the original query?",
-                weight=1.2
+                weight=1.2,
             ),
             EvaluationDimension(
                 name="ambiguity_detection",
                 description="How well does the agent identify key ambiguities that need clarification?",
-                weight=1.3  # Highest weight - core functionality
+                weight=1.3,  # Highest weight - core functionality
             ),
             EvaluationDimension(
                 name="helpfulness",
                 description="Would answering these clarification questions lead to better research results?",
-                weight=1.1
+                weight=1.1,
             ),
             EvaluationDimension(
                 name="clarity",
                 description="Are the clarification questions clear, specific, and well-formulated?",
-                weight=1.0
+                weight=1.0,
             ),
             EvaluationDimension(
                 name="completeness",
                 description="Does the clarification cover all major ambiguities in the query?",
-                weight=1.1
-            )
+                weight=1.1,
+            ),
         ]
 
     def _create_judge_agent(self, judge: JudgeConfiguration) -> Agent:
@@ -182,19 +181,27 @@ class AdvancedMultiJudgeEvaluator:
         # Create dimension-specific instructions
         dimension_instructions = []
         for dim in self.dimensions:
-            dimension_instructions.append(f"- {dim.name.title()}: {dim.description} (Scale: {dim.scale[0]}-{dim.scale[1]})")
+            dimension_instructions.append(
+                f"- {dim.name.title()}: {dim.description} (Scale: {dim.scale[0]}-{dim.scale[1]})"
+            )
 
         expertise_context = ""
         if judge.expertise == JudgeExpertise.TECHNICAL:
-            expertise_context = "You have particular expertise in technical and programming-related queries. "
+            expertise_context = (
+                "You have particular expertise in technical and programming-related queries. "
+            )
         elif judge.expertise == JudgeExpertise.SCIENTIFIC:
-            expertise_context = "You have particular expertise in scientific research and academic queries. "
+            expertise_context = (
+                "You have particular expertise in scientific research and academic queries. "
+            )
         elif judge.expertise == JudgeExpertise.BUSINESS:
             expertise_context = "You have particular expertise in business and commercial queries. "
         elif judge.expertise == JudgeExpertise.CREATIVE:
             expertise_context = "You have particular expertise in creative and artistic queries. "
 
-        system_prompt = judge.system_prompt_override or f"""You are an expert evaluator of AI-generated clarification questions.
+        system_prompt = (
+            judge.system_prompt_override
+            or f"""You are an expert evaluator of AI-generated clarification questions.
 
         {expertise_context}Your task is to evaluate the quality of clarification questions based on these dimensions:
 
@@ -216,18 +223,12 @@ class AdvancedMultiJudgeEvaluator:
         }}
 
         Be precise, objective, and consider the specific context of each query when evaluating."""
-
-        return Agent(
-            model=judge.model,
-            system_prompt=system_prompt,
-            temperature=judge.temperature
         )
 
+        return Agent(model=judge.model, system_prompt=system_prompt, temperature=judge.temperature)
+
     async def evaluate_clarification(
-        self,
-        query: str,
-        output: ClarifyWithUser,
-        context: Optional[Dict[str, Any]] = None
+        self, query: str, output: ClarifyWithUser, context: dict[str, Any] | None = None
     ) -> ConsensusResult:
         """Perform multi-judge evaluation of clarification output."""
 
@@ -237,14 +238,16 @@ class AdvancedMultiJudgeEvaluator:
                 consensus_reached=True,
                 agreement_score=1.0,
                 voting_method=self.voting_method,
-                execution_metadata={"applicable": False, "reason": "No clarification needed"}
+                execution_metadata={"applicable": False, "reason": "No clarification needed"},
             )
 
         # Prepare evaluation context
-        questions_text = "\n".join([
-            f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
-            for q in output.request.questions
-        ])
+        questions_text = "\n".join(
+            [
+                f"- {q.question} (Type: {q.question_type}, Required: {q.is_required})"
+                for q in output.request.questions
+            ]
+        )
 
         evaluation_prompt = f"""
         Original Query: {query}
@@ -253,10 +256,10 @@ class AdvancedMultiJudgeEvaluator:
         Questions:
         {questions_text}
 
-        Missing Dimensions Identified: {', '.join(output.missing_dimensions) if output.missing_dimensions else 'None'}
-        Agent's Reasoning: {output.assessment_reasoning if hasattr(output, 'assessment_reasoning') else 'Not provided'}
+        Missing Dimensions Identified: {", ".join(output.missing_dimensions) if output.missing_dimensions else "None"}
+        Agent's Reasoning: {output.assessment_reasoning if hasattr(output, "assessment_reasoning") else "Not provided"}
 
-        Context: {json.dumps(context) if context else 'None'}
+        Context: {json.dumps(context) if context else "None"}
 
         Please evaluate this clarification response according to the dimensions specified in your system prompt.
         """
@@ -269,6 +272,7 @@ class AdvancedMultiJudgeEvaluator:
 
         # Execute all judgments concurrently
         import time
+
         start_time = time.time()
         judgment_results = await asyncio.gather(*judge_tasks, return_exceptions=True)
         execution_time = time.time() - start_time
@@ -279,13 +283,15 @@ class AdvancedMultiJudgeEvaluator:
 
         for i, result in enumerate(judgment_results):
             if isinstance(result, Exception):
-                failed_judgments.append(JudgmentResult(
-                    judge_id=f"judge_{i}",
-                    model=self.judges[i].model,
-                    expertise=self.judges[i].expertise,
-                    success=False,
-                    error_message=str(result)
-                ))
+                failed_judgments.append(
+                    JudgmentResult(
+                        judge_id=f"judge_{i}",
+                        model=self.judges[i].model,
+                        expertise=self.judges[i].expertise,
+                        success=False,
+                        error_message=str(result),
+                    )
+                )
             else:
                 valid_judgments.append(result)
 
@@ -295,16 +301,12 @@ class AdvancedMultiJudgeEvaluator:
             "total_execution_time": execution_time,
             "num_judges": len(self.judges),
             "successful_judges": len(valid_judgments),
-            "failed_judges": len(failed_judgments)
+            "failed_judges": len(failed_judgments),
         }
 
         return consensus_result
 
-    async def _get_single_judgment(
-        self,
-        judge: JudgeConfiguration,
-        prompt: str
-    ) -> JudgmentResult:
+    async def _get_single_judgment(self, judge: JudgeConfiguration, prompt: str) -> JudgmentResult:
         """Get judgment from a single judge."""
         import time
 
@@ -329,7 +331,7 @@ class AdvancedMultiJudgeEvaluator:
                 confidence=eval_data.get("confidence", 5.0),
                 reasoning=eval_data.get("reasoning", ""),
                 execution_time=execution_time,
-                success=True
+                success=True,
             )
 
         except Exception as e:
@@ -340,13 +342,11 @@ class AdvancedMultiJudgeEvaluator:
                 expertise=judge.expertise,
                 execution_time=execution_time,
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     def _calculate_consensus(
-        self,
-        valid_judgments: List[JudgmentResult],
-        failed_judgments: List[JudgmentResult]
+        self, valid_judgments: list[JudgmentResult], failed_judgments: list[JudgmentResult]
     ) -> ConsensusResult:
         """Calculate consensus from valid judgments."""
 
@@ -357,7 +357,7 @@ class AdvancedMultiJudgeEvaluator:
                 agreement_score=0.0,
                 voting_method=self.voting_method,
                 judge_results=failed_judgments,
-                execution_metadata={"error": "No valid judgments received"}
+                execution_metadata={"error": "No valid judgments received"},
             )
 
         # Calculate scores for each dimension
@@ -391,7 +391,9 @@ class AdvancedMultiJudgeEvaluator:
                     dimension_score = statistics.median(dim_scores)
                 else:
                     # Weighted average
-                    dimension_score = sum(s * w for s, w in zip(dim_scores, dim_weights)) / sum(dim_weights)
+                    dimension_score = sum(
+                        s * w for s, w in zip(dim_scores, dim_weights, strict=False)
+                    ) / sum(dim_weights)
 
                 dimension_scores[dim_name] = dimension_score
 
@@ -416,14 +418,12 @@ class AdvancedMultiJudgeEvaluator:
             voting_method=self.voting_method,
             judge_results=valid_judgments + failed_judgments,
             dimension_scores=dimension_scores,
-            disagreement_analysis=agreement_analysis
+            disagreement_analysis=agreement_analysis,
         )
 
     def _analyze_agreement(
-        self,
-        valid_judgments: List[JudgmentResult],
-        dimension_scores: Dict[str, float]
-    ) -> Dict[str, Any]:
+        self, valid_judgments: list[JudgmentResult], dimension_scores: dict[str, float]
+    ) -> dict[str, Any]:
         """Analyze agreement between judges."""
 
         if len(valid_judgments) < 2:
@@ -431,7 +431,7 @@ class AdvancedMultiJudgeEvaluator:
                 "consensus_reached": True,  # Single judge or no disagreement possible
                 "agreement_score": 1.0,
                 "score_variance": 0.0,
-                "dimension_agreements": {}
+                "dimension_agreements": {},
             }
 
         # Calculate variance for each dimension
@@ -451,7 +451,9 @@ class AdvancedMultiJudgeEvaluator:
                 dimension_variances[dim_name] = variance
 
                 # Agreement score based on inverse of variance
-                max_variance = (dimension.scale[1] - dimension.scale[0]) ** 2 / 4  # Max possible variance
+                max_variance = (
+                    dimension.scale[1] - dimension.scale[0]
+                ) ** 2 / 4  # Max possible variance
                 agreement = 1.0 - min(variance / max_variance, 1.0)
                 dimension_agreements[dim_name] = agreement
 
@@ -465,8 +467,8 @@ class AdvancedMultiJudgeEvaluator:
 
         # Determine if consensus is reached
         consensus_reached = (
-            overall_agreement >= self.consensus_threshold and
-            overall_variance <= self.max_disagreement_std ** 2
+            overall_agreement >= self.consensus_threshold
+            and overall_variance <= self.max_disagreement_std**2
         )
 
         return {
@@ -474,7 +476,7 @@ class AdvancedMultiJudgeEvaluator:
             "agreement_score": overall_agreement,
             "score_variance": overall_variance,
             "dimension_agreements": dimension_agreements,
-            "dimension_variances": dimension_variances
+            "dimension_variances": dimension_variances,
         }
 
 
@@ -489,13 +491,21 @@ class PairwiseComparisonEvaluator:
         query: str,
         response_a: ClarifyWithUser,
         response_b: ClarifyWithUser,
-        context: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Compare two clarification responses using multi-judge consensus."""
 
         # Create comparison prompt for judges
-        questions_a = "\n".join([f"- {q.question}" for q in response_a.request.questions]) if response_a.request else "No clarification questions"
-        questions_b = "\n".join([f"- {q.question}" for q in response_b.request.questions]) if response_b.request else "No clarification questions"
+        questions_a = (
+            "\n".join([f"- {q.question}" for q in response_a.request.questions])
+            if response_a.request
+            else "No clarification questions"
+        )
+        questions_b = (
+            "\n".join([f"- {q.question}" for q in response_b.request.questions])
+            if response_b.request
+            else "No clarification questions"
+        )
 
         comparison_prompt = f"""
         Original Query: {query}
@@ -538,12 +548,14 @@ class PairwiseComparisonEvaluator:
                     if winner in votes:
                         votes[winner] += 1
 
-                    judge_comparisons.append({
-                        "judge": self.multi_judge_evaluator.judges[i].model,
-                        "winner": winner,
-                        "confidence": comp_data.get("confidence", 5),
-                        "reasoning": comp_data.get("reasoning", "")
-                    })
+                    judge_comparisons.append(
+                        {
+                            "judge": self.multi_judge_evaluator.judges[i].model,
+                            "winner": winner,
+                            "confidence": comp_data.get("confidence", 5),
+                            "reasoning": comp_data.get("reasoning", ""),
+                        }
+                    )
 
                 except Exception:
                     votes["tie"] += 1  # Default to tie on parse error
@@ -564,7 +576,7 @@ class PairwiseComparisonEvaluator:
             "confidence": confidence,
             "vote_breakdown": votes,
             "judge_comparisons": judge_comparisons,
-            "total_judges": len(self.multi_judge_evaluator.judges)
+            "total_judges": len(self.multi_judge_evaluator.judges),
         }
 
 
@@ -575,7 +587,7 @@ async def run_advanced_evaluation_demo():
     evaluator = AdvancedMultiJudgeEvaluator()
 
     # Mock clarification output for demo
-    from models.clarification import ClarificationRequest, ClarificationQuestion
+    from models.clarification import ClarificationQuestion, ClarificationRequest
 
     mock_output = ClarifyWithUser(
         needs_clarification=True,
@@ -584,26 +596,30 @@ async def run_advanced_evaluation_demo():
                 ClarificationQuestion(
                     question="What specific aspect of machine learning are you most interested in?",
                     question_type="choice",
-                    choices=["supervised learning", "unsupervised learning", "reinforcement learning"],
-                    is_required=True
+                    choices=[
+                        "supervised learning",
+                        "unsupervised learning",
+                        "reinforcement learning",
+                    ],
+                    is_required=True,
                 ),
                 ClarificationQuestion(
                     question="What is your technical background level?",
                     question_type="choice",
                     choices=["beginner", "intermediate", "advanced"],
-                    is_required=True
-                )
+                    is_required=True,
+                ),
             ]
         ),
         missing_dimensions=["scope", "audience_level"],
-        assessment_reasoning="The query is too broad and doesn't specify the user's background or specific interests."
+        assessment_reasoning="The query is too broad and doesn't specify the user's background or specific interests.",
     )
 
     # Run evaluation
     result = await evaluator.evaluate_clarification(
         query="Tell me about machine learning",
         output=mock_output,
-        context={"domain": "educational"}
+        context={"domain": "educational"},
     )
 
     print("=== Advanced Multi-Judge Evaluation Results ===")
@@ -619,7 +635,9 @@ async def run_advanced_evaluation_demo():
     print("\nJudge Results:")
     for judge_result in result.judge_results:
         if judge_result.success:
-            print(f"  {judge_result.model}: Score {judge_result.confidence:.1f}, Confidence {judge_result.confidence:.1f}")
+            print(
+                f"  {judge_result.model}: Score {judge_result.confidence:.1f}, Confidence {judge_result.confidence:.1f}"
+            )
         else:
             print(f"  {judge_result.model}: FAILED - {judge_result.error_message}")
 

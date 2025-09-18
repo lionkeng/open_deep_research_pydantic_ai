@@ -2,28 +2,29 @@
 """Quick test of multi-question clarification evaluation."""
 
 import asyncio
+import json
 import os
 import sys
-import json
 from pathlib import Path
-from typing import List, Dict, Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
+os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
 # Note: .env is loaded automatically when importing from src
 
 import httpx
-from agents.clarification import ClarificationAgent
-from agents.base import ResearchDependencies
-from models.metadata import ResearchMetadata
-from models.core import ResearchState, ResearchStage
-from models.api_models import APIKeys
 from pydantic import SecretStr
+
+from agents.base import ResearchDependencies
+from agents.clarification import ClarificationAgent
+from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 api_keys = APIKeys(openai=SecretStr(openai_api_key) if openai_api_key is not None else None)
+
 
 async def quick_test():
     """Quick test of multi-question clarification."""
@@ -34,25 +35,25 @@ async def quick_test():
         {
             "query": "What is the capital of France?",
             "expected_clarification": False,
-            "description": "Specific query - no clarification needed"
+            "description": "Specific query - no clarification needed",
         },
         {
             "query": "I want to learn about machine learning",
             "expected_clarification": True,
             "min_questions": 2,
-            "description": "Broad ML query - needs multiple clarifications"
+            "description": "Broad ML query - needs multiple clarifications",
         },
         {
             "query": "Help me design my system architecture",
             "expected_clarification": True,
             "min_questions": 3,
-            "description": "Architecture query - needs detailed clarifications"
+            "description": "Architecture query - needs detailed clarifications",
         },
         {
             "query": "Tell me about Python",
             "expected_clarification": True,
             "min_questions": 1,
-            "description": "Ambiguous query - could be language or snake"
+            "description": "Ambiguous query - could be language or snake",
         },
     ]
 
@@ -70,29 +71,28 @@ async def quick_test():
                 request_id=f"quick-test-{i}",
                 user_id="test-user",
                 session_id="quick-session",
-                user_query=test_case['query'],
+                user_query=test_case["query"],
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
-                http_client=http_client,
-                api_keys=api_keys,
-                research_state=state,
-                usage=None
+                http_client=http_client, api_keys=api_keys, research_state=state, usage=None
             )
 
             try:
-                result = await agent.agent.run(test_case['query'], deps=deps)
+                result = await agent.agent.run(test_case["query"], deps=deps)
                 output = result.output  # This will be a ClarifyWithUser object
 
                 # Check if clarification expectation matches
-                correct_decision = output.needs_clarification == test_case.get('expected_clarification', False)
+                correct_decision = output.needs_clarification == test_case.get(
+                    "expected_clarification", False
+                )
 
                 # Check question count if clarification is needed
                 question_count_ok = True
                 if output.needs_clarification and output.request:
                     num_questions = len(output.request.questions)
-                    min_expected = test_case.get('min_questions', 1)
+                    min_expected = test_case.get("min_questions", 1)
                     if isinstance(min_expected, int):
                         question_count_ok = num_questions >= min_expected
                     else:
@@ -118,56 +118,58 @@ async def quick_test():
                     print(f"   📌 Required: {required}, Optional: {optional}")
 
                     if not question_count_ok:
-                        print(f"   ⚠️  Expected at least {min_expected} questions, got {num_questions}")
+                        print(
+                            f"   ⚠️  Expected at least {min_expected} questions, got {num_questions}"
+                        )
                 else:
-                    print(f"   ✅ No clarification needed - query is clear")
+                    print("   ✅ No clarification needed - query is clear")
                     print(f"   Reasoning: {output.reasoning[:100]}...")
 
                 # Overall result
                 success = correct_decision and question_count_ok
                 print(f"   Result: {'✅ PASS' if success else '❌ FAIL'}")
 
-                results.append({
-                    "test": test_case['description'],
-                    "success": success,
-                    "needs_clarification": output.needs_clarification,
-                    "num_questions": len(output.request.questions) if output.request else 0
-                })
+                results.append(
+                    {
+                        "test": test_case["description"],
+                        "success": success,
+                        "needs_clarification": output.needs_clarification,
+                        "num_questions": len(output.request.questions) if output.request else 0,
+                    }
+                )
 
             except Exception as e:
                 print(f"   ❌ Error: {e}")
-                results.append({
-                    "test": test_case['description'],
-                    "success": False,
-                    "error": str(e)
-                })
+                results.append(
+                    {"test": test_case["description"], "success": False, "error": str(e)}
+                )
 
     # Summary
     print("\n" + "=" * 60)
     print("📊 SUMMARY")
     print("=" * 60)
 
-    successful = sum(1 for r in results if r['success'])
+    successful = sum(1 for r in results if r["success"])
     total = len(results)
 
     print(f"✅ Passed: {successful}/{total}")
     print(f"❌ Failed: {total - successful}/{total}")
 
     # Multi-question statistics
-    multi_q_results = [r for r in results if r.get('num_questions', 0) > 0]
+    multi_q_results = [r for r in results if r.get("num_questions", 0) > 0]
     if multi_q_results:
-        avg_questions = sum(r['num_questions'] for r in multi_q_results) / len(multi_q_results)
-        print(f"\n📈 Multi-Question Statistics:")
+        avg_questions = sum(r["num_questions"] for r in multi_q_results) / len(multi_q_results)
+        print("\n📈 Multi-Question Statistics:")
         print(f"   Average questions: {avg_questions:.1f}")
         print(f"   Max questions: {max(r['num_questions'] for r in multi_q_results)}")
         print(f"   Min questions: {min(r['num_questions'] for r in multi_q_results)}")
 
     # Save results
-    results_dir = Path('./eval_results')
+    results_dir = Path("./eval_results")
     results_dir.mkdir(exist_ok=True)
-    results_file = results_dir / 'quick_test_results.json'
+    results_file = results_dir / "quick_test_results.json"
 
-    with open(results_file, 'w') as f:
+    with open(results_file, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\n💾 Results saved to {results_file}")
 

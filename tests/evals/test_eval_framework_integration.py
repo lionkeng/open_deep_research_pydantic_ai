@@ -12,88 +12,94 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # Suppress logfire prompts
-os.environ['LOGFIRE_IGNORE_NO_CONFIG'] = '1'
+os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
-# Import evaluation components
-from tests.evals.run_clarification_eval import MultiQuestionClarificationEvaluator
-from tests.evals.run_query_transformation_eval import QueryTransformationEvaluator
-from tests.evals.base_multi_judge import BaseMultiJudgeEvaluator, VotingMethod
-from tests.evals.clarification_multi_judge_adapter import ClarificationMultiJudgeAdapter
-from tests.evals.query_transformation_multi_judge_adapter import QueryTransformationMultiJudgeAdapter
-from tests.evals.regression_tracker_fixed import PerformanceTracker
+from agents.base import ResearchDependencies
 
 # Import agents and dependencies
 from agents.clarification import ClarificationAgent
 from agents.query_transformation import QueryTransformationAgent
-from agents.base import ResearchDependencies
-from models.core import ResearchState, ResearchStage
-from models.metadata import ResearchMetadata
 from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
+from tests.evals.base_multi_judge import BaseMultiJudgeEvaluator, VotingMethod
+from tests.evals.clarification_multi_judge_adapter import ClarificationMultiJudgeAdapter
+from tests.evals.query_transformation_multi_judge_adapter import (
+    QueryTransformationMultiJudgeAdapter,
+)
+from tests.evals.regression_tracker_fixed import PerformanceTracker
+
+# Import evaluation components
+from tests.evals.run_clarification_eval import MultiQuestionClarificationEvaluator
+from tests.evals.run_query_transformation_eval import QueryTransformationEvaluator
 
 
+@pytest.mark.asyncio
 async def test_clarification_evaluation():
     """Test clarification agent evaluation pipeline."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Clarification Agent Evaluation")
-    print("="*60)
+    print("=" * 60)
 
     # Initialize evaluator
     evaluator = MultiQuestionClarificationEvaluator()
 
     # Load dataset (testing embedded loader)
     print("Loading YAML dataset...")
-    dataset = evaluator.load_dataset_from_yaml(categories=["golden_standard"])
+    dataset = evaluator.load_dataset_from_yaml(categories=["multi_question_cases"])
     print(f"✓ Loaded {len(dataset.samples)} test cases")
 
     # Test multi-judge evaluation
     adapter = ClarificationMultiJudgeAdapter()
     multi_judge = BaseMultiJudgeEvaluator(
-        adapter=adapter,
-        voting_method=VotingMethod.CONFIDENCE_WEIGHTED,
-        consensus_threshold=0.7
+        adapter=adapter, voting_method=VotingMethod.CONFIDENCE_WEIGHTED, consensus_threshold=0.7
     )
 
     # Get first test case
     if dataset.samples:
         sample = dataset.samples[0]
-        print(f"\nEvaluating: '{sample.inputs.get('query', 'N/A')}'")
+        # Handle both dict and Pydantic model inputs
+        query = (
+            sample.inputs.get("query", "N/A")
+            if hasattr(sample.inputs, "get")
+            else getattr(sample.inputs, "query", "N/A")
+        )
+        print(f"\nEvaluating: '{query}'")
 
         # Run agent
         agent = ClarificationAgent()
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             state = ResearchState(
                 request_id="test-clarification",
-                user_query=sample.inputs.get("query", ""),
+                user_query=query,
                 current_stage=ResearchStage.CLARIFICATION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=APIKeys(
                     openai=SecretStr(key) if (key := os.getenv("OPENAI_API_KEY")) else None
                 ),
-                research_state=state
+                research_state=state,
             )
 
             try:
-                result = await agent.agent.run(sample.inputs.get("query", ""), deps=deps)
+                result = await agent.agent.run(query, deps=deps)
                 print(f"✓ Agent output: needs_clarification={result.output.needs_clarification}")
 
                 # Multi-judge evaluation
                 consensus = await multi_judge.evaluate(
-                    input=sample.inputs.get("query", ""),
-                    output=result.output,
-                    context={"test": True}
+                    input=query, output=result.output, context={"test": True}
                 )
                 print(f"✓ Multi-judge consensus: score={consensus.final_score:.3f}")
 
@@ -105,60 +111,65 @@ async def test_clarification_evaluation():
     return False
 
 
+@pytest.mark.asyncio
 async def test_query_transformation_evaluation():
     """Test query transformation agent evaluation pipeline."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Query Transformation Agent Evaluation")
-    print("="*60)
+    print("=" * 60)
 
     # Initialize evaluator
     evaluator = QueryTransformationEvaluator()
 
     # Load dataset (testing embedded loader)
     print("Loading YAML dataset...")
-    dataset = evaluator.load_dataset_from_yaml(categories=["golden_standard"])
-    print(f"✓ Loaded {len(dataset.samples)} test cases")
+    dataset = evaluator.load_dataset_from_yaml(categories=["golden_standard_cases"])
+    # Handle both Dataset structures (cases vs samples)
+    test_cases = dataset.cases if hasattr(dataset, "cases") else dataset.samples
+    print(f"✓ Loaded {len(test_cases)} test cases")
 
     # Test multi-judge evaluation
     adapter = QueryTransformationMultiJudgeAdapter()
     multi_judge = BaseMultiJudgeEvaluator(
-        adapter=adapter,
-        voting_method=VotingMethod.EXPERT_WEIGHTED,
-        consensus_threshold=0.75
+        adapter=adapter, voting_method=VotingMethod.EXPERT_WEIGHTED, consensus_threshold=0.75
     )
 
     # Get first test case
-    if dataset.samples:
-        sample = dataset.samples[0]
-        print(f"\nEvaluating: '{sample.inputs.get('query', 'N/A')}'")
+    if test_cases:
+        sample = test_cases[0]
+        # Handle both dict and Pydantic model inputs
+        query = (
+            sample.inputs.get("query", "N/A")
+            if hasattr(sample.inputs, "get")
+            else getattr(sample.inputs, "query", "N/A")
+        )
+        print(f"\nEvaluating: '{query}'")
 
         # Run agent
         agent = QueryTransformationAgent()
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             state = ResearchState(
                 request_id="test-transformation",
-                user_query=sample.inputs.get("query", ""),
+                user_query=query,
                 current_stage=ResearchStage.RESEARCH_EXECUTION,
-                metadata=ResearchMetadata()
+                metadata=ResearchMetadata(),
             )
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=APIKeys(
                     openai=SecretStr(key) if (key := os.getenv("OPENAI_API_KEY")) else None
                 ),
-                research_state=state
+                research_state=state,
             )
 
             try:
-                result = await agent.agent.run(sample.inputs.get("query", ""), deps=deps)
+                result = await agent.agent.run(query, deps=deps)
                 output = result.output
                 print(f"✓ Agent output: {len(output.search_queries.queries)} queries")
 
                 # Multi-judge evaluation
                 consensus = await multi_judge.evaluate(
-                    input=sample.inputs.get("query", ""),
-                    output=output,
-                    context={"test": True}
+                    input=query, output=output, context={"test": True}
                 )
                 print(f"✓ Multi-judge consensus: score={consensus.final_score:.3f}")
 
@@ -170,11 +181,12 @@ async def test_query_transformation_evaluation():
     return False
 
 
+@pytest.mark.asyncio
 async def test_regression_tracking():
     """Test regression tracking system."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Regression Tracking System")
-    print("="*60)
+    print("=" * 60)
 
     # Initialize tracker with test database
     tracker = PerformanceTracker(db_path="test_regression.db")
@@ -183,8 +195,7 @@ async def test_regression_tracking():
     try:
         # Run a minimal evaluation
         metrics, alerts = await tracker.run_performance_evaluation(
-            git_commit="test-commit-123",
-            model_version="test-model-v1"
+            git_commit="test-commit-123", model_version="test-model-v1"
         )
 
         print(f"✓ Tracked metrics: accuracy={metrics.accuracy:.3f}")
@@ -201,15 +212,17 @@ async def test_regression_tracking():
     finally:
         # Cleanup test database
         import os
+
         if os.path.exists("test_regression.db"):
             os.remove("test_regression.db")
 
 
+@pytest.mark.asyncio
 async def test_framework_integration():
     """Test full framework integration."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Testing Full Framework Integration")
-    print("="*60)
+    print("=" * 60)
 
     results = {}
 
@@ -230,9 +243,9 @@ async def test_framework_integration():
     results["regression"] = await test_regression_tracking()
 
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Integration Test Summary")
-    print("="*60)
+    print("=" * 60)
 
     for component, success in results.items():
         status = "✓ PASSED" if success else "✗ FAILED"
@@ -251,13 +264,13 @@ async def test_framework_integration():
 def main():
     """Main entry point."""
     print("\n🚀 Evaluation Framework Integration Test")
-    print("="*60)
+    print("=" * 60)
     print("This test verifies all evaluation components work together:")
     print("- YAML dataset loading")
     print("- Multi-judge consensus evaluation")
     print("- Regression tracking")
     print("- Both agent evaluations")
-    print("="*60)
+    print("=" * 60)
 
     success = asyncio.run(test_framework_integration())
 

@@ -4,57 +4,53 @@ This module provides the adapter implementation for evaluating QueryTransformati
 outputs using the generalized multi-judge framework.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from tests.evals.base_multi_judge import (
-    AgentEvaluationAdapter,
-    EvaluationDimension,
-    JudgeExpertise
-)
 from models.research_plan_models import TransformedQuery
+from tests.evals.base_multi_judge import AgentEvaluationAdapter, EvaluationDimension, JudgeExpertise
 
 
 class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, TransformedQuery]):
     """Adapter for evaluating QueryTransformationAgent outputs with multi-judge consensus."""
 
-    def get_evaluation_dimensions(self) -> List[EvaluationDimension]:
+    def get_evaluation_dimensions(self) -> list[EvaluationDimension]:
         """Return evaluation dimensions specific to query transformation tasks."""
         return [
             EvaluationDimension(
                 name="search_query_relevance",
                 description="How relevant and useful are the generated search queries for the original query?",
-                weight=1.3  # High weight - core functionality
+                weight=1.3,  # High weight - core functionality
             ),
             EvaluationDimension(
                 name="objective_coverage",
                 description="How well do the research objectives cover the key aspects of the query?",
-                weight=1.2
+                weight=1.2,
             ),
             EvaluationDimension(
                 name="plan_coherence",
                 description="How logical and well-structured is the research plan?",
-                weight=1.1
+                weight=1.1,
             ),
             EvaluationDimension(
                 name="query_diversity",
                 description="How diverse and comprehensive are the search queries?",
-                weight=1.0
+                weight=1.0,
             ),
             EvaluationDimension(
                 name="methodology_quality",
                 description="How appropriate and thorough is the research methodology?",
-                weight=1.0
+                weight=1.0,
             ),
             EvaluationDimension(
                 name="transformation_completeness",
                 description="Does the transformation capture all important aspects of the original query?",
-                weight=1.2
+                weight=1.2,
             ),
             EvaluationDimension(
                 name="actionability",
                 description="How actionable and executable is the transformed query plan?",
-                weight=1.1
-            )
+                weight=1.1,
+            ),
         ]
 
     def format_output_for_evaluation(self, output: TransformedQuery) -> str:
@@ -62,7 +58,7 @@ class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, Transform
         lines = [
             f"Confidence Score: {output.confidence_score:.2f}",
             "\nResearch Plan:",
-            f"Main Objective: {output.research_plan.main_objective}"
+            f"Main Objective: {output.research_plan.main_objective}",
         ]
 
         # Add objectives
@@ -91,23 +87,28 @@ class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, Transform
         return "\n".join(lines)
 
     def create_evaluation_prompt(
-        self,
-        input: str,
-        output: TransformedQuery,
-        context: Optional[Dict[str, Any]] = None
+        self, input: str, output: TransformedQuery, context: dict[str, Any] | None = None
     ) -> str:
         """Create the evaluation prompt for judges."""
 
         # Format objectives
-        objectives_text = "\n".join([
-            f"- {obj.objective}" for obj in output.research_plan.objectives
-        ]) if output.research_plan.objectives else "No objectives generated"
+        objectives_text = (
+            "\n".join([f"- {obj.objective}" for obj in output.research_plan.objectives])
+            if output.research_plan.objectives
+            else "No objectives generated"
+        )
 
         # Format search queries
-        search_queries_text = "\n".join([
-            f"- {sq.query} (Intent: {sq.search_intent})"
-            for sq in output.search_queries.queries[:10]  # Limit to first 10
-        ]) if output.search_queries.queries else "No search queries generated"
+        search_queries_text = (
+            "\n".join(
+                [
+                    f"- {sq.query} (Intent: {sq.search_intent})"
+                    for sq in output.search_queries.queries[:10]  # Limit to first 10
+                ]
+            )
+            if output.search_queries.queries
+            else "No search queries generated"
+        )
 
         prompt = f"""
         Original Query: {input}
@@ -124,7 +125,7 @@ class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, Transform
         Search Queries ({len(output.search_queries.queries)}):
         {search_queries_text}
 
-        Key Topics: {', '.join(output.key_topics) if output.key_topics else 'None identified'}
+        Key Topics: {", ".join(output.key_topics) if output.key_topics else "None identified"}
 
         Confidence Score: {output.confidence_score:.2f}
         """
@@ -144,10 +145,10 @@ class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, Transform
         """Check if the transformation output is valid for evaluation."""
         # Valid if it has objectives and search queries
         return (
-            output.research_plan is not None and
-            len(output.research_plan.objectives) > 0 and
-            output.search_queries is not None and
-            len(output.search_queries.queries) > 0
+            output.research_plan is not None
+            and len(output.research_plan.objectives) > 0
+            and output.search_queries is not None
+            and len(output.search_queries.queries) > 0
         )
 
     def get_expertise_context(self, expertise: JudgeExpertise) -> str:
@@ -172,6 +173,6 @@ class QueryTransformationMultiJudgeAdapter(AgentEvaluationAdapter[str, Transform
             JudgeExpertise.GENERAL: (
                 "You are a general-purpose evaluator with broad research expertise. "
                 "Consider all aspects of the query transformation holistically. "
-            )
+            ),
         }
         return contexts.get(expertise, contexts[JudgeExpertise.GENERAL])
