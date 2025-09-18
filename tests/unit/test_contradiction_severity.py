@@ -1,19 +1,21 @@
 """Comprehensive tests for contradiction severity calculation system."""
 
 import math
-import pytest
 from datetime import datetime, timedelta
-from hypothesis import given, strategies as st
 
-from utils.validation import ContradictionSeverityCalculator
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
 from models.research_executor import (
-    Contradiction,
-    ResearchResults,
-    HierarchicalFinding,
-    ResearchSource,
     ConfidenceLevel,
+    Contradiction,
+    HierarchicalFinding,
     ImportanceLevel,
+    ResearchResults,
+    ResearchSource,
 )
+from utils.validation import ContradictionSeverityCalculator
 
 
 class TestContradictionSeverityCalculator:
@@ -380,11 +382,14 @@ class TestContradictionModel:
                 "actions": ["Cross-reference sources", "Seek expert review"]
             },
             severity_components={
+                "overall_severity": 0.8,
+                "raw_severity": 0.85,
                 "components": {
                     "base_severity": 1.0,
                     "confidence_factor": 0.9,
                     "credibility_factor": 0.8
-                }
+                },
+                "metadata": {}
             }
         )
 
@@ -405,6 +410,7 @@ class TestResearchResultsContradictionIntegration:
     @pytest.fixture
     def sample_research_results(self):
         """Create sample research results with contradictions."""
+        base_time = datetime.now()  # Use consistent base time
         findings = [
             HierarchicalFinding(
                 finding="AI will revolutionize healthcare",
@@ -418,7 +424,7 @@ class TestResearchResultsContradictionIntegration:
                     url="https://medical.edu/study1",
                     source_type="academic",
                     credibility_score=0.9,
-                    date=datetime.now()
+                    date=base_time
                 ),
             ),
             HierarchicalFinding(
@@ -433,7 +439,7 @@ class TestResearchResultsContradictionIntegration:
                     url="https://industry.com/survey",
                     source_type="research",
                     credibility_score=0.7,
-                    date=datetime.now() - timedelta(days=30)
+                    date=base_time - timedelta(days=30)
                 ),
             ),
         ]
@@ -457,9 +463,6 @@ class TestResearchResultsContradictionIntegration:
 
     def test_calculate_all_contradiction_severities(self, sample_research_results):
         """Test comprehensive severity calculation for all contradictions."""
-        # Initial severity is default
-        initial_severity = sample_research_results.contradictions[0].severity
-
         # Calculate comprehensive severities
         sample_research_results.calculate_all_contradiction_severities()
 
