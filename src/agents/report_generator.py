@@ -27,7 +27,8 @@ CITATION_CONTRACT_TEMPLATE = """### Citation Contract
 - When at least {min_citations} sources are available, include at least {min_citations} distinct
   citations. Aim for {preferred_citations} when enough sources exist.
 - Do not fabricate URLs or titles. Only cite sources provided in the context below.
-- End the draft with a `## Sources` table mapping `[Sx]` to full metadata.
+- Rely on `[Sx]` markers throughout; the system converts them into numbered footnotes. Do not
+  append a manual `## Sources` section.
 """
 
 REPORT_GENERATOR_SYSTEM_PROMPT_TEMPLATE = """
@@ -550,6 +551,26 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         )
         if not research_results or not research_results.sources:
             return report
+
+        redundant_titles = {"sources", "sources and citations"}
+
+        def _filter_sections(sections: list[Any]) -> list[Any]:
+            filtered: list[Any] = []
+            for section in sections:
+                title = getattr(section, "title", "")
+                if str(title).strip().lower() in redundant_titles:
+                    continue
+                if getattr(section, "subsections", None):
+                    section.subsections = [
+                        subsection
+                        for subsection in section.subsections
+                        if str(getattr(subsection, "title", "")).strip().lower()
+                        not in redundant_titles
+                    ]
+                filtered.append(section)
+            return filtered
+
+        report.sections = _filter_sections(report.sections)
 
         source_map: dict[str, ResearchSource] = {
             source.source_id: source for source in research_results.sources if source.source_id
