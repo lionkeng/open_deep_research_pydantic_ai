@@ -1,20 +1,31 @@
 """FastAPI application for the research API with SSE support."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from typing import Annotated
 
 import logfire
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import SecretStr
 
 from api.sse_handler import create_sse_response
+from api.task_manager import task_manager
 from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.logging import configure_logging
 from core.workflow import workflow
-from models.api_models import APIKeys, ConversationMessage
+from models.api_models import (
+    APIKeys,
+    ConversationMessage,
+)
+from models.api_models import (
+    ResearchRequest as APIResearchRequest,
+)
+from models.api_models import (
+    ResearchResponse as APIResearchResponse,
+)
 from models.clarification import ClarificationResponse
 from models.core import ResearchStage, ResearchState
 
@@ -30,6 +41,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
     # Shutdown logic
     await research_event_bus.cleanup()
+    await task_manager.shutdown()
     logfire.info("Deep Research API shutdown")
 
 
@@ -51,28 +63,23 @@ app.add_middleware(
 )
 
 
-class ResearchRequest(BaseModel):
-    """Request model for research endpoint."""
-
-    query: str = Field(description="Research query")
-    api_keys: APIKeys | None = Field(
-        default=None, description="Optional API keys for search services"
-    )
-    stream: bool = Field(default=True, description="Whether to stream updates via SSE")
-
-
-class ResearchResponse(BaseModel):
-    """Response model for research endpoint."""
-
-    request_id: str = Field(description="Unique request identifier")
-    status: str = Field(description="Request status")
-    message: str = Field(description="Status message")
-    state: ResearchState | None = Field(default=None, description="Research state if completed")
-
-
 # In-memory storage for active research sessions (use Redis in production)
 active_sessions: dict[str, ResearchState] = {}
 _sessions_lock = asyncio.Lock()  # Lock for thread-safe access to active_sessions
+
+
+def load_api_keys_from_env() -> APIKeys:
+    """Build APIKeys object from environment variables."""
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    tavily_key = os.getenv("TAVILY_API_KEY")
+
+    return APIKeys(
+        openai=SecretStr(openai_key) if openai_key else None,
+        anthropic=SecretStr(anthropic_key) if anthropic_key else None,
+        tavily=SecretStr(tavily_key) if tavily_key else None,
+    )
 
 
 @app.get("/")
@@ -85,12 +92,12 @@ async def root():
     }
 
 
-@app.post("/research", response_model=ResearchResponse)
+@app.post("/research", response_model=APIResearchResponse)
 async def start_research(
-    request: ResearchRequest,
+    request: APIResearchRequest,
     x_user_id: Annotated[str | None, Header(alias="X-User-ID")] = None,
     x_session_id: Annotated[str | None, Header(alias="X-Session-ID")] = None,
-):
+) -> APIResearchResponse:
     """Start a new research task.
 
     Args:
@@ -117,31 +124,41 @@ async def start_research(
             user_query=request.query,
             current_stage=ResearchStage.PENDING,
         )
-        active_sessions[request_id] = initial_state
+        initial_state.start_research()
+
+        async with _sessions_lock:
+            active_sessions[request_id] = initial_state
 
         # Start research in background with user context
-        asyncio.create_task(
+        _ = await task_manager.submit_research(
+            request_id,
             execute_research_background(
                 request_id,
                 request.query,
-                request.api_keys,
                 request.stream,
                 user_id,
                 session_id,
-            )
+            ),
+            metadata={
+                "user_id": user_id,
+                "session_id": session_id,
+                "stream": request.stream,
+            },
         )
 
-        return ResearchResponse(
+        return APIResearchResponse(
             request_id=request_id,
-            status="started",
+            status="accepted",
             message=(
-                "Research started. "
+                "Research accepted. "
                 + (
-                    f"Stream available at /research/{request_id}/stream"
+                    "Streaming updates enabled."
                     if request.stream
-                    else f"Poll /research/{request_id} for status"
+                    else "Polling required for progress."
                 )
             ),
+            stream_url=f"/research/{request_id}/stream" if request.stream else None,
+            report_url=f"/research/{request_id}/report",
         )
 
     except Exception as e:
@@ -152,7 +169,6 @@ async def start_research(
 async def execute_research_background(
     request_id: str,
     query: str,
-    api_keys: APIKeys | None,
     stream: bool,
     user_id: str = "api-user",
     session_id: str | None = None,
@@ -162,7 +178,6 @@ async def execute_research_background(
     Args:
         request_id: Research request ID
         query: Research query
-        api_keys: Optional API keys
         stream: Whether streaming is enabled
         user_id: User identifier
         session_id: Optional session identifier
@@ -172,18 +187,22 @@ async def execute_research_background(
         async with ResearchContextManager(
             user_id=user_id, session_id=session_id, request_id=request_id
         ):
-            # Execute research workflow with the proper request_id and user context
-            state = await workflow.execute_research(
+            api_keys = load_api_keys_from_env()
+            # Execute research workflow with the proper request_id
+            state = await workflow.run(
                 user_query=query,
                 api_keys=api_keys,
                 stream_callback=True if stream else None,
                 request_id=request_id,
-                user_id=user_id,
-                session_id=session_id,
             )
 
+            # Update state with user context
+            state.user_id = user_id
+            state.session_id = session_id
+
             # Store completed state
-            active_sessions[request_id] = state
+            async with _sessions_lock:
+                active_sessions[request_id] = state
 
     except Exception as e:
         logfire.error(f"Background research failed: {str(e)}")
@@ -195,7 +214,8 @@ async def execute_research_background(
             user_query=query,
         )
         error_state.set_error(str(e))
-        active_sessions[request_id] = error_state
+        async with _sessions_lock:
+            active_sessions[request_id] = error_state
 
 
 @app.get("/research/{request_id}")
@@ -378,10 +398,15 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
             user_id=state.user_id, session_id=state.session_id, request_id=request_id
         ):
             # Resume the workflow
-            updated_state = await workflow.resume_research(state)
+            updated_state = await workflow.resume_research(
+                state,
+                api_keys=load_api_keys_from_env(),
+                stream_callback=True,
+            )
 
             # Update session storage
-            active_sessions[request_id] = updated_state
+            async with _sessions_lock:
+                active_sessions[request_id] = updated_state
 
             return {
                 "request_id": request_id,

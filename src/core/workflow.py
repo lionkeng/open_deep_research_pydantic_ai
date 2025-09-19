@@ -769,3 +769,7 @@ class ResearchWorkflow:
                 )
 
                 return research_state
+
+
+# Create a module-level singleton instance for API usage
+workflow = ResearchWorkflow()
