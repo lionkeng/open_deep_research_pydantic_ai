@@ -204,7 +204,7 @@ class ResearchExecutorEvaluator:
                     min_sources=3,
                     expected_categories=["technical"],
                     expected_insights_themes=["performance", "ecosystem", "learning curve"],
-                    min_quality_score=0.65,
+                    min_overall_quality_score=0.65,
                 ),
                 evaluators=[
                     "FindingsRelevanceEvaluator",
@@ -688,7 +688,7 @@ class ResearchExecutorEvaluator:
                     "num_sources": len(result.output.sources),
                     "num_insights": len(result.output.key_insights),
                     "num_gaps": len(result.output.data_gaps),
-                    "quality_score": result.output.quality_score,
+                    "quality_score": result.output.overall_quality_score,
                 }
 
             # Add multi-judge result if available

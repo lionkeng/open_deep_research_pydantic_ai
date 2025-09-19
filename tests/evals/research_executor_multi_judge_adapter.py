@@ -79,8 +79,8 @@ class ResearchExecutorMultiJudgeAdapter(AgentEvaluationAdapter[str, ResearchResu
         if output.findings:
             for i, finding in enumerate(output.findings[:5], 1):  # Limit to first 5 for brevity
                 conf_text = (
-                    f"Confidence: {finding.confidence_level:.2f}"
-                    if finding.confidence_level
+                    f"Confidence: {finding.confidence_score:.2f}"
+                    if finding.confidence_score
                     else "Confidence: N/A"
                 )
                 cat_text = (
@@ -142,7 +142,7 @@ Key Insights ({len(output.key_insights)} total):
 Data Gaps ({len(output.data_gaps)} total):
 {chr(10).join(gaps_text)}
 
-Quality Score: {output.quality_score:.2f}
+Quality Score: {output.overall_quality_score:.2f}
 Execution Time: {output.execution_time.isoformat() if output.execution_time else "N/A"}"""
 
     def create_evaluation_prompt(
@@ -198,7 +198,7 @@ Provide your evaluation as a JSON object with scores for each dimension and your
         has_query = bool(output.query)
 
         # Must have a quality score
-        has_quality_score = output.quality_score is not None and output.quality_score >= 0
+        has_quality_score = output.overall_quality_score is not None and output.overall_quality_score >= 0
 
         return has_content and has_query and has_quality_score
 

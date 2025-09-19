@@ -15,7 +15,7 @@ from .core import (
     ResearchState,
 )
 from .report_generator import ReportMetadata, ReportSection, ResearchReport
-from .research_executor import ResearchFinding, ResearchResults, ResearchSource
+from .research_executor import ResearchResults, ResearchSource
 
 __all__ = [
     # Core models
@@ -30,7 +30,6 @@ __all__ = [
     "ClarificationResponse",
     # Research executor models
     "ResearchSource",
-    "ResearchFinding",
     "ResearchResults",
     # Report generator models
     "ReportSection",

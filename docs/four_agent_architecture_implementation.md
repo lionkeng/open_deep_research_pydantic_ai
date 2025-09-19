@@ -121,7 +121,7 @@ class ResearchResults(BaseModel):
 
     # Existing fields
     query: str
-    findings: list[ResearchFinding]
+    findings: list[HierarchicalFinding]
     sources: list[ResearchSource]
     key_insights: list[str]
     data_gaps: list[str]
@@ -153,7 +153,7 @@ class ResearchResults(BaseModel):
 class SynthesisResults(BaseModel):
     """Output from internal synthesis agent."""
 
-    findings: list[ResearchFinding]
+    findings: list[HierarchicalFinding]
     insights: list[str]
     gaps: list[str]
     patterns: dict[str, Any]
@@ -290,7 +290,7 @@ async def run(self, deps: ResearchDependencies) -> ResearchResults:
 async def add_report_context(ctx: RunContext[ResearchDependencies]) -> str:
     """Add research context for report generation."""
 
-    research_results = ctx.deps.research_state.findings
+    research_results = ctx.deps.research_state.research_results
 
     if not research_results:
         return "No research results available for report generation."
@@ -339,7 +339,7 @@ def _format_theme_clusters(self, clusters: dict[str, list[str]]) -> str:
 async def run(self, deps: ResearchDependencies) -> ReportOutput:
     """Generate report from research results."""
 
-    research_results = deps.research_state.findings
+    research_results = deps.research_state.research_results
 
     if not research_results:
         raise ValueError("No research results available for report generation")
@@ -422,7 +422,7 @@ async def _execute_research_stages(
         deps
     )
 
-    research_state.findings = research_results
+    research_state.research_results = research_results
     await emit_stage_completed(research_state.request_id, ResearchStage.RESEARCH_EXECUTION)
 
     # Stage 2: Report Generation (directly from research results)
@@ -542,7 +542,7 @@ class TestReportGeneratorDirect:
         )
 
         deps = Mock()
-        deps.research_state.findings = research_results
+        deps.research_state.research_results = research_results
 
         agent = ReportGeneratorAgent()
         report = await agent.run(deps)

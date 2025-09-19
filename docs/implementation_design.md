@@ -636,7 +636,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             content: str,
             source: str,
             relevance_score: float = 0.5
-        ) -> ResearchFinding:
+        ) -> HierarchicalFinding:
             """Extract structured finding from source content."""
             # Validate inputs
             if not content.strip():
@@ -649,7 +649,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
                 raise ValueError("Relevance score must be between 0.0 and 1.0")
 
             # Create structured finding
-            finding = ResearchFinding(
+            finding = HierarchicalFinding(
                 content=content.strip()[:2000],  # Limit content length
                 source=source,
                 relevance_score=relevance_score,
@@ -1609,7 +1609,7 @@ class ResearchExecutorAgent:
         self._search_semaphore = asyncio.Semaphore(3)  # Max 3 concurrent searches
         self._extraction_semaphore = asyncio.Semaphore(5)  # Max 5 concurrent extractions
 
-    async def execute_parallel_research(self, queries: list[str]) -> list[ResearchFinding]:
+    async def execute_parallel_research(self, queries: list[str]) -> list[HierarchicalFinding]:
         """Execute multiple research queries concurrently."""
         search_tasks = []
 
@@ -1630,7 +1630,7 @@ class ResearchExecutorAgent:
 
         return findings
 
-    async def _search_with_semaphore(self, query: str) -> list[ResearchFinding]:
+    async def _search_with_semaphore(self, query: str) -> list[HierarchicalFinding]:
         """Execute search with semaphore control."""
         async with self._search_semaphore:
             return await self.web_search(query)

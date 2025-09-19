@@ -1,18 +1,20 @@
 #!/usr/bin/env python
-"""Quick test to verify Research Executor evaluation framework works."""
+"""Quick tests to verify the Research Executor evaluation framework."""
 
 import asyncio
+import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from datetime import UTC, datetime
-
 from pydantic_evals.evaluators import EvaluatorContext
 
-from models.research_executor import ResearchFinding, ResearchResults, ResearchSource
+from models.research_executor import HierarchicalFinding, ResearchResults, ResearchSource
 from tests.evals.research_executor_evals import (
     ComprehensiveEvaluator,
     FindingsRelevanceEvaluator,
@@ -21,19 +23,19 @@ from tests.evals.research_executor_evals import (
 )
 
 
-async def test_basic_evaluation():
-    """Test that basic evaluation works."""
+@pytest.mark.asyncio
+async def test_basic_evaluation() -> float:
+    """Test that the findings relevance evaluator produces a score."""
 
-    # Create a sample research result
     result = ResearchResults(
         query="What is the capital of France?",
         findings=[
-            ResearchFinding(
+            HierarchicalFinding(
                 finding="Paris is the capital of France",
                 supporting_evidence=[
                     "According to official sources, Paris has been the capital since 987 AD"
                 ],
-                confidence_level=0.95,
+                confidence_score=0.95,
                 category="geography",
             )
         ],
@@ -47,11 +49,10 @@ async def test_basic_evaluation():
         ],
         key_insights=["Paris is a major European capital"],
         data_gaps=[],
-        quality_score=0.85,
+        overall_quality_score=0.85,
         execution_time=datetime.now(UTC),
     )
 
-    # Create evaluator context
     ctx = EvaluatorContext(
         name="test_basic",
         inputs={"query": "What is the capital of France?"},
@@ -64,32 +65,31 @@ async def test_basic_evaluation():
         metrics={},
     )
 
-    # Test with FindingsRelevanceEvaluator
     evaluator = FindingsRelevanceEvaluator()
     score = evaluator.evaluate(ctx)
-
-    print(f"✓ Basic evaluation working - Score: {score:.2f}")
+    assert score >= 0.0
     return score
 
 
-async def test_multi_judge():
+@pytest.mark.asyncio
+async def test_multi_judge() -> float:
     """Test multi-judge consensus evaluation."""
 
     result = ResearchResults(
         query="Explain quantum computing",
         findings=[
-            ResearchFinding(
+            HierarchicalFinding(
                 finding="Quantum computing uses quantum bits (qubits) that can exist in superposition",
                 supporting_evidence=["IBM Research: Qubits leverage quantum mechanical phenomena"],
-                confidence_level=0.9,
+                confidence_score=0.9,
                 category="technology",
             ),
-            ResearchFinding(
+            HierarchicalFinding(
                 finding="Quantum computers can solve certain problems exponentially faster than classical computers",
                 supporting_evidence=[
                     "Shor's algorithm demonstrates exponential speedup for factoring"
                 ],
-                confidence_level=0.85,
+                confidence_score=0.85,
                 category="technology",
             ),
         ],
@@ -106,11 +106,10 @@ async def test_multi_judge():
             "Current quantum computers are in the NISQ era",
         ],
         data_gaps=["Error correction methods still being developed"],
-        quality_score=0.88,
+        overall_quality_score=0.88,
         execution_time=datetime.now(UTC),
     )
 
-    # Create evaluator context
     ctx = EvaluatorContext(
         name="test_multi_judge",
         inputs={"query": "Explain quantum computing"},
@@ -127,12 +126,12 @@ async def test_multi_judge():
 
     evaluator = MultiJudgeConsensusEvaluator()
     score = evaluator.evaluate(ctx)
-
-    print(f"✓ Multi-judge evaluation working - Score: {score:.2f}")
+    assert score >= 0.0
     return score
 
 
-async def test_empty_result():
+@pytest.mark.asyncio
+async def test_empty_result() -> float:
     """Test evaluation with empty/minimal results."""
 
     result = ResearchResults(
@@ -141,11 +140,10 @@ async def test_empty_result():
         sources=[],
         key_insights=[],
         data_gaps=["No data available"],
-        quality_score=0.1,
+        overall_quality_score=0.1,
         execution_time=datetime.now(UTC),
     )
 
-    # Create evaluator context
     ctx = EvaluatorContext(
         name="test_empty",
         inputs={"query": "Test query"},
@@ -160,43 +158,29 @@ async def test_empty_result():
 
     evaluator = ComprehensiveEvaluator()
     score = evaluator.evaluate(ctx)
-
-    print(f"✓ Empty result evaluation working - Score: {score:.2f}")
+    assert score >= 0.0
     return score
 
 
-async def main():
-    """Run all quick tests."""
+async def main() -> None:
+    """Allow running the quick checks as a script."""
     print("Testing Research Executor Evaluation Framework...")
     print("-" * 50)
 
-    try:
-        # Test basic evaluation
-        score1 = await test_basic_evaluation()
+    score1 = await test_basic_evaluation()
 
-        # Test multi-judge (skip if no API key)
-        import os
+    if os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"):
+        score2 = await test_multi_judge()
+    else:
+        print("⚠ Skipping multi-judge test (no API keys found)")
+        score2 = None
 
-        if os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY"):
-            score2 = await test_multi_judge()
-        else:
-            print("⚠ Skipping multi-judge test (no API keys found)")
-            score2 = None
+    score3 = await test_empty_result()
 
-        # Test edge case
-        score3 = await test_empty_result()
-
-        print("-" * 50)
-        print("✅ All tests passed!")
-        score2_str = f"{score2:.2f}" if score2 is not None else "N/A"
-        print(f"Scores: Basic={score1:.2f}, Multi-judge={score2_str}, Empty={score3:.2f}")
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        sys.exit(1)
+    print("-" * 50)
+    print("✅ Quick evaluation checks completed")
+    score2_str = f"{score2:.2f}" if score2 is not None else "N/A"
+    print(f"Scores: Basic={score1:.2f}, Multi-judge={score2_str}, Empty={score3:.2f}")
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from models.core import (
     ResearchState,
 )
 from models.priority import Priority
-from models.research_executor import ResearchFinding
+from models.research_executor import ResearchResults
 from models.search_query_models import (
     ExecutionStrategy as BatchExecutionStrategy,
 )
@@ -220,7 +220,13 @@ class ResearchWorkflow:
             logfire.error(f"Agent {agent_type.value} failed: {e}")
             if agent_config.get("critical", False):
                 raise
-            return self._create_fallback(agent_type)
+            fallback = self._create_fallback(agent_type)
+            if agent_type == AgentType.RESEARCH_EXECUTOR:
+                return ResearchResults(
+                    query=deps.research_state.user_query,
+                    findings=[],
+                )
+            return fallback
 
     async def _execute_two_phase_clarification(
         self, deps: ResearchDependencies, user_query: str
@@ -499,21 +505,13 @@ class ResearchWorkflow:
                 deps.search_results = await self._execute_search_queries(batch, deps)
 
             results = await self._run_agent_with_circuit_breaker(AgentType.RESEARCH_EXECUTOR, deps)
-
-            if isinstance(results, list):
-                research_state.findings = results
-            else:
-                research_state.research_results = results
-                hierarchical = list(getattr(results, "findings", []))
-                research_state.findings = [
-                    ResearchFinding.from_hierarchical(finding) for finding in hierarchical
-                ]
+            research_state.research_results = results
 
             await emit_stage_completed(
                 research_state.request_id,
                 ResearchStage.RESEARCH_EXECUTION,
                 True,
-                {"findings_count": len(getattr(results, "findings", []))},
+                {"findings_count": (len(getattr(results, "findings", [])) if results else 0)},
             )
 
             research_state.advance_stage()  # Move to REPORT_GENERATION

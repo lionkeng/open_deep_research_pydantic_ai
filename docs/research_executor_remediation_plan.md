@@ -7,8 +7,8 @@ This plan addresses the gaps identified in `src/agents/research_executor.py` rel
 ## Phase 0: Clarify Open Questions ✅
 
 **Structured Output Path**
-- `ResearchWorkflow._execute_research_stages` assigns whatever the research executor returns to `research_state.findings` and immediately reads `len(findings.key_findings)` (`src/core/workflow.py:476-485`). There is no adapter for raw strings—downstream stages assume a structured object with `key_findings`, `executive_summary`, etc.
-- Current typing mismatch (`ResearchState.findings` is `list[ResearchFinding]`) confirms we must update the model layer alongside the agent so the stored value becomes a `ResearchResults` instance rather than free-form text. No feature flag or compatibility layer exists today.
+- `ResearchWorkflow._execute_research_stages` assigns whatever the research executor returns to `research_state.research_results` and immediately reads `len(findings.key_findings)` (`src/core/workflow.py:476-485`). There is no adapter for raw strings—downstream stages assume a structured object with `key_findings`, `executive_summary`, etc.
+- Current typing mismatch (`ResearchState.findings` is `list[HierarchicalFinding]`) confirms we must update the model layer alongside the agent so the stored value becomes a `ResearchResults` instance rather than free-form text. No feature flag or compatibility layer exists today.
 
 **Search Results Delivery**
 - The workflow only enriches dependencies with the `SearchQueryBatch` (`src/core/workflow.py:190-211`); nothing fetches real search results before invoking the agent. `ResearchDependencies` exposes `search_queries` but not `search_results` (`src/agents/base.py:127-141`).

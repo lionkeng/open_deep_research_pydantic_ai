@@ -8,7 +8,7 @@ from core.events import (
     research_event_bus,
 )
 from models.core import ResearchStage, ResearchState
-from models.research_executor import ResearchFinding, ResearchSource
+from models.research_executor import HierarchicalFinding, ResearchResults, ResearchSource
 
 
 def test_research_state():
@@ -35,24 +35,27 @@ def test_research_state():
     assert state.is_completed()
 
 
-def test_research_finding():
-    """Test research finding creation."""
+def test_research_results_store_findings():
+    """Test research results capture hierarchical findings."""
     source = ResearchSource(
         url="https://example.com",
         title="Quantum Computing Research",
-        relevance_score=0.9
+        relevance_score=0.9,
     )
 
-    finding = ResearchFinding(
+    finding = HierarchicalFinding(
         finding="Quantum computing uses quantum bits",
-        confidence_level=0.85,
+        supporting_evidence=["Evidence 1", "Evidence 2"],
+        confidence_score=0.85,
         source=source,
-        supporting_evidence=["Evidence 1", "Evidence 2"]
+        category="technology",
     )
 
-    assert finding.finding == "Quantum computing uses quantum bits"
-    assert finding.confidence_level == 0.85
-    assert finding.source.relevance_score == 0.9
+    results = ResearchResults(query="Quantum computing", findings=[finding])
+
+    assert results.findings[0].finding == "Quantum computing uses quantum bits"
+    assert results.findings[0].confidence_score == 0.85
+    assert results.findings[0].source.relevance_score == 0.9
 
 
 @pytest.mark.asyncio

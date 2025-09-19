@@ -225,7 +225,7 @@ class ResearchResults(BaseModel):
     """Output from Research Executor."""
     query: str
     execution_time: datetime
-    findings: List[ResearchFinding]
+    findings: List[HierarchicalFinding]
     sources: List[ResearchSource]
     execution_stats: Dict[str, Any] = Field(
         default_factory=dict,
@@ -465,7 +465,7 @@ import aiohttp
 import logfire
 
 from ..models.query_transformation import SearchQueryBatch, SearchQuery
-from ..models.research_executor import ResearchResults, ResearchFinding
+from ..models.research_executor import ResearchResults, HierarchicalFinding
 from ..core.search_service import SearchService
 from .base import BaseAgent
 
@@ -586,7 +586,7 @@ class SimplifiedResearchExecutor(BaseAgent[ResearchResults]):
                 logfire.error(f"Search failed for: {query.query}", error=str(e))
                 raise
 
-    def _aggregate_findings(self, results: List[Dict[str, Any]]) -> List[ResearchFinding]:
+    def _aggregate_findings(self, results: List[Dict[str, Any]]) -> List[HierarchicalFinding]:
         """Aggregate search results into findings."""
         findings = []
 
@@ -601,7 +601,7 @@ class SimplifiedResearchExecutor(BaseAgent[ResearchResults]):
 
         # Create findings per objective
         for obj_id, obj_results in by_objective.items():
-            finding = ResearchFinding(
+            finding = HierarchicalFinding(
                 finding=f"Aggregated results for objective {obj_id}",
                 source="; ".join([r["query"].query for r in obj_results]),
                 confidence=0.8,

@@ -21,7 +21,6 @@ import logfire
 from core.context import get_current_context
 from models.core import ResearchStage
 from models.report_generator import ResearchReport
-from models.research_executor import ResearchFinding
 
 
 class ResearchEvent(ABC):
@@ -90,19 +89,6 @@ class AgentDelegationEvent(ResearchEvent):
     to_agent: str
     task_description: str
     context: dict[str, Any] | None = None
-
-    @property
-    def request_id(self) -> str:
-        return self._request_id
-
-
-@dataclass(frozen=True)
-class FindingDiscoveredEvent(ResearchEvent):
-    """Emitted when a new research finding is discovered."""
-
-    _request_id: str
-    finding: ResearchFinding
-    agent: str
 
     @property
     def request_id(self) -> str:

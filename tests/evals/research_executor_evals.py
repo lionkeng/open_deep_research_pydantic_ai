@@ -1,8 +1,8 @@
-"""
-Research Executor Agent Evaluation Framework using Pydantic Evals.
+"""Research Executor evaluation utilities.
 
-This module provides comprehensive evaluation capabilities for the research executor agent,
-following pydantic-ai evaluation patterns with custom evaluators, metrics, and LLM-as-judge approaches.
+This module wraps Pydantic-Evals to score `ResearchResults` objects using a mix of
+rule-based and LLM-as-judge evaluators. It mirrors the production quality metrics,
+covering relevance, completeness, and synthesis quality.
 """
 
 import asyncio
@@ -18,7 +18,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import httpx
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_ai import Agent
 from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
@@ -29,7 +29,7 @@ from agents.research_executor import ResearchExecutorAgent
 from models.api_models import APIKeys
 from models.core import ResearchStage, ResearchState
 from models.metadata import ResearchMetadata
-from models.research_executor import ResearchFinding, ResearchResults, ResearchSource
+from models.research_executor import HierarchicalFinding, ResearchResults, ResearchSource
 
 # Constants for evaluation scoring weights
 LLM_RELEVANCE_WEIGHT = 0.8
@@ -65,6 +65,8 @@ class ResearchExecutorInput(BaseModel):
 class ResearchExecutorExpectedOutput(BaseModel):
     """Expected output for research executor evaluation."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     min_findings: int | None = Field(
         default=None, description="Minimum number of findings expected"
     )
@@ -82,15 +84,22 @@ class ResearchExecutorExpectedOutput(BaseModel):
     expected_gaps: list[str] | None = Field(
         default=None, description="Expected data gaps to be identified"
     )
-    min_quality_score: float | None = Field(
-        default=None, ge=0.0, le=1.0, description="Minimum expected quality score"
+    min_overall_quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum expected overall quality score",
+        alias="min_quality_score",
     )
     source_credibility_threshold: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Minimum average source credibility"
     )
     confidence_calibration: str | None = Field(
         default=None,
-        description="Expected confidence calibration: well-calibrated, overconfident, underconfident",
+        description=(
+            "Expected confidence calibration: well-calibrated, overconfident, "
+            "underconfident"
+        ),
     )
     max_response_time: float | None = Field(
         default=None, gt=0.0, description="Maximum acceptable response time in seconds"
@@ -147,18 +156,31 @@ Return a JSON object with:
 
         async def run_evaluation():
             # Format findings for evaluation
-            findings_text = "\n\n".join(
-                [
-                    (
-                        f"Finding {i + 1}:\n"
-                        f"- Content: {finding.finding}\n"
-                        f"- Evidence: {', '.join(finding.supporting_evidence) if finding.supporting_evidence else 'None'}\n"
-                        f"- Confidence: {f'{finding.confidence_level:.2f}' if finding.confidence_level is not None else 'N/A'}\n"
-                        f"- Category: {finding.category or 'uncategorized'}"
+            formatted_findings = []
+            for index, finding in enumerate(output.findings):
+                evidence_summary = (
+                    ", ".join(finding.supporting_evidence)
+                    if finding.supporting_evidence
+                    else "None"
+                )
+                confidence_summary = (
+                    f"{finding.confidence_score:.2f}"
+                    if finding.confidence_score is not None
+                    else "N/A"
+                )
+                formatted_findings.append(
+                    "\n".join(
+                        [
+                            f"Finding {index + 1}:",
+                            f"- Content: {finding.finding}",
+                            f"- Evidence: {evidence_summary}",
+                            f"- Confidence: {confidence_summary}",
+                            f"- Category: {finding.category or 'uncategorized'}",
+                        ]
                     )
-                    for i, finding in enumerate(output.findings)
-                ]
-            )
+                )
+
+            findings_text = "\n\n".join(formatted_findings)
 
             evaluation_prompt = f"""
 Query: {output.query}
@@ -187,7 +209,9 @@ Consider semantic similarity, not just exact word matches.
                 # Check expected categories if provided
                 category_coverage = 1.0
                 if expected.expected_categories:
-                    finding_categories = set(f.category for f in output.findings if f.category)
+                    finding_categories = {
+                        f.category for f in output.findings if f.category
+                    }
                     covered_categories = finding_categories.intersection(
                         set(expected.expected_categories)
                     )
@@ -204,7 +228,7 @@ Consider semantic similarity, not just exact word matches.
             except Exception:
                 # Fallback to a simple heuristic if LLM evaluation fails
                 # Check if findings have good confidence and evidence
-                avg_confidence = sum(f.confidence_level or 0.5 for f in output.findings) / len(
+                avg_confidence = sum(f.confidence_score or 0.5 for f in output.findings) / len(
                     output.findings
                 )
                 has_evidence = sum(1 for f in output.findings if f.supporting_evidence) / len(
@@ -359,7 +383,8 @@ Score each insight from 0.0 to 1.0 where:
 - 0.0-0.1 = Poor insight: No real value or insight provided
 
 IMPORTANT: This is different from relevance evaluation. Focus on QUALITY not RELEVANCE.
-Even if an insight is relevant to the query, it should score low if it lacks depth, actionability, or synthesis.
+Even if an insight is relevant to the query, it should score low if it lacks depth,
+actionability, or synthesis.
 
 Return a JSON object with:
 {
@@ -559,10 +584,10 @@ class ComprehensiveEvaluator(Evaluator):
             "has_findings": len(output.findings) > 0,
             "has_sources": len(output.sources) > 0,
             "has_insights": len(output.key_insights) > 0,
-            "has_quality_score": output.quality_score > 0,
+            "has_quality_score": output.overall_quality_score > 0,
             "findings_have_evidence": any(f.supporting_evidence for f in output.findings),
             "findings_have_confidence": all(
-                f.confidence_level is not None for f in output.findings
+                f.confidence_score is not None for f in output.findings
             ),
             "sources_have_relevance": any(s.relevance_score is not None for s in output.sources),
             "metadata_present": bool(output.metadata),
@@ -580,8 +605,13 @@ class ComprehensiveEvaluator(Evaluator):
 
         # Check quality score expectations
         quality_score_check = 1.0
-        if expected.min_quality_score and output.quality_score < expected.min_quality_score:
-            quality_score_check = output.quality_score / expected.min_quality_score
+        if (
+            expected.min_overall_quality_score
+            and output.overall_quality_score < expected.min_overall_quality_score
+        ):
+            quality_score_check = (
+                output.overall_quality_score / expected.min_overall_quality_score
+            )
 
         # Evaluate coherence between findings and insights
         coherence_score = self._evaluate_coherence(output)
@@ -629,21 +659,21 @@ class ConfidenceCalibrationEvaluator(Evaluator):
         if not output.findings:
             return 0.5
 
-        confidence_levels = [
-            f.confidence_level for f in output.findings if f.confidence_level is not None
+        confidence_scores = [
+            f.confidence_score for f in output.findings if f.confidence_score is not None
         ]
 
-        if not confidence_levels:
+        if not confidence_scores:
             return 0.3  # No confidence levels provided
 
         # Calculate confidence statistics
-        avg_confidence = sum(confidence_levels) / len(confidence_levels)
+        avg_confidence = sum(confidence_scores) / len(confidence_scores)
 
         # Check for appropriate confidence distribution
         distribution_score = 1.0
-        if all(c > 0.9 for c in confidence_levels):
+        if all(c > 0.9 for c in confidence_scores):
             distribution_score = 0.5  # Likely overconfident
-        elif all(c < 0.5 for c in confidence_levels):
+        elif all(c < 0.5 for c in confidence_scores):
             distribution_score = 0.5  # Likely underconfident
         elif 0.4 <= avg_confidence <= 0.8:
             distribution_score = 1.0  # Well-calibrated range
@@ -667,9 +697,9 @@ class ConfidenceCalibrationEvaluator(Evaluator):
                 calibration_match = 0.3
 
         # Check variance (should have some variation)
-        if len(confidence_levels) > 1:
-            variance = sum((c - avg_confidence) ** 2 for c in confidence_levels) / len(
-                confidence_levels
+        if len(confidence_scores) > 1:
+            variance = sum((c - avg_confidence) ** 2 for c in confidence_scores) / len(
+                confidence_scores
             )
             variance_score = min(1.0, variance * 10)  # Some variance is good
         else:
@@ -684,24 +714,24 @@ class ConfidenceCalibrationEvaluator(Evaluator):
 
         return final_score
 
-    def _evaluate_evidence_correlation(self, findings: list[ResearchFinding]) -> float:
+    def _evaluate_evidence_correlation(self, findings: list[HierarchicalFinding]) -> float:
         """Check if confidence correlates with evidence quality."""
         correlations = []
 
         for finding in findings:
-            if finding.confidence_level is not None:
+            if finding.confidence_score is not None:
                 evidence_count = len(finding.supporting_evidence)
                 has_source = finding.source is not None
 
                 # Higher confidence should have more evidence
-                if finding.confidence_level > 0.7:
+                if finding.confidence_score > 0.7:
                     if evidence_count > 0 and has_source:
                         correlations.append(1.0)
                     elif evidence_count > 0 or has_source:
                         correlations.append(0.7)
                     else:
                         correlations.append(0.3)
-                elif finding.confidence_level > 0.4:
+                elif finding.confidence_score > 0.4:
                     if evidence_count > 0 or has_source:
                         correlations.append(1.0)
                     else:
@@ -861,7 +891,8 @@ class CategoryCoverageEvaluator(Evaluator):
 #
 #         if output.findings:
 #             temporal_ratio = temporal_findings / len(output.findings)
-#             scores.append(min(1.0, temporal_ratio * 2))  # Boost as not all findings need temporal refs
+#             scores.append(min(1.0, temporal_ratio * 2))
+#             # Boost as not all findings need temporal references
 #
 #         # Check execution time is recent
 #         if output.execution_time:
@@ -968,20 +999,29 @@ class LLMJudgeEvaluator(Evaluator):
         """Use LLM to judge research quality."""
 
         # Format findings
-        findings_text = "\n".join(
-            [
-                f"- {f.finding} (Confidence: {f.confidence_level:.2f}, Category: {f.category or 'uncategorized'})"
-                for f in output.findings
-            ]
-        )
+        findings_lines: list[str] = []
+        for finding in output.findings:
+            confidence_text = (
+                f"{finding.confidence_score:.2f}" if finding.confidence_score else "N/A"
+            )
+            category_text = finding.category or "uncategorized"
+            findings_lines.append(
+                f"- {finding.finding} (Confidence: {confidence_text}, Category: {category_text})"
+            )
+        findings_text = "\n".join(findings_lines)
 
         # Format sources
-        sources_text = "\n".join(
-            [
-                f"- {s.title} ({s.url or 'no url'}, Relevance: {s.relevance_score:.2f if s.relevance_score else 'unknown'})"
-                for s in output.sources
-            ]
-        )
+        sources_lines: list[str] = []
+        for source in output.sources:
+            relevance = (
+                f"{source.relevance_score:.2f}"
+                if source.relevance_score is not None
+                else "unknown"
+            )
+            sources_lines.append(
+                f"- {source.title} ({source.url or 'no url'}, Relevance: {relevance})"
+            )
+        sources_text = "\n".join(sources_lines)
 
         # Format insights
         insights_text = "\n".join([f"- {insight}" for insight in output.key_insights])
@@ -1006,7 +1046,7 @@ class LLMJudgeEvaluator(Evaluator):
         Data Gaps Identified:
 {gaps_text}
 
-        Overall Quality Score: {output.quality_score:.2f}
+        Overall Quality Score: {output.overall_quality_score:.2f}
 
         Please evaluate this research on a scale of 0-10 for:
         1. Comprehensiveness (0-10): How thoroughly was the query addressed?
@@ -1104,11 +1144,21 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         """Use multiple LLM judges with consensus voting."""
 
         # Format research output for evaluation
-        findings_summary = (
-            f"{len(output.findings)} findings with average confidence {sum(f.confidence_level for f in output.findings if f.confidence_level) / len(output.findings):.2f}"
-            if output.findings
-            else "No findings"
-        )
+        if output.findings:
+            confidence_values = [
+                f.confidence_score for f in output.findings if f.confidence_score
+            ]
+            average_confidence = (
+                sum(confidence_values) / len(output.findings)
+                if confidence_values
+                else 0.0
+            )
+            findings_summary = (
+                f"{len(output.findings)} findings with average confidence "
+                f"{average_confidence:.2f}"
+            )
+        else:
+            findings_summary = "No findings"
         sources_summary = f"{len(output.sources)} sources" if output.sources else "No sources"
         insights_summary = (
             f"{len(output.key_insights)} key insights" if output.key_insights else "No insights"
@@ -1127,7 +1177,7 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         - {sources_summary}
         - {insights_summary}
         - {gaps_summary}
-        - Overall Quality Score: {output.quality_score:.2f}
+        - Overall Quality Score: {output.overall_quality_score:.2f}
 
         Sample Finding: {output.findings[0].finding if output.findings else "None"}
         Sample Insight: {output.key_insights[0] if output.key_insights else "None"}
@@ -1140,7 +1190,9 @@ class MultiJudgeConsensusEvaluator(Evaluator):
         5. Synthesis Quality: How well was information synthesized?
         6. Confidence: Your confidence in this evaluation
 
-        Return JSON: {{"comprehensiveness": X, "source_quality": X, "finding_relevance": X, "insight_value": X, "synthesis_quality": X, "confidence": X, "reasoning": "brief explanation"}}
+        Return JSON: {"comprehensiveness": X, "source_quality": X,
+        "finding_relevance": X, "insight_value": X, "synthesis_quality": X,
+        "confidence": X, "reasoning": "brief explanation"}
         """
 
         # Collect evaluations from all judges
@@ -1257,7 +1309,7 @@ def create_research_executor_dataset() -> Dataset:
                 max_sources=10,
                 expected_categories=["technical", "business"],
                 expected_insights_themes=["performance", "scalability", "ecosystem"],
-                min_quality_score=0.7,
+                min_overall_quality_score=0.7,
             ),
             evaluators=[
                 FindingsRelevanceEvaluator(),
@@ -1283,7 +1335,7 @@ def create_research_executor_dataset() -> Dataset:
                 expected_categories=["scientific", "medical"],
                 expected_gaps=["clinical trials", "long-term effects"],
                 source_credibility_threshold=0.7,
-                min_quality_score=0.75,
+                min_overall_quality_score=0.75,
             ),
             evaluators=[
                 FindingsRelevanceEvaluator(),
@@ -1524,7 +1576,11 @@ def create_research_executor_dataset() -> Dataset:
         Case(
             name="perf_complex_synthesis",
             inputs=ResearchExecutorInput(
-                query="Comprehensive analysis of global renewable energy adoption trends, technological innovations, policy frameworks, and economic impacts across developed and developing nations",
+                query=(
+                    "Comprehensive analysis of global renewable energy adoption trends, "
+                    "technological innovations, policy frameworks, and economic impacts "
+                    "across developed and developing nations"
+                ),
                 complexity="complex",
             ),
             expected_output=ResearchExecutorExpectedOutput(min_findings=8, max_response_time=30.0),

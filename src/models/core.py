@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from .metadata import ResearchMetadata
 from .report_generator import ReportSection as ResearchSection
 from .report_generator import ResearchReport
-from .research_executor import ResearchFinding, ResearchResults
+from .research_executor import ResearchResults
 
 if TYPE_CHECKING:
     pass  # For future type checking imports
@@ -116,7 +116,6 @@ class ResearchState(BaseModel):
     research_plan: dict[str, Any] | None = Field(
         default=None, description="Research plan from query transformation"
     )
-    findings: list[ResearchFinding] = Field(default_factory=list, description="All findings")
     research_results: ResearchResults | None = Field(
         default=None, description="Structured research results from the executor"
     )
@@ -154,10 +153,6 @@ class ResearchState(BaseModel):
         """Check if research is completed (either successfully or with failure)."""
         return self.current_stage in (ResearchStage.COMPLETED, ResearchStage.FAILED)
 
-    def add_finding(self, finding: ResearchFinding) -> None:
-        """Add a research finding."""
-        self.findings.append(finding)
-
     def set_error(self, message: str) -> None:
         """Set error message and mark as failed."""
         self.error_message = message
@@ -193,7 +188,6 @@ __all__ = [
     "ClarificationResult",
     "ResearchState",
     "ResearchMetadata",
-    "ResearchFinding",
     "ResearchResults",
     "ResearchSection",
     "ResearchReport",

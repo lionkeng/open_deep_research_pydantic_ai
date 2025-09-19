@@ -26,7 +26,6 @@ from models.research_executor import (
     HierarchicalFinding,
     ImportanceLevel,
     PatternAnalysis,
-    ResearchFinding,
     ResearchResults,
     ResearchSource,
     SynthesisMetadata,
@@ -619,7 +618,4 @@ async def execute_research(
         deps.source_repository = InMemorySourceRepository()
         result = await agent_instance.run(deps)
         research_state.research_results = result
-        research_state.findings = [
-            ResearchFinding.from_hierarchical(finding) for finding in result.findings
-        ]
         return result

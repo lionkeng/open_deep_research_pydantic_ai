@@ -14,7 +14,6 @@ from models.api_models import APIKeys
 from models.core import ResearchStage, ResearchState
 from models.metadata import ResearchMetadata
 from models.report_generator import ReportSection, ResearchReport
-from models.research_executor import ResearchFinding, ResearchResults, ResearchSource
 
 
 class TestAgentPipelineIntegration:

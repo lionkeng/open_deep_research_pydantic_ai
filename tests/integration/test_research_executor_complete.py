@@ -354,7 +354,7 @@ class TestResearchExecutorComplete:
 
         # Validate findings relate to the query
         assert len(result.findings) > 0
-        findings_text = ' '.join(result.findings).lower()
+        findings_text = ' '.join(f.finding for f in result.findings).lower()
         relevant_terms = ['polar bear', 'climate', 'ice', 'arctic', 'habitat']
         found_terms = sum(1 for term in relevant_terms if term in findings_text)
         assert found_terms >= 2  # Should mention relevant concepts

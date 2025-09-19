@@ -2,18 +2,25 @@
 Comprehensive tests for the ReportGeneratorAgent.
 """
 
-import asyncio
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import pytest_asyncio
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 
+from agents.base import AgentConfiguration, ResearchDependencies
 from agents.report_generator import ReportGeneratorAgent
-from agents.base import ResearchDependencies, AgentConfiguration
-from models.report_generator import ResearchReport, ReportSection, ReportMetadata as ReportMetadataModel
 from models.api_models import APIKeys
-from models.core import ResearchState, ResearchStage
+from models.core import ResearchStage, ResearchState
 from models.metadata import ResearchMetadata
+from models.report_generator import (
+    ReportMetadata as ReportMetadataModel,
+)
+from models.report_generator import (
+    ReportSection,
+    ResearchReport,
+)
+
 
 class TestReportGeneratorAgent:
     """Test suite for ReportGeneratorAgent."""
@@ -72,14 +79,24 @@ class TestReportGeneratorAgent:
         assert agent.config is not None
 
     @pytest.mark.asyncio
-    async def test_comprehensive_report_generation(self, report_generator_agent, agent_dependencies, sample_research_data):
+    async def test_comprehensive_report_generation(
+        self,
+        report_generator_agent,
+        agent_dependencies,
+        sample_research_data,
+    ):
         """Test generation of comprehensive research report."""
         agent_dependencies.research_state.metadata.additional_context = sample_research_data
 
         mock_result = ResearchReport(
             title="Artificial Intelligence Advancements: A Comprehensive Analysis",
-            executive_summary="This report analyzes recent breakthroughs in AI across NLP, computer vision, and reinforcement learning domains.",
-            introduction="The field of artificial intelligence has witnessed remarkable progress...",
+            executive_summary=(
+                "This report analyzes recent breakthroughs in AI across NLP, computer vision, "
+                "and reinforcement learning domains."
+            ),
+            introduction=(
+                "The field of artificial intelligence has witnessed remarkable progress..."
+            ),
             sections=[
                 ReportSection(
                     title="Natural Language Processing Advances",
@@ -90,9 +107,12 @@ class TestReportGeneratorAgent:
                             content="The transformer architecture continues to evolve...",
                             subsections=[],
                             figures=[],
-                            citations=[
-                                "Smith, J., Doe, A. (2024). Advances in Transformer Models. Research Paper A. https://example.com/paper-a"
-                            ]
+                    citations=[
+                        (
+                            "Smith, J., Doe, A. (2024). Advances in Transformer Models. "
+                            "Research Paper A. https://example.com/paper-a"
+                        )
+                    ]
                         )
                     ],
                     figures=[],
@@ -117,7 +137,10 @@ class TestReportGeneratorAgent:
                     ]
                 )
             ],
-            conclusions="AI continues to advance rapidly across multiple domains with significant implications...",
+            conclusions=(
+                "AI continues to advance rapidly across multiple domains with significant "
+                "implications..."
+            ),
             recommendations=[
                 "Invest in transformer-based models",
                 "Explore multimodal AI applications",
@@ -131,7 +154,7 @@ class TestReportGeneratorAgent:
                 source_summary=[{"sources": 25}],
                 citation_audit={"confidence_level": 0.88}
             ),
-            quality_score=0.88
+            overall_quality_score=0.88
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -164,7 +187,7 @@ class TestReportGeneratorAgent:
             references=[],
             appendices={},
             metadata=ReportMetadataModel(),
-            quality_score=0.75
+            overall_quality_score=0.75
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -221,7 +244,7 @@ class TestReportGeneratorAgent:
             references=[],
             appendices={},
             metadata=ReportMetadataModel(),
-            quality_score=0.8
+            overall_quality_score=0.8
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -245,7 +268,10 @@ class TestReportGeneratorAgent:
                     subsections=[],
                     figures=[],
                     citations=[
-                        "Smith, J., Doe, A., Johnson, M. (2024). Important Research. Nature AI. DOI: 10.1234/example",
+                        (
+                            "Smith, J., Doe, A., Johnson, M. (2024). Important Research. "
+                            "Nature AI. DOI: 10.1234/example"
+                        ),
                         "Williams, R. (2023). Novel Approach. ICML 2023. https://conference.org/paper"
                     ]
                 )
@@ -257,7 +283,7 @@ class TestReportGeneratorAgent:
             ],
             appendices={},
             metadata=ReportMetadataModel(),
-            quality_score=0.85
+            overall_quality_score=0.85
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -300,7 +326,7 @@ class TestReportGeneratorAgent:
             metadata=ReportMetadataModel(
                 keywords=["recommendation_priority: high"]
             ),
-            quality_score=0.9
+            overall_quality_score=0.9
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -345,7 +371,7 @@ class TestReportGeneratorAgent:
                     "quality_score": 0.88
                 }
             ),
-            quality_score=0.92
+            overall_quality_score=0.92
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -356,7 +382,7 @@ class TestReportGeneratorAgent:
             assert metadata.created_at is not None
             assert len(metadata.source_summary) == 2
             assert metadata.citation_audit["confidence_level"] == 0.92
-            assert result.quality_score == 0.92
+            assert result.overall_quality_score == 0.92
 
     @pytest.mark.asyncio
     async def test_edge_case_minimal_report(self, report_generator_agent, agent_dependencies):
@@ -383,7 +409,7 @@ class TestReportGeneratorAgent:
             metadata=ReportMetadataModel(
                 classification="minimal"
             ),
-            quality_score=1.0
+            overall_quality_score=1.0
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -417,7 +443,7 @@ class TestReportGeneratorAgent:
                 "Appendix B: Methodology Details": "Extended methodology description..."
             },
             metadata=ReportMetadataModel(),
-            quality_score=0.8
+            overall_quality_score=0.8
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):
@@ -430,7 +456,9 @@ class TestReportGeneratorAgent:
     @pytest.mark.asyncio
     async def test_error_handling(self, report_generator_agent, agent_dependencies):
         """Test error handling during report generation."""
-        with patch.object(report_generator_agent, 'run', side_effect=Exception("Report generation failed")):
+        with patch.object(
+            report_generator_agent, 'run', side_effect=Exception("Report generation failed")
+        ):
             with pytest.raises(Exception, match="Report generation failed"):
                 await report_generator_agent.run(agent_dependencies)
 
@@ -454,11 +482,17 @@ class TestReportGeneratorAgent:
             recommendations=["Recommendation 1"],
             references=[],
             appendices={
-                "Limitations": "Limited to English language sources; Time constraint: 2020-2024 only; Excluded proprietary research; Sample size limitations in some studies",
-                "Future Work": "Expand to multilingual sources; Include industry reports; Longitudinal study over 10 years; Meta-analysis of all findings"
+                "Limitations": (
+                    "Limited to English language sources; Time constraint: 2020-2024 only; "
+                    "Excluded proprietary research; Sample size limitations in some studies"
+                ),
+                "Future Work": (
+                    "Expand to multilingual sources; Include industry reports; "
+                    "Longitudinal study over 10 years; Meta-analysis of all findings"
+                ),
             },
             metadata=ReportMetadataModel(),
-            quality_score=0.7
+            overall_quality_score=0.7
         )
 
         with patch.object(report_generator_agent, 'run', return_value=mock_result):

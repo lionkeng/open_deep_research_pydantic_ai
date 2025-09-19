@@ -103,8 +103,7 @@ nested agents.
      `ContradictionDetector` heuristics to score claim agreement, pattern analysis surfaces emerging
      trends and divergences, and the quality assessor quantifies coverage/completeness. These tool calls are
      orchestrated in-code (not via sub-agents) and culminate in a `ResearchResults` object that is
-     stored on `research_state.research_results` and flattened into `ResearchFinding` records for
-     backwards-compatible consumers.
+     stored on `research_state.research_results` for downstream consumers.
 
 4. **Report Generation** (`ResearchStage.REPORT_GENERATION`)
    - `ReportGeneratorAgent` reads the synthesized results, metadata, and the populated

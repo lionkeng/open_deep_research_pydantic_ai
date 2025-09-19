@@ -8,7 +8,7 @@ Phase 2 of the Individual Agent Architecture Migration has been successfully imp
 ### Model Files (src/models/)
 1. **query_transformation.py** - `TransformedQuery` model for query optimization
 2. **brief_generator.py** - `ResearchBrief`, `ResearchMethodology`, `ResearchObjective` models
-3. **research_executor.py** - `ResearchResults`, `ResearchFinding`, `ResearchSource` models
+3. **research_executor.py** - `ResearchResults`, `HierarchicalFinding`, `ResearchSource` models
 4. **compression.py** - `CompressedContent`, `CompressedSection` models
 5. **report_generator.py** - `ResearchReport`, `ReportSection`, `ReportMetadata` models
 

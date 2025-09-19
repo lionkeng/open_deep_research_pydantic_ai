@@ -135,7 +135,7 @@ class ResearchState(BaseModel):
     current_stage: ResearchStage  # Pipeline stage
     clarified_query: Optional[str]
     research_brief: Optional[ResearchBrief]
-    findings: List[ResearchFinding]
+    findings: List[HierarchicalFinding]
     compressed_findings: Optional[str]
     final_report: Optional[ResearchReport]
     error_message: Optional[str]
@@ -167,7 +167,7 @@ class ResearchStage(str, Enum):
 
 Structured research plan with objectives, questions, and constraints.
 
-#### ResearchFinding (`models/research.py:57-72`)
+#### HierarchicalFinding (`models/research.py:57-72`)
 
 Individual research result with source attribution and confidence scoring.
 

@@ -1330,30 +1330,6 @@ class ResearchResults(BaseModel):
         return "\n".join(sections)
 
 
-# For backward compatibility - simple models
-class ResearchFinding(BaseModel):
-    """Individual research finding (simple version for compatibility)."""
-
-    finding: str = Field(description="The research finding")
-    supporting_evidence: list[str] = Field(
-        default_factory=list, description="Evidence supporting this finding"
-    )
-    confidence_level: float = Field(ge=0.0, le=1.0, description="Confidence level in this finding")
-    source: ResearchSource | None = Field(default=None, description="Source of this finding")
-    category: str | None = Field(default=None, description="Category or topic of this finding")
-
-    @classmethod
-    def from_hierarchical(cls, hf: HierarchicalFinding) -> ResearchFinding:
-        """Convert from hierarchical finding."""
-        return cls(
-            finding=hf.finding,
-            supporting_evidence=hf.supporting_evidence,
-            confidence_level=hf.confidence_score,
-            source=hf.source,
-            category=hf.category,
-        )
-
-
 # Phase 3 Models for Performance Optimization
 
 

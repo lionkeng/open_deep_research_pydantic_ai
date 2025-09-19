@@ -2,11 +2,11 @@
 
 from unittest.mock import MagicMock
 
-from agents.report_generator import ReportGeneratorAgent
 from agents.base import ResearchDependencies
+from agents.report_generator import ReportGeneratorAgent
 from models.api_models import APIKeys
 from models.core import ResearchMetadata, ResearchStage, ResearchState
-from models.report_generator import ReportMetadata, ResearchReport, ReportSection
+from models.report_generator import ReportMetadata, ReportSection, ResearchReport
 from models.research_executor import HierarchicalFinding, ResearchResults, ResearchSource
 
 
@@ -24,7 +24,7 @@ def test_postprocessing_converts_markers_to_footnotes() -> None:
         references=[],
         recommendations=[],
         appendices={},
-        quality_score=0.0,
+        overall_quality_score=0.0,
     )
     sources = [
         ResearchSource(title="Source One", url="https://example.com/1", source_id="S1"),
@@ -71,7 +71,7 @@ def test_postprocessing_injects_missing_citations() -> None:
         references=[],
         recommendations=[],
         appendices={},
-        quality_score=0.0,
+        overall_quality_score=0.0,
     )
     sources = [
         ResearchSource(title="Alpha", url="https://alpha.com", source_id="S1"),

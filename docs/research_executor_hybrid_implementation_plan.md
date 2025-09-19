@@ -142,8 +142,8 @@ Research Synthesis Process
 ```python
 @synthesis_agent.tool
 async def score_information_hierarchy(
-    findings: list[ResearchFinding]
-) -> dict[str, list[ResearchFinding]]:
+    findings: list[HierarchicalFinding]
+) -> dict[str, list[HierarchicalFinding]]:
     """Score and categorize findings by importance."""
     return {
         "critical": [f for f in findings if score(f) >= 0.9],
@@ -167,7 +167,7 @@ async def verify_synthesis_quality(
 
 @synthesis_agent.tool
 async def detect_contradictions(
-    findings: list[ResearchFinding]
+    findings: list[HierarchicalFinding]
 ) -> list[Contradiction]:
     """Programmatically detect contradictions in findings."""
     # Advanced contradiction detection logic
