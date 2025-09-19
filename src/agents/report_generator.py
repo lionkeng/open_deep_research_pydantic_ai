@@ -176,42 +176,63 @@ problem-solving. Our research shows 65% of jobs will transform, not disappear."
 - Addresses fear directly
 - Specific statistic for credibility
 
+# STYLE & VOICE PRINCIPLES
+
+- Write in polished, confident prose suitable for senior decision-makers.
+- Use cohesive transitions that tie facts to implications; weave evidence into sentences
+  instead of presenting isolated data.
+- Favor active voice and varied sentence lengths to maintain rhythm and clarity.
+- Rephrase the blueprint requirements naturally inside the report. Never repeat
+  instruction labels verbatim (avoid phrases such as "Most important insight:" or
+  "Statement:").
+- Introduce bullet lists with a natural lead-in sentence; keep bullets concise and
+  evidence-backed.
+- Build paragraphs around clear topic sentences and close each with a
+  forward-looking or interpretive statement to maintain flow.
+- Present the report as a finished deliverable with no references to these
+  instructions or to the writing process.
+
 # OUTPUT STRUCTURE REQUIREMENTS
 
 ## 1. Executive Summary (10% of report)
-- Start with one compelling insight (without labeling it as "Hook")
-- Key Findings: 3-5 bullets
-- Critical Recommendation: The one thing to do
-- Impact Statement: What's at stake
+- Open with a decisive insight in the first sentence; do not preface it with labels.
+- Provide a bridging sentence that sets up a bullet list of 3-5 findings grounded in
+  evidence.
+- Deliver one critical recommendation as a complete sentence that begins with a strong
+  verb rather than a label.
+- Close with an impact-focused sentence that quantifies or qualifies what is at stake.
 
 ## 2. Introduction (10% of report)
-- Context: Why now?
-- Objectives: What we sought to learn
-- Methodology: How we approached it
-- Scope: What's included/excluded
+- Explain why the topic is urgent now using 2-3 sentences with inline citations.
+- Clarify what the research set out to learn in polished prose rather than colon-labeled fragments.
+- Describe the methodology and data sources succinctly, emphasizing credibility.
+- Define the scope and major exclusions within the narrative to calibrate expectations.
 
 ## 3. Main Findings (50% of report)
 For each finding:
-- **Statement**: Clear, one-sentence finding
-- **Evidence**: Data, quotes, examples
-- **Analysis**: What it means
-- **Implication**: Why it matters
+- Start with a short heading or lead sentence that captures the core insight without
+  using the word "Statement".
+- Integrate evidence, analysis, and implications into flowing paragraphs that move
+  logically from data to meaning.
+- Use inline citations directly after the facts they support.
+- Conclude each finding with a forward-looking takeaway that links to decisions the
+  audience cares about.
 
 ## 4. Synthesis & Insights (15% of report)
-- Pattern Recognition: What themes emerged
-- Contradictions Resolved: Conflicting data explained
-- Unexpected Discoveries: Surprises and their meaning
+- Highlight cross-cutting patterns in polished narrative form.
+- Address how apparent contradictions resolve, explaining the nuance for the reader.
+- Call out unexpected discoveries and unpack their significance for strategy or policy.
 
 ## 5. Recommendations (10% of report)
-- Immediate Actions: Do this week
-- Quick Wins: Do this month
-- Strategic Initiatives: Do this year
-- Success Metrics: How to measure
+- Organize actions by time horizon (immediate, 1-6 months, 6+ months) with succinct
+  bullet lists introduced by natural phrasing.
+- Make every recommendation action-oriented, specific, and tied to cited evidence or findings.
+- Include success metrics that make it clear how progress should be measured.
 
 ## 6. Conclusion (5% of report)
-- Recap: Main message
-- Call to Action: Next step
-- Future Outlook: What's coming
+- Restate the overarching message in one cohesive sentence.
+- Provide a decisive call to action that aligns with the recommendations.
+- Offer a forward-looking statement that previews what to monitor next, keeping prose fluid.
 
 # QUALITY CONTROL CHECKLIST
 
