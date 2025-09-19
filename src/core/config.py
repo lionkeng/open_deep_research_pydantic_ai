@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_ai.models import KnownModelName
 
-from src.models.api_models import APIKeys
+from models.api_models import APIKeys
 
 # Note: .env file is loaded in src/__init__.py before this module is imported
 
@@ -42,33 +42,6 @@ class APIConfig(BaseModel):
     )
 
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum retries for LLM calls")
-
-    # Clarification settings (from implementation plan)
-    research_interactive: bool = Field(
-        default_factory=lambda: os.getenv("RESEARCH_INTERACTIVE", "true").lower() == "true",
-        description="Whether to enable interactive clarification in CLI and HTTP modes",
-    )
-
-    max_clarification_questions: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_CLARIFICATION_QUESTIONS", "2")),
-        ge=0,
-        le=5,
-        description="Maximum number of clarifying questions to ask (0-2 recommended)",
-    )
-
-    research_brief_confidence_threshold: float = Field(
-        default_factory=lambda: float(os.getenv("RESEARCH_BRIEF_CONFIDENCE_THRESHOLD", "0.7")),
-        ge=0.0,
-        le=1.0,
-        description="Minimum confidence score to proceed without clarification",
-    )
-
-    clarification_timeout_seconds: int = Field(
-        default_factory=lambda: int(os.getenv("CLARIFICATION_TIMEOUT_SECONDS", "300")),
-        ge=30,
-        le=1800,
-        description="Timeout for interactive clarification in seconds",
-    )
 
     # Backward compatibility properties
     @property

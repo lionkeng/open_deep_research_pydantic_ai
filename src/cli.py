@@ -17,6 +17,8 @@ from rich.progress import TaskID
 from rich.prompt import Prompt
 from rich.table import Table
 
+from core.workflow import ResearchWorkflow
+
 # Try to import interactive selector for better UX
 try:
     from interfaces.interactive_selector import interactive_select
@@ -57,10 +59,9 @@ from core.sse_models import (
     UpdateMessage,
     parse_sse_message,
 )
-from core.workflow import workflow
-from src.models.api_models import APIKeys
-from src.models.core import ResearchStage
-from src.models.report_generator import ResearchReport
+from models.api_models import APIKeys
+from models.core import ResearchStage
+from models.report_generator import ResearchReport
 
 # Create console with force_terminal to ensure Live displays work correctly
 console = Console(force_terminal=True)
@@ -212,8 +213,29 @@ class CLIStreamHandler:
                 console.print()
             return
 
-        # For non-clarification stages, reset the post-clarification flag
-        self._post_clarification_active = False
+        # Also handle query transformation completion to ensure we're ready for research execution
+        if event.stage == ResearchStage.QUERY_TRANSFORMATION:
+            if self._clarification_active:
+                # Query transformation is part of the two-phase clarification
+                # Make sure we clear the flag so research execution updates can be shown
+                self._clarification_active = False
+            return
+
+        # Handle FAILED stage - exit immediately
+        if event.stage == ResearchStage.FAILED:
+            if self._post_clarification_active:
+                self.progress_manager.stop()
+                self._post_clarification_active = False
+            # Display failure message
+            if not event.success and event.error_message:
+                console.print(f"\n[red]✗ Research failed: {event.error_message}[/red]")
+            else:
+                console.print("\n[red]✗ Research failed[/red]")
+            console.print("[dim]Exiting...[/dim]")
+            sys.exit(1)
+
+        # For non-clarification stages, DO NOT reset the post-clarification flag
+        # Keep the progress manager running between stages
 
         # For non-clarification stages
         if not self._research_started:
@@ -226,9 +248,27 @@ class CLIStreamHandler:
         if not self._research_started:
             self.start_research_tracking(self.query or "Research Query")
 
-        # Show error in progress
+        # Show error in progress and console
         if event.error_message:
             self.progress_manager.update(f"Error: {event.error_message}")
+
+            # Also print to console for visibility
+            error_msg = event.error_message
+            if event.stage == ResearchStage.FAILED:
+                # Stop any active progress indicators
+                if self._post_clarification_active:
+                    self.progress_manager.stop()
+                    self._post_clarification_active = False
+                console.print(f"\n[red]✗ Research failed during {event.stage.value}[/red]")
+                console.print(f"[red]  Error: {error_msg}[/red]")
+                console.print("[dim]Exiting...[/dim]")
+                sys.exit(1)
+            elif event.recoverable:
+                console.print(
+                    f"[yellow]⚠ Recoverable error in {event.stage.value}: {error_msg}[/yellow]"
+                )
+            else:
+                console.print(f"[red]✗ Error in {event.stage.value}: {error_msg}[/red]")
 
     async def handle_research_completed(self, event: ResearchCompletedEvent) -> None:
         """Handle research completion with enhanced display."""
@@ -240,8 +280,10 @@ class CLIStreamHandler:
             self.progress_manager.stop_and_complete()
             self._clarification_active = False
 
-        # Reset post-clarification flag
-        self._post_clarification_active = False
+        # Also stop post-clarification progress if active
+        if self._post_clarification_active:
+            self.progress_manager.stop_and_complete()
+            self._post_clarification_active = False
 
         # Keep display active for a moment to show completion
         import asyncio
@@ -263,18 +305,17 @@ class CLIStreamHandler:
 
         if any(word in content_lower for word in ["analyzing", "analyzing", "examining"]):
             return "analyzing"
-        elif any(word in content_lower for word in ["searching", "finding", "looking"]):
+        if any(word in content_lower for word in ["searching", "finding", "looking"]):
             return "searching"
-        elif any(word in content_lower for word in ["writing", "generating", "creating"]):
+        if any(word in content_lower for word in ["writing", "generating", "creating"]):
             return "writing"
-        elif any(word in content_lower for word in ["processing", "compressing", "organizing"]):
+        if any(word in content_lower for word in ["processing", "compressing", "organizing"]):
             return "synthesizing"
-        elif any(word in content_lower for word in ["validating", "checking", "verifying"]):
+        if any(word in content_lower for word in ["validating", "checking", "verifying"]):
             return "validating"
-        elif any(word in content_lower for word in ["thinking", "considering", "evaluating"]):
+        if any(word in content_lower for word in ["thinking", "considering", "evaluating"]):
             return "reasoning"
-        else:
-            return "thinking"
+        return "thinking"
 
     def _extract_progress(self, content: str) -> float | None:
         """Extract progress information from content if available.
@@ -561,6 +602,14 @@ def display_report_object(report: ResearchReport) -> None:
         )
     )
 
+    if report.metadata.source_summary:
+        console.print("\n[bold magenta]Sources:[/bold magenta]")
+        for source in report.metadata.source_summary[:10]:
+            line = f"{source.get('id', '?')}: {source.get('title', '')}"
+            if source.get("url"):
+                line += f" ({source['url']})"
+            console.print(f"  - {line}")
+
     # Display key sections (first 3)
     for section in report.sections[:3]:
         console.print(f"\n[bold cyan]{section.title}[/bold cyan]")
@@ -574,6 +623,11 @@ def display_report_object(report: ResearchReport) -> None:
         console.print("\n[bold yellow]Recommendations:[/bold yellow]")
         for i, rec in enumerate(report.recommendations, 1):
             console.print(f"  {i}. {rec}")
+
+    if report.references:
+        console.print("\n[bold magenta]Footnotes:[/bold magenta]")
+        for reference in report.references:
+            console.print(f"  {reference}")
 
 
 def display_report_dict(report_dict: dict[str, Any]) -> None:
@@ -595,6 +649,23 @@ def display_report_dict(report_dict: dict[str, Any]) -> None:
             border_style="green",
         )
     )
+
+    metadata = report_dict.get("metadata")
+    source_summary: list[Any] | None = None
+    if isinstance(metadata, dict):
+        raw_summary = metadata.get("source_summary")
+        if isinstance(raw_summary, list):
+            source_summary = raw_summary
+    if source_summary:
+        console.print("\n[bold magenta]Sources:[/bold magenta]")
+        for entry in source_summary[:10]:
+            if not isinstance(entry, dict):
+                continue
+            line = f"{entry.get('id', '?')}: {entry.get('title', '')}"
+            url = entry.get("url")
+            if url:
+                line += f" ({url})"
+            console.print(f"  - {line}")
 
     # Display key sections (first 3)
     sections_raw = report_dict.get("sections", [])
@@ -629,6 +700,13 @@ def display_report_dict(report_dict: dict[str, Any]) -> None:
         for i, rec in enumerate(recommendations, 1):
             rec_str = str(rec) if rec is not None else ""
             console.print(f"  {i}. {rec_str}")
+
+    references_raw = report_dict.get("references", [])
+    if isinstance(references_raw, list) and references_raw:
+        references = cast(list[Any], references_raw)
+        console.print("\n[bold magenta]Footnotes:[/bold magenta]")
+        for reference in references:
+            console.print(f"  {reference}")
 
 
 def display_report(
@@ -767,7 +845,7 @@ async def run_research(
         # Start progress display
         with handler:
             # Execute research
-            state = await workflow.execute_research(
+            state = await ResearchWorkflow().run(
                 user_query=query,
                 api_keys=api_keys,
                 stream_callback=True,
@@ -805,13 +883,10 @@ async def run_research(
             )
 
             # Show clarifying questions if available
-            if (
-                hasattr(state.metadata, "clarifying_questions")
-                and state.metadata.clarifying_questions
-            ):
+            if state.metadata.pending_questions:
                 console.print("\n[yellow]Clarifying questions needed:[/yellow]")
-                for q in state.metadata.clarifying_questions:
-                    console.print(f"  • {q}")
+                for q in state.metadata.pending_questions:
+                    console.print(f"  • {q.question}")
 
     else:  # HTTP mode
         if not _http_mode_available:
@@ -905,9 +980,9 @@ def save_report_object(report: ResearchReport, filename: str) -> None:
             content.append(f"- {rec}\n")
 
     if report.references:
-        content.append("\n## References\n")
+        content.append("\n## Footnotes\n")
         for reference in report.references:
-            content.append(f"- {reference}\n")
+            content.append(f"{reference}\n")
 
     with open(filename, "w") as f:
         f.write("\n".join(content))
@@ -1090,7 +1165,7 @@ def interactive(mode: str, server_url: str):
                     if query.lower() in ["exit", "quit", "q"]:
                         console.print("[yellow]Goodbye![/yellow]")
                         break
-                    elif query.lower() == "help":
+                    if query.lower() == "help":
                         console.print("""
 [bold]Available commands:[/bold]
   • Enter any research query to start research

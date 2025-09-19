@@ -4,20 +4,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.interfaces.cli_multi_clarification import (
+from interfaces.cli_multi_clarification import (
     ask_choice_question,
     ask_multi_choice_question,
     ask_text_question,
     handle_multi_clarification_cli,
 )
-from src.models.metadata import ResearchMetadata
-from src.models.clarification import (
+from models.metadata import ResearchMetadata
+from models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
 )
-from src.utils.serialization import (
+from utils.serialization import (
     deserialize_clarification_request,
     deserialize_clarification_response,
     format_clarification_for_display,
@@ -127,7 +127,7 @@ class TestMultiClarificationIntegration:
         assert len(metadata.get_pending_questions()) == 0
 
         # Add clarification request
-        metadata.clarification_request = sample_request
+        metadata.clarification.request = sample_request
 
         # Now should have pending questions
         assert not metadata.is_clarification_complete()
@@ -152,20 +152,20 @@ class TestMultiClarificationIntegration:
         )
 
         # Debug - check what we have
-        if metadata.clarification_response:
-            print(f"Answers count: {len(metadata.clarification_response.answers)}")
+        if metadata.clarification.response:
+            print(f"Answers count: {len(metadata.clarification.response.answers)}")
             print(f"Question IDs in request: {[q.id for q in sample_request.questions]}")
-            for answer in metadata.clarification_response.answers:
+            for answer in metadata.clarification.response.answers:
                 answer_text = answer.answer if not answer.skipped else '[skipped]'
                 print(f"  - Answer for question {answer.question_id}: {answer_text}")
-            errors = metadata.clarification_response.validate_against_request(sample_request)
+            errors = metadata.clarification.response.validate_against_request(sample_request)
             if errors:
                 print(f"Validation errors: {errors}")
 
         # Should now be complete (optional question can be skipped)
         assert metadata.is_clarification_complete()
 
-    @patch("sys.stdin.isatty")
+    @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
     @patch("rich.prompt.Prompt.ask")
     @patch("rich.prompt.IntPrompt.ask")
     def test_cli_text_question(self, mock_int_prompt, mock_prompt, mock_isatty):
@@ -185,7 +185,8 @@ class TestMultiClarificationIntegration:
         assert answer == "My answer"
         mock_prompt.assert_called_once()
 
-    @patch("sys.stdin.isatty")
+    @patch("interfaces.cli_multi_clarification.has_interactive", False)
+    @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
     @patch("rich.prompt.IntPrompt.ask")
     def test_cli_choice_question(self, mock_int_prompt, mock_isatty):
         """Test CLI handling of choice questions."""
@@ -205,7 +206,8 @@ class TestMultiClarificationIntegration:
         assert answer == "Medium"
         mock_int_prompt.assert_called_once()
 
-    @patch("sys.stdin.isatty")
+    @patch("interfaces.cli_multi_clarification.has_interactive", False)
+    @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
     @patch("rich.prompt.Prompt.ask")
     def test_cli_multi_choice_question(self, mock_prompt, mock_isatty):
         """Test CLI handling of multi-choice questions."""
@@ -222,14 +224,14 @@ class TestMultiClarificationIntegration:
         console = MagicMock()
         answer = ask_multi_choice_question(question, console)
 
-        assert answer == "Feature A, Feature C"
+        assert answer == "Feature A | Feature C"
         mock_prompt.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("sys.stdin.isatty")
-    @patch("src.interfaces.cli_multi_clarification.ask_text_question")
-    @patch("src.interfaces.cli_multi_clarification.ask_choice_question")
-    @patch("src.interfaces.cli_multi_clarification.ask_multi_choice_question")
+    @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
+    @patch("interfaces.cli_multi_clarification.ask_text_question")
+    @patch("interfaces.cli_multi_clarification.ask_choice_question")
+    @patch("interfaces.cli_multi_clarification.ask_multi_choice_question")
     async def test_full_cli_flow(
         self,
         mock_multi_choice,

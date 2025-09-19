@@ -7,8 +7,8 @@ import asyncio
 
 from rich.console import Console
 
-from src.interfaces.clarification_flow import handle_clarification_with_review
-from src.models.clarification import (
+from interfaces.clarification_flow import handle_clarification_with_review
+from models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
@@ -219,7 +219,7 @@ async def demo_review_only():
     input("Press Enter to start the review interface...")
 
     # Run just the review interface
-    from src.interfaces.review_interface import handle_review_interface
+    from interfaces.review_interface import handle_review_interface
 
     final_response = await handle_review_interface(
         request=request,

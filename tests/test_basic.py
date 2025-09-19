@@ -2,14 +2,13 @@
 
 import pytest
 
-from src.core.events import (
+from core.events import (
     ResearchStartedEvent,
     emit_research_started,
     research_event_bus,
 )
-from src.models.brief_generator import ResearchBrief
-from src.models.core import ResearchStage, ResearchState
-from src.models.research_executor import ResearchFinding
+from models.core import ResearchStage, ResearchState
+from models.research_executor import HierarchicalFinding, ResearchResults, ResearchSource
 
 
 def test_research_state():
@@ -36,32 +35,27 @@ def test_research_state():
     assert state.is_completed()
 
 
-def test_research_brief():
-    """Test research brief creation."""
-    brief = ResearchBrief(
-        topic="Quantum Computing",
-        objectives=["Understand basics", "Learn applications"],
-        key_questions=["What is it?", "How does it work?"],
-        scope="Basic introduction",
-    )
-
-    assert brief.topic == "Quantum Computing"
-    assert len(brief.objectives) == 2
-    assert len(brief.key_questions) == 2
-
-
-def test_research_finding():
-    """Test research finding creation."""
-    finding = ResearchFinding(
-        content="Quantum computing uses quantum bits",
-        source="https://example.com",
+def test_research_results_store_findings():
+    """Test research results capture hierarchical findings."""
+    source = ResearchSource(
+        url="https://example.com",
+        title="Quantum Computing Research",
         relevance_score=0.9,
-        confidence=0.85,
     )
 
-    assert finding.content == "Quantum computing uses quantum bits"
-    assert finding.relevance_score == 0.9
-    assert finding.confidence == 0.85
+    finding = HierarchicalFinding(
+        finding="Quantum computing uses quantum bits",
+        supporting_evidence=["Evidence 1", "Evidence 2"],
+        confidence_score=0.85,
+        source=source,
+        category="technology",
+    )
+
+    results = ResearchResults(query="Quantum computing", findings=[finding])
+
+    assert results.findings[0].finding == "Quantum computing uses quantum bits"
+    assert results.findings[0].confidence_score == 0.85
+    assert results.findings[0].source.relevance_score == 0.9
 
 
 @pytest.mark.asyncio

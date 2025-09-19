@@ -12,7 +12,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 
-from src.models.clarification import (
+from models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
@@ -161,8 +161,17 @@ class ReviewInterface:
             if (answer := response.get_answer_for_question(q.id)) and not answer.skipped
         )
 
+        # Count required questions
+        required_questions = request.get_required_questions()
+        required_answered = sum(
+            1
+            for q in required_questions
+            if (answer := response.get_answer_for_question(q.id)) and not answer.skipped
+        )
+        all_required_answered = required_answered == len(required_questions)
+
         progress_text = Text()
-        progress_text.append("Progress: ", style="bold")
+        _ = progress_text.append("Progress: ", style="bold")
 
         # Create visual progress bar
         bar_width = 30
@@ -170,13 +179,22 @@ class ReviewInterface:
         bar = "█" * filled + "░" * (bar_width - filled)
 
         if answered == total:
-            progress_text.append(bar, style="green")
+            _ = progress_text.append(bar, style="green")
         elif answered >= total * 0.8:
-            progress_text.append(bar, style="yellow")
+            _ = progress_text.append(bar, style="yellow")
         else:
-            progress_text.append(bar, style="dim white")
+            _ = progress_text.append(bar, style="dim white")
 
-        progress_text.append(f" {answered}/{total} answered", style="dim")
+        _ = progress_text.append(f" {answered}/{total} answered", style="dim")
+
+        # Add readiness indicator
+        if all_required_answered:
+            _ = progress_text.append("  ", style="dim")
+            _ = progress_text.append("✓ Ready to Continue", style="bold green")
+        else:
+            missing = len(required_questions) - required_answered
+            _ = progress_text.append("  ", style="dim")
+            _ = progress_text.append(f"⚠ {missing} required questions remaining", style="yellow")
 
         return Panel(
             Align.center(progress_text),
@@ -190,7 +208,6 @@ class ReviewInterface:
         question: ClarificationQuestion,
         answer: ClarificationAnswer | None,
         index: int,
-        total: int,
         is_current: bool = False,
     ) -> Panel:
         """Render a single question panel.
@@ -199,14 +216,13 @@ class ReviewInterface:
             question: The question to render
             answer: The corresponding answer
             index: Question index (1-based)
-            total: Total number of questions
             is_current: Whether this is the currently selected question
 
         Returns:
             Panel containing the question and answer
         """
         # Determine status and styling
-        is_edited = self.state.edited_questions and question.id in self.state.edited_questions
+        is_edited = bool(self.state.edited_questions and question.id in self.state.edited_questions)
         status = self.get_answer_status(question, answer, is_edited)
         _, color = self.STATUS_SYMBOLS[status]
 
@@ -215,12 +231,12 @@ class ReviewInterface:
 
         # Question header
         header = Text()
-        header.append(f"Q{index} ", style="bold")
+        _ = header.append(f"Q{index} ", style="bold")
         if question.is_required:
-            header.append("[REQUIRED] ", style="yellow")
+            _ = header.append("[REQUIRED] ", style="yellow")
         else:
-            header.append("[OPTIONAL] ", style="dim")
-        header.append(f"• {question.question}", style="white")
+            _ = header.append("[OPTIONAL] ", style="dim")
+        _ = header.append(f"• {question.question}", style="white")
         content_parts.append(header)
 
         # Separator
@@ -228,36 +244,34 @@ class ReviewInterface:
 
         # Question metadata
         meta = Text()
-        meta.append("Type: ", style="dim")
-        meta.append(question.question_type.replace("_", " ").title(), style="cyan")
+        _ = meta.append("Type: ", style="dim")
+        _ = meta.append(question.question_type.replace("_", " ").title(), style="cyan")
         content_parts.append(meta)
 
         # Answer display
         answer_line = Text()
-        answer_line.append("Your Answer: ", style="dim")
+        _ = answer_line.append("Your Answer: ", style="dim")
         answer_text = self.format_answer_display(answer, question)
-        answer_line.append(answer_text, style=color if not is_edited else "blue")
+        _ = answer_line.append(answer_text, style=color if not is_edited else "blue")
         content_parts.append(answer_line)
 
         # Context if available
         if question.context:
             context_text = Text()
-            context_text.append("Context: ", style="dim")
-            context_text.append(question.context, style="dim italic")
+            _ = context_text.append("Context: ", style="dim")
+            _ = context_text.append(question.context, style="dim italic")
             content_parts.append(Text())  # Empty line
             content_parts.append(context_text)
 
         # Navigation hints (only for current)
         if is_current:
             content_parts.append(Text())  # Empty line
-            hints = Text()
-            hints.append("[E]", style="bold yellow")
-            hints.append(" Edit  ", style="dim")
-            hints.append("[↑↓]", style="bold yellow")
-            hints.append(" Navigate  ", style="dim")
-            hints.append("[Tab]", style="bold yellow")
-            hints.append(" Next Required", style="dim")
-            content_parts.append(hints)
+            # Don't show hints here - they'll be in the action panel
+            status_hint = Text()
+            _ = status_hint.append("Press ", style="dim")
+            _ = status_hint.append("[E]", style="bold yellow")
+            _ = status_hint.append(" to edit this answer", style="dim")
+            content_parts.append(status_hint)
 
         # Determine border style
         if is_current:
@@ -295,7 +309,9 @@ class ReviewInterface:
 
         for idx, question in enumerate(request.get_sorted_questions(), 1):
             answer = response.get_answer_for_question(question.id)
-            is_edited = self.state.edited_questions and question.id in self.state.edited_questions
+            is_edited = bool(
+                self.state.edited_questions and question.id in self.state.edited_questions
+            )
             status = self.get_answer_status(question, answer, is_edited)
             symbol, color = self.STATUS_SYMBOLS[status]
 
@@ -365,7 +381,10 @@ class ReviewInterface:
                 style="dim yellow" if optional_answered < len(optional_questions) else "dim",
             ),
             Text(
-                f"✎ {len(self.state.edited_questions)} edited",
+                (
+                    f"✎ {len(self.state.edited_questions) if self.state.edited_questions else 0} "
+                    "edited"
+                ),
                 style="blue" if self.state.edited_questions else "dim",
             ),
         )
@@ -374,6 +393,91 @@ class ReviewInterface:
             content,
             title="SUMMARY",
             border_style="cyan",
+            padding=(1, 2),
+        )
+
+    def render_action_panel(
+        self, request: ClarificationRequest, response: ClarificationResponse
+    ) -> Panel:
+        """Render the action panel with available commands.
+
+        Args:
+            request: The clarification request
+            response: Current response state
+
+        Returns:
+            Panel containing available actions
+        """
+        # Check if all required questions are answered
+        required_questions = request.get_required_questions()
+        required_answered = sum(
+            1
+            for q in required_questions
+            if (answer := response.get_answer_for_question(q.id)) and not answer.skipped
+        )
+        all_required_answered = required_answered == len(required_questions)
+
+        content_parts = []
+
+        # Status indicator
+        if all_required_answered:
+            status = Text()
+            _ = status.append("✓ STATUS: Ready to Continue", style="bold green")
+            content_parts.append(status)
+            content_parts.append(Text("All required questions answered", style="dim green"))
+        else:
+            status = Text()
+            _ = status.append(
+                (
+                    f"⚠ STATUS: {len(required_questions) - required_answered} Required Questions "
+                    "Remaining"
+                ),
+                style="bold yellow",
+            )
+            content_parts.append(status)
+            content_parts.append(
+                Text("Answer all required questions to continue", style="dim yellow")
+            )
+
+        content_parts.append(Text())  # Empty line
+        content_parts.append(Text("─" * 50, style="dim"))
+        content_parts.append(Text())  # Empty line
+
+        # Primary actions
+        primary_actions = Text()
+        if all_required_answered:
+            # Emphasize the continue action when ready
+            _ = primary_actions.append("[C]", style="bold green on dark_green")
+            _ = primary_actions.append(" Continue with Research  ", style="bold green")
+            _ = primary_actions.append("[E]", style="bold yellow")
+            _ = primary_actions.append(" Edit Answer", style="dim")
+        else:
+            # De-emphasize continue when not ready
+            _ = primary_actions.append("[C]", style="dim")
+            _ = primary_actions.append(" Continue (complete required first)  ", style="dim")
+            _ = primary_actions.append("[E]", style="bold yellow")
+            _ = primary_actions.append(" Edit Answer", style="yellow")
+        content_parts.append(primary_actions)
+
+        content_parts.append(Text())  # Empty line
+
+        # Navigation actions
+        nav_actions = Text()
+        _ = nav_actions.append("[↑↓/jk]", style="bold cyan")
+        _ = nav_actions.append(" Navigate  ", style="dim")
+        _ = nav_actions.append("[Tab]", style="bold cyan")
+        _ = nav_actions.append(" Next Required  ", style="dim")
+        _ = nav_actions.append("[Q]", style="bold red")
+        _ = nav_actions.append(" Cancel Review", style="dim")
+        content_parts.append(nav_actions)
+
+        # Determine border style based on readiness
+        border_style = "green" if all_required_answered else "yellow"
+
+        return Panel(
+            Group(*content_parts),
+            title="ACTIONS",
+            border_style=border_style,
             padding=(1, 2),
         )
 
@@ -392,10 +496,13 @@ class ReviewInterface:
         self.console.clear()
 
         # Show edit header
-        edit_panel = Panel(
+        edit_content = (
             f"[bold]Editing Answer for Question {self.state.current_index + 1}[/bold]\n\n"
             f"[dim]Original Question:[/dim] {question.question}\n"
-            f"[dim]Current Answer:[/dim] {self.format_answer_display(current_answer, question)}",
+            f"[dim]Current Answer:[/dim] {self.format_answer_display(current_answer, question)}"
+        )
+        edit_panel = Panel(
+            edit_content,
             title="EDIT MODE",
             border_style="yellow",
             padding=(1, 2),
@@ -418,7 +525,7 @@ class ReviewInterface:
                 answer=answer_text,
                 skipped=False,
             )
-        elif not question.is_required:
+        if not question.is_required:
             return ClarificationAnswer(
                 question_id=question.id,
                 skipped=True,
@@ -446,11 +553,11 @@ class ReviewInterface:
         """
         if key in ("q", "Q"):  # Quit with 'q'
             return False
-        elif key == "\x03":  # Ctrl+C
+        if key == "\x03":  # Ctrl+C
             raise KeyboardInterrupt("User interrupted with Ctrl+C")
-        elif key in ("\x1b[A", "k"):  # Up arrow
+        if key in ("\x1b[A", "k", "K"):  # Up arrow or vim k
             self.state.current_index = (self.state.current_index - 1) % total_questions
-        elif key in ("\x1b[B", "j"):  # Down arrow
+        elif key in ("\x1b[B", "j", "J"):  # Down arrow or vim j
             self.state.current_index = (self.state.current_index + 1) % total_questions
         elif key == "\t":  # Tab - jump to next required unanswered
             # Find next required unanswered question
@@ -517,10 +624,14 @@ class ReviewInterface:
                         current_question,
                         current_answer,
                         self.state.current_index + 1,
-                        len(questions),
                         is_current=True,
                     )
                 )
+
+                # Action panel (prominent placement)
+                self.console.print()
+                action_panel = self.render_action_panel(request, working_response)
+                self.console.print(action_panel)
 
                 # Navigation and summary in columns
                 self.console.print()
@@ -572,15 +683,32 @@ class ReviewInterface:
                             return await self.review_answers(
                                 request, working_response, original_query
                             )
-                        else:
-                            self.console.print("[yellow]Maximum retry attempts reached.[/yellow]")
+                        self.console.print("[yellow]Maximum retry attempts reached.[/yellow]")
                     return None
 
-                # Show confirmation
+                # Show confirmation with clear next steps
+                self.console.clear()
+                confirmation_content = Group(
+                    Text("✅ Review complete!", style="bold green"),
+                    Text(),
+                    Text("Your answers have been confirmed and saved.", style="white"),
+                    Text(
+                        "The research process will now begin with your clarified requirements.",
+                        style="dim",
+                    ),
+                    Text(),
+                    Text("─" * 60, style="dim"),
+                    Text(),
+                    Text("Next Steps:", style="bold cyan"),
+                    Text("1. Research agents will analyze your requirements", style="dim"),
+                    Text("2. Comprehensive research will be conducted", style="dim"),
+                    Text("3. You'll receive a detailed research report", style="dim"),
+                )
+
                 self.console.print(
                     Panel(
-                        "✅ Review complete! Your answers have been confirmed.",
-                        title="SUCCESS",
+                        confirmation_content,
+                        title="PROCEEDING WITH RESEARCH",
                         border_style="green",
                         padding=(1, 2),
                     )

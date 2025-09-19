@@ -1,22 +1,14 @@
-"""Main workflow orchestrator with integrated three-phase clarification system."""
+"""Main workflow orchestrator for the streamlined 4-agent research system."""
 
-import asyncio
-import sys
 from datetime import datetime
 from typing import Any
 
 import httpx
 import logfire
 
-# Import new pydantic-ai compliant agents and dependencies
-from agents import (
-    compression_agent,
-    report_generator_agent,
-    research_executor_agent,
-)
 from agents.base import ResearchDependencies
 from agents.factory import AgentFactory, AgentType
-from core.context import get_current_context
+from core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from core.events import (
     emit_error,
     emit_research_started,
@@ -25,30 +17,52 @@ from core.events import (
     emit_streaming_update,
 )
 from interfaces.clarification_flow import handle_clarification_with_review
-from src.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError
-from src.models.api_models import APIKeys, ConversationMessage
-from src.models.brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
-from src.models.compression import CompressedContent
-from src.models.core import (
+from models.api_models import APIKeys, ConversationMessage
+from models.core import (
     ResearchMetadata,
     ResearchStage,
     ResearchState,
 )
-from src.models.report_generator import ReportSection, ResearchReport
-from src.models.research_executor import ResearchFinding
+from models.priority import Priority
+from models.research_executor import ResearchResults
+from models.search_query_models import (
+    ExecutionStrategy as BatchExecutionStrategy,
+)
+from models.search_query_models import (
+    SearchQueryBatch,
+)
+from services.search import WebSearchService
+from services.search_orchestrator import (
+    ExecutionStrategy as SearchExecutionStrategy,
+)
+from services.search_orchestrator import (
+    QueryExecutionPlan,
+    SearchOrchestrator,
+)
+from services.search_orchestrator import (
+    SearchQuery as OrchestratorQuery,
+)
+from services.search_orchestrator import (
+    SearchResult as OrchestratorResult,
+)
+from services.source_repository import InMemorySourceRepository
 
 
 class ResearchWorkflow:
-    """Orchestrator for the complete research workflow with three-phase clarification system.
+    """Orchestrator for the streamlined 4-agent research workflow.
 
-    Features concurrent processing, proper error handling, circuit breaker pattern,
-    and memory-safe operation with automatic cleanup.
+    Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
+              REPORT_GENERATION
+
+    The Query Transformation Agent now produces both SearchQueryBatch (for search execution)
+    and ResearchPlan (for report structure), eliminating the need for a separate Brief Generator.
     """
 
     def __init__(self):
         """Initialize the research workflow."""
         self.agent_factory = AgentFactory
         self._initialized = False
+        self._search_service = WebSearchService()
 
         # Concurrent processing configuration
         self._max_concurrent_tasks = 5
@@ -82,7 +96,7 @@ class ResearchWorkflow:
             # Agents are auto-registered when imported
             self._initialized = True
             logfire.info(
-                "Research workflow initialized with three-phase clarification system",
+                "Streamlined research workflow initialized",
                 agents=[agent.value for agent in AgentType],
                 max_concurrent_tasks=self._max_concurrent_tasks,
             )
@@ -112,25 +126,15 @@ class ResearchWorkflow:
                     name="important_report_generator",
                 ),
             },
-            AgentType.BRIEF_GENERATOR: {
-                "critical": False,
+            # Optional agents - fail fast
+            AgentType.QUERY_TRANSFORMATION: {
+                "critical": True,  # Now critical since it produces SearchQueryBatch
                 "config": CircuitBreakerConfig(
                     failure_threshold=3,
                     success_threshold=2,
                     timeout_seconds=45.0,
                     half_open_max_attempts=2,
-                    name="important_brief_generator",
-                ),
-            },
-            # Optional agents - fail fast
-            AgentType.QUERY_TRANSFORMATION: {
-                "critical": False,
-                "config": CircuitBreakerConfig(
-                    failure_threshold=2,
-                    success_threshold=1,
-                    timeout_seconds=30.0,
-                    half_open_max_attempts=1,
-                    name="optional_query_transformation",
+                    name="critical_query_transformation",
                 ),
             },
             # Supporting agents
@@ -144,25 +148,18 @@ class ResearchWorkflow:
                     name="support_clarification",
                 ),
             },
-            AgentType.COMPRESSION: {
-                "critical": False,
-                "config": CircuitBreakerConfig(
-                    failure_threshold=3,
-                    success_threshold=2,
-                    timeout_seconds=30.0,
-                    half_open_max_attempts=2,
-                    name="support_compression",
-                ),
-            },
         }
 
-    async def _create_fallback(self, agent_type: AgentType) -> Any:
-        """Create fallback response for failed agent."""
-        logfire.info(f"Using fallback for {agent_type.value}")
-
-        fallback_responses = {
+    def _create_fallback(self, agent_type: AgentType) -> dict[str, Any]:
+        """Create fallback response for failed agents."""
+        fallbacks = {
+            AgentType.CLARIFICATION: {
+                "needs_clarification": False,
+                "confidence": 0.0,
+                "fallback": True,
+            },
             AgentType.QUERY_TRANSFORMATION: {
-                "transformed_query": "original query (transformation unavailable)",
+                "transformed_query": "",
                 "confidence": 0.0,
                 "fallback": True,
             },
@@ -172,634 +169,186 @@ class ResearchWorkflow:
                 "fallback": True,
             },
             AgentType.REPORT_GENERATOR: {
-                "report": "Report generation is temporarily unavailable. Please try again later.",
-                "fallback": True,
-            },
-            AgentType.CLARIFICATION: {
-                "clarification": None,
-                "proceed": True,
-                "fallback": True,
-            },
-            AgentType.COMPRESSION: {
-                "compressed": False,
-                "data": "uncompressed",
-                "fallback": True,
-            },
-            AgentType.BRIEF_GENERATOR: {
-                "brief": "Brief generation unavailable",
+                "report": "Report generation failed",
                 "fallback": True,
             },
         }
-
-        return fallback_responses.get(
-            agent_type,
-            {"error": f"No fallback for {agent_type.value}", "fallback": True},
-        )
-
-    def _check_circuit_breaker(self, agent_type: AgentType) -> bool:
-        """Check if circuit breaker allows operation for given agent type.
-
-        Maintained for backward compatibility.
-        """
-        return not self.circuit_breaker.is_open(agent_type)
-
-    def _record_success(self, agent_type: AgentType) -> None:
-        """Record successful agent operation.
-
-        Maintained for backward compatibility.
-        """
-        # The CircuitBreaker handles this internally now
-        pass
-
-    def _record_error(self, agent_type: AgentType, error: Exception) -> None:
-        """Record agent operation error and update circuit breaker.
-
-        Maintained for backward compatibility.
-        """
-        # The CircuitBreaker handles this internally now
-        logfire.warning(
-            f"Agent error recorded for {agent_type.value}",
-            error=str(error),
-        )
+        return fallbacks.get(agent_type, {"error": "No fallback available"})
 
     async def _run_agent_with_circuit_breaker(
-        self, agent_type: AgentType, deps: ResearchDependencies, **kwargs: Any
+        self,
+        agent_type: AgentType,
+        deps: ResearchDependencies,
+        prompt: str | None = None,
+        **kwargs: Any,
     ) -> Any:
-        """Run agent with circuit breaker pattern and error handling.
-
-        Args:
-            agent_type: Type of agent to run
-            deps: Research dependencies
-            **kwargs: Additional arguments for agent
-
-        Returns:
-            Agent result
-
-        Raises:
-            CircuitBreakerError: If circuit is open for critical agents
-            Exception: If agent fails
-        """
+        """Run an agent with circuit breaker protection."""
         agent_config = self.agent_configs.get(agent_type, {})
-        is_critical = agent_config.get("critical", False)
-
-        # Check if circuit is open for critical agents
-        if is_critical and self.circuit_breaker.is_open(agent_type):
-            raise CircuitBreakerError(
-                f"Critical agent {agent_type.value} is unavailable due to circuit breaker"
-            )
 
         try:
-            # Create agent instance
-            agent = self.agent_factory.create_agent(agent_type, deps)
+            # Create the agent instance from factory
+            agent = self.agent_factory.create_agent(agent_type, deps, None)
 
-            # Execute through circuit breaker with timeout
-            async def agent_execution():
-                return await asyncio.wait_for(
-                    agent.run(deps, **kwargs),
-                    timeout=self._task_timeout,
+            # Run with appropriate method based on agent type
+            if agent_type == AgentType.CLARIFICATION:
+                # Run clarification agent
+                result = await agent.run(deps)
+            elif agent_type == AgentType.QUERY_TRANSFORMATION:
+                # Run query transformation to get TransformedQuery
+                result = await agent.run(deps)
+            elif agent_type == AgentType.RESEARCH_EXECUTOR:
+                transformed_query = deps.get_transformed_query()
+                if transformed_query is None:
+                    raise ValueError("No transformed query available for research execution")
+
+                logfire.info(
+                    "Passing search queries to Research Executor",
+                    queries=[q.query for q in transformed_query.search_queries.queries],
+                    num_queries=len(transformed_query.search_queries.queries),
                 )
 
-            result = await self.circuit_breaker.call(
-                agent_type,
-                agent_execution,
-            )
+                result = await agent.run(deps)
+            elif agent_type == AgentType.REPORT_GENERATOR:
+                # Report generator can access research plan from metadata if needed
+                result = await agent.run(deps)
+            else:
+                raise ValueError(f"Unknown agent type: {agent_type}")
 
-            logfire.debug(f"Successfully executed {agent_type.value}")
             return result
 
-        except CircuitBreakerError as e:
-            # Circuit is open
-            logfire.warning(f"Circuit breaker open for {agent_type.value}: {e}")
-
-            if not is_critical:
-                # Use fallback for non-critical agents
-                return await self._create_fallback(agent_type)
-            raise
-
-        except TimeoutError:
-            logfire.error(f"Agent {agent_type.value} timed out", timeout=self._task_timeout)
-            raise
-
         except Exception as e:
-            logfire.error(f"Error executing {agent_type.value}: {e}")
-            raise
-
-    async def execute_research(
-        self,
-        user_query: str,
-        api_keys: APIKeys | None = None,
-        stream_callback: Any | None = None,
-        request_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-    ) -> ResearchState:
-        """Execute the complete research workflow with integrated three-phase clarification.
-
-        Args:
-            user_query: User's research query
-            api_keys: API keys for various services
-            stream_callback: Optional callback for streaming updates
-            request_id: Optional request ID (will generate if not provided)
-            user_id: Optional user ID for isolation (defaults to context or "default")
-            session_id: Optional session ID for user
-
-        Returns:
-            Final research state with results
-        """
-        self._ensure_initialized()
-
-        # Get user context
-        context = get_current_context()
-        if user_id is None:
-            user_id = context.user_id
-        if session_id is None:
-            session_id = context.session_id
-
-        # Create research state with scoped request ID
-        if request_id is None:
-            request_id = ResearchState.generate_request_id(user_id, session_id)
-        research_state = ResearchState(
-            request_id=request_id,
-            user_id=user_id,
-            session_id=session_id,
-            user_query=user_query,
-        )
-
-        # Create HTTP client
-        async with httpx.AsyncClient() as http_client:
-            # Create dependencies using new pydantic-ai compliant structure
-            deps = ResearchDependencies(
-                http_client=http_client,
-                api_keys=api_keys or APIKeys(),
-                research_state=research_state,
-                # metadata now accessed via research_state.metadata
-            )
-
-            try:
-                # Start research (move from PENDING to CLARIFICATION)
-                research_state.start_research()
-
-                # Emit research started event
-                await emit_research_started(request_id, user_query)
-
-                # Execute the integrated three-phase clarification system
-                await self._execute_three_phase_clarification(deps, user_query)
-
-                research_state.advance_stage()
-
-                # Use concurrent processing for remaining stages when possible
-                logfire.info(
-                    "Starting concurrent processing for research stages", request_id=request_id
+            logfire.error(f"Agent {agent_type.value} failed: {e}")
+            if agent_config.get("critical", False):
+                raise
+            fallback = self._create_fallback(agent_type)
+            if agent_type == AgentType.RESEARCH_EXECUTOR:
+                return ResearchResults(
+                    query=deps.research_state.user_query,
+                    findings=[],
                 )
+            return fallback
 
-                # Get the enhanced brief from metadata
-                brief_full = research_state.metadata.brief.full or {}
-                brief_text = research_state.metadata.brief.text or "No research brief available"
-
-                if not brief_full or not brief_text:
-                    raise ValueError(
-                        "Research brief not available - three-phase clarification may have failed"
-                    )
-
-                # Stage 4: Research Execution (if we had research executor agent)
-                # For now, we'll create mock findings since we're focusing on the 3-phase system
-                logfire.info("Stage 4: Research execution (placeholder)", request_id=request_id)
-
-                # Emit stage started event for research execution
-                await emit_stage_started(
-                    research_state.request_id,
-                    ResearchStage.RESEARCH_EXECUTION,
-                    context={"brief_available": bool(brief_full)},
-                )
-
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "Conducting deep research across multiple authoritative sources...",
-                    ResearchStage.RESEARCH_EXECUTION,
-                )
-
-                # Create placeholder findings based on brief
-                # ResearchFinding already imported at top of module
-
-                key_areas = brief_full.get("key_research_areas", ["General research"])
-                mock_findings = []
-                for i, area in enumerate(key_areas[:3], 1):  # Limit to 3 areas
-                    await emit_streaming_update(
-                        research_state.request_id,
-                        f"AI Research Executor analyzing {area} - sources processed: {i * 4}/12",
-                        ResearchStage.RESEARCH_EXECUTION,
-                    )
-
-                    mock_findings.append(
-                        ResearchFinding(
-                            finding=f"Research finding related to {area}",
-                            confidence_level=0.7,
-                            supporting_evidence=[f"Evidence for {area}"],
-                            category=area,
-                        )
-                    )
-
-                research_state.findings = mock_findings
-                research_state.advance_stage()
-
-                await emit_stage_completed(
-                    research_state.request_id, ResearchStage.RESEARCH_EXECUTION, True
-                )
-
-                # Stage 5: Compression (if we had compression agent)
-                logfire.info("Stage 5: Compression (placeholder)", request_id=request_id)
-
-                # Emit stage started event for compression
-                await emit_stage_started(
-                    research_state.request_id,
-                    ResearchStage.COMPRESSION,
-                    context={"findings_count": len(mock_findings)},
-                )
-
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "Analyzing and organizing research findings into coherent themes...",
-                    ResearchStage.COMPRESSION,
-                )
-
-                await emit_streaming_update(
-                    research_state.request_id,
-                    (
-                        "AI Information Synthesizer is identifying key insights and removing "
-                        "redundancy..."
-                    ),
-                    ResearchStage.COMPRESSION,
-                )
-
-                # Create placeholder compressed findings
-                research_state.compressed_findings = (
-                    f"Compressed findings based on {len(mock_findings)} research findings "
-                    f"covering key areas: {', '.join(key_areas[:3])}"
-                )
-                research_state.metadata.compression.summary = {
-                    "total_findings": len(mock_findings),
-                    "key_themes": key_areas[:3],
-                    "confidence_average": 0.75,
-                }
-                research_state.advance_stage()
-
-                await emit_stage_completed(
-                    research_state.request_id, ResearchStage.COMPRESSION, True
-                )
-
-                # Stage 6: Report Generation (if we had report generator agent)
-                logfire.info("Stage 6: Report generation (placeholder)", request_id=request_id)
-
-                # Emit stage started event for report generation
-                await emit_stage_started(
-                    research_state.request_id,
-                    ResearchStage.REPORT_GENERATION,
-                    context={
-                        "compressed_findings_available": bool(research_state.compressed_findings)
-                    },
-                )
-
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "Crafting comprehensive research report from findings...",
-                    ResearchStage.REPORT_GENERATION,
-                )
-
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "AI Report Writer is structuring sections and adding citations...",
-                    ResearchStage.REPORT_GENERATION,
-                )
-
-                # Create placeholder report
-                # ResearchReport and ReportSection already imported at top of module
-
-                # Create sections based on research areas
-                sections = []
-                for area in key_areas[:3]:
-                    section = ReportSection(
-                        title=area,
-                        content=f"Detailed analysis of {area} based on research findings.",
-                        citations=[f"Citation for {area}"],
-                    )
-                    sections.append(section)
-
-                final_report = ResearchReport(
-                    title=f"Research Report: {user_query}",
-                    executive_summary=brief_text[:500],
-                    introduction=f"This report presents research findings for: {user_query}",
-                    sections=sections,
-                    conclusions=(
-                        "Research completed successfully using the "
-                        "three-phase clarification system."
-                    ),
-                    recommendations=[
-                        f"Further investigation into {area}" for area in key_areas[:2]
-                    ],
-                    references=["https://example.com"] * len(mock_findings),
-                    quality_score=0.85,
-                )
-
-                # Store the final report in research state
-                research_state.final_report = final_report
-                research_state.advance_stage()
-                research_state.completed_at = datetime.now()
-
-                await emit_stage_completed(
-                    research_state.request_id, ResearchStage.REPORT_GENERATION, True
-                )
-
-                # Workflow complete
-                logfire.info(
-                    "Research workflow completed successfully with three-phase clarification",
-                    request_id=request_id,
-                    total_usage=deps.usage,
-                    clarification_enhanced=True,
-                )
-
-                return research_state
-
-            except Exception as e:
-                logfire.error(
-                    "Research workflow failed",
-                    request_id=request_id,
-                    error=str(e),
-                    exc_info=True,
-                )
-
-                # Emit error event
-                await emit_error(
-                    request_id,
-                    research_state.current_stage,
-                    type(e).__name__,
-                    str(e),
-                )
-
-                # Update state with error
-                research_state.set_error(str(e))
-                return research_state
-
-    async def _execute_three_phase_clarification(
+    async def _execute_two_phase_clarification(
         self, deps: ResearchDependencies, user_query: str
     ) -> None:
-        """Execute the integrated three-phase clarification system with concurrent processing.
+        """Execute two-phase clarification system.
 
-        Phase 1: Enhanced Clarification Assessment
-        Phase 2: Query Transformation
-        Phase 3: Enhanced Brief Generation
+        Phase 1: Initial clarification check
+        Phase 2: Query transformation (produces SearchQueryBatch and ResearchPlan)
         """
-        # Access research_state from dependencies
         research_state = deps.research_state
 
-        # Create tasks for concurrent processing where possible
-        phase_results = {}
-
         try:
-            # Phase 1: Enhanced Clarification Assessment
-            logfire.info("Phase 1: Enhanced clarification assessment")
+            # Phase 1: Clarification Assessment
+            logfire.info("Phase 1: Clarification assessment")
 
-            # Emit stage started event
-            await emit_stage_started(
-                research_state.request_id,
-                ResearchStage.CLARIFICATION,
-                context={"user_query": user_query},
-            )
-
-            # Emit streaming update to trigger progress tracking
+            await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
             await emit_streaming_update(
                 research_state.request_id,
-                "AI Clarification Specialist is examining your query for ambiguities...",
+                "Analyzing your query for clarity and completeness...",
                 ResearchStage.CLARIFICATION,
             )
 
-            # Run clarification agent
-            clarification_task: asyncio.Task[Any] | None = None
             try:
-                clarification_task = asyncio.create_task(
-                    self._run_agent_with_circuit_breaker(AgentType.CLARIFICATION, deps)
+                # Run clarification agent
+                clarification_result = await self._run_agent_with_circuit_breaker(
+                    AgentType.CLARIFICATION, deps
                 )
-                clarification_result = await clarification_task
-            except KeyboardInterrupt:
-                # Cancel the clarification task if it's still running
-                if clarification_task is not None:
-                    task_not_done = not clarification_task.done()
-                    if task_not_done:
-                        clarification_task.cancel()
-                        try:
-                            await clarification_task
-                        except asyncio.CancelledError:
-                            pass
-                # Re-raise to terminate the workflow
-                logfire.info("User cancelled during clarification analysis")
-                raise KeyboardInterrupt("User cancelled during clarification analysis") from None
 
-            # Store clarification assessment in structured format
-            if not research_state.metadata:
-                research_state.metadata = ResearchMetadata()
+                # Store clarification metadata
+                if research_state.metadata:
+                    research_state.metadata.clarification.assessment = {
+                        "needs_clarification": clarification_result.needs_clarification,
+                        "confidence": 0.8,  # Default confidence for now
+                        "clarification_type": "general",  # Default type
+                        "assessment_reasoning": clarification_result.reasoning,
+                        "missing_dimensions": clarification_result.missing_dimensions,
+                    }
 
-            # Store the full ClarificationRequest if available
-            if clarification_result.needs_clarification and clarification_result.request:
-                research_state.metadata.clarification.request = clarification_result.request
+                    if clarification_result.needs_clarification:
+                        research_state.metadata.clarification.request = clarification_result.request
+                        research_state.metadata.clarification.awaiting_clarification = True
 
-            # Also store assessment details for backward compatibility
-            research_state.metadata.clarification.assessment = {
-                "needs_clarification": clarification_result.needs_clarification,
-                "reasoning": clarification_result.reasoning,
-                "missing_dimensions": clarification_result.missing_dimensions,
-                "assessment_reasoning": clarification_result.assessment_reasoning,
-            }
+                await emit_stage_completed(
+                    research_state.request_id,
+                    ResearchStage.CLARIFICATION,
+                    True,
+                    clarification_result,
+                )
 
-            # Emit stage completed event BEFORE any early returns
-            # This ensures the timer stops when the clarification agent completes
-            await emit_stage_completed(
-                research_state.request_id, ResearchStage.CLARIFICATION, True, clarification_result
-            )
-
-            # Handle clarification if needed
-            if clarification_result.needs_clarification and clarification_result.request:
-                if sys.stdin.isatty():  # Interactive mode (CLI)
-                    try:
-                        # Get user responses for all clarification questions with review
-                        from rich.console import Console
-
-                        console = Console()
+                # If clarification needed, handle it
+                if clarification_result.needs_clarification:
+                    logfire.info("Clarification needed, entering interactive flow")
+                    # Handle clarification flow
+                    if clarification_result.request:
                         clarification_response = await handle_clarification_with_review(
                             request=clarification_result.request,
                             original_query=research_state.user_query,
-                            console=console,
-                            auto_review=True,
-                            allow_skip_review=True,
                         )
-
-                        if clarification_response:
+                        if not clarification_response:
+                            logfire.info("Clarification still pending")
+                            return
+                        # Store the clarification response in metadata
+                        if research_state.metadata and clarification_response:
                             research_state.metadata.clarification.response = clarification_response
-
-                            # Add to conversation messages
-                            if not research_state.metadata.conversation_messages:
-                                research_state.metadata.conversation_messages = []
-
-                            # Add each Q&A pair to conversation
-                            for answer in clarification_response.answers:
-                                if not answer.skipped and answer.answer:
-                                    # Use the request from the result, not metadata
-                                    question = clarification_result.request.get_question_by_id(
-                                        answer.question_id
-                                    )
-                                    if question:
-                                        messages: list[ConversationMessage] = [
-                                            ConversationMessage(
-                                                role="assistant", content=question.question
-                                            ),
-                                            ConversationMessage(role="user", content=answer.answer),
-                                        ]
-                                        research_state.metadata.conversation_messages.extend(
-                                            messages
-                                        )
-
-                    except (KeyboardInterrupt, EOFError):
-                        logfire.info("User cancelled clarification - terminating workflow")
-                        # Re-raise to terminate the entire workflow
-                        raise KeyboardInterrupt("User cancelled during clarification") from None
-                else:
-                    # Non-interactive mode - store for HTTP handling
-                    research_state.metadata.clarification.awaiting_clarification = True
-                    # Store formatted question for display (backward compatibility)
-                    if clarification_result.request.questions:
-                        research_state.metadata.clarification.question = (
-                            clarification_result.request.get_sorted_questions()[0].question
-                        )
-                    return  # Exit early for HTTP handling
-
-            # Phase 2: Query Transformation
-            logfire.info("Phase 2: Query transformation")
-
-            # Emit stage started event for brief generation
-            await emit_stage_started(
-                research_state.request_id,
-                ResearchStage.BRIEF_GENERATION,
-                context={"phase": "query_transformation"},
-            )
-
-            try:
-                # Query transformation agent accesses clarification data from dependencies
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "AI Query Transformation Specialist is refining your research question...",
-                    ResearchStage.BRIEF_GENERATION,
-                )
-
-                transformed_query = await self._run_agent_with_circuit_breaker(
-                    AgentType.QUERY_TRANSFORMATION, deps
-                )
-
-                # Store comprehensive transformation data in structured format
-                research_state.metadata.query.transformed_query = {
-                    "original_query": transformed_query.original_query,
-                    "transformed_query": transformed_query.transformed_query,
-                    "transformation_rationale": transformed_query.transformation_rationale,
-                    "specificity_score": transformed_query.specificity_score,
-                    "supporting_questions": transformed_query.supporting_questions,
-                    "clarification_responses": transformed_query.clarification_responses,
-                    "domain_indicators": transformed_query.domain_indicators,
-                    "complexity_assessment": transformed_query.complexity_assessment,
-                    "estimated_scope": transformed_query.estimated_scope,
-                }
-
-                logfire.info(
-                    "Query transformation completed",
-                    specificity_score=transformed_query.specificity_score,
-                    supporting_questions_count=len(transformed_query.supporting_questions),
-                    complexity=transformed_query.complexity_assessment,
-                    scope=transformed_query.estimated_scope,
-                )
-
-                phase_results["transformation"] = transformed_query
+                    else:
+                        logfire.warn("Clarification needed but no request provided")
+                        return
 
             except Exception as e:
-                logfire.warning(f"Query transformation failed, proceeding without: {e}")
-                # Continue without transformation data - brief generator has fallback
+                logfire.error(f"Clarification failed: {e}")
+                # Continue without clarification
                 await emit_error(
                     research_state.request_id,
-                    ResearchStage.BRIEF_GENERATION,
-                    "TransformationError",
+                    ResearchStage.CLARIFICATION,
+                    "ClarificationError",
                     str(e),
                     recoverable=True,
                 )
 
-            # Phase 3: Enhanced Brief Generation
-            logfire.info("Phase 3: Enhanced brief generation")
+            # Phase 2: Query Transformation (produces SearchQueryBatch and ResearchPlan)
+            logfire.info("Phase 2: Query transformation with research planning")
 
+            await emit_stage_started(research_state.request_id, ResearchStage.QUERY_TRANSFORMATION)
             await emit_streaming_update(
                 research_state.request_id,
-                "Creating comprehensive research strategy and plan...",
-                ResearchStage.BRIEF_GENERATION,
+                "Transforming your query and creating research plan...",
+                ResearchStage.QUERY_TRANSFORMATION,
             )
 
             try:
-                # Prepare brief generation data
-                brief_prompt = f"""Generate a comprehensive research brief based on:
-                Original Query: {user_query}
-                Transformed Query: {
-                    (research_state.metadata.query.transformed_query or {}).get(
-                        "transformed_query", user_query
-                    )
-                }
-                Research Context: Clarification and transformation completed
-                """
-
-                await emit_streaming_update(
-                    research_state.request_id,
-                    "AI Research Planner is designing your research methodology...",
-                    ResearchStage.BRIEF_GENERATION,
+                # Run query transformation agent to get TransformedQuery
+                enhanced_query = await self._run_agent_with_circuit_breaker(
+                    AgentType.QUERY_TRANSFORMATION, deps
                 )
 
-                # Run brief generation agent with circuit breaker
-                brief_result = await self._run_agent_with_circuit_breaker(
-                    AgentType.BRIEF_GENERATOR, deps, prompt=brief_prompt
-                )
-
-                # Store brief in structured format with all metadata
-                research_state.metadata.brief.text = brief_result.brief_text
-                research_state.metadata.brief.confidence = brief_result.confidence_score
-                research_state.metadata.brief.full = {
-                    "brief_text": brief_result.brief_text,
-                    "confidence_score": brief_result.confidence_score,
-                    "key_research_areas": brief_result.key_research_areas,
-                    "research_objectives": brief_result.research_objectives,
-                    "methodology_suggestions": brief_result.methodology_suggestions,
-                    "estimated_complexity": brief_result.estimated_complexity,
-                    "estimated_duration": brief_result.estimated_duration,
-                    "suggested_sources": brief_result.suggested_sources,
-                    "potential_challenges": brief_result.potential_challenges,
-                    "success_criteria": brief_result.success_criteria,
-                }
+                # Store the TransformedQuery object directly for downstream access
+                research_state.metadata.query.transformed_query = enhanced_query
 
                 await emit_stage_completed(
-                    research_state.request_id, ResearchStage.BRIEF_GENERATION, True, brief_result
+                    research_state.request_id,
+                    ResearchStage.QUERY_TRANSFORMATION,
+                    True,
+                    enhanced_query,
                 )
 
                 logfire.info(
-                    "Three-phase clarification system completed successfully",
-                    confidence=brief_result.confidence_score,
-                    brief_length=len(brief_result.brief_text),
-                    key_areas_count=len(brief_result.key_research_areas),
-                    has_transformation=research_state.metadata.query.transformed_query is not None,
-                    clarification_count=(
-                        len(research_state.metadata.clarification.response.answers)
-                        if research_state.metadata.clarification.response
-                        else 0
-                    ),
-                    estimated_complexity=brief_result.estimated_complexity,
+                    "Query transformation completed",
+                    original_query=enhanced_query.original_query,
+                    search_queries=[q.query for q in enhanced_query.search_queries.queries],
+                    num_search_queries=len(enhanced_query.search_queries.queries),
+                    num_objectives=len(enhanced_query.research_plan.objectives),
+                    execution_strategy=enhanced_query.search_queries.execution_strategy,
+                    confidence=enhanced_query.confidence_score,
+                    transformation_rationale=enhanced_query.transformation_rationale,
                 )
 
-                phase_results["brief"] = brief_result
-
             except Exception as e:
-                logfire.error(f"Brief generation failed: {e}")
+                logfire.error(f"Query transformation failed: {e}")
                 await emit_error(
                     research_state.request_id,
-                    ResearchStage.BRIEF_GENERATION,
-                    "BriefGenerationError",
+                    ResearchStage.QUERY_TRANSFORMATION,
+                    "TransformationError",
                     str(e),
                     recoverable=False,
                 )
@@ -807,15 +356,314 @@ class ResearchWorkflow:
 
         except Exception as e:
             # Log phase completion failure
-            logfire.error(f"Three-phase clarification system failed: {e}", exc_info=True)
+            logfire.error(f"Two-phase clarification system failed: {e}", exc_info=True)
             await emit_error(
                 research_state.request_id,
                 research_state.current_stage,
-                "ThreePhaseError",
+                "TwoPhaseError",
                 str(e),
                 recoverable=False,
             )
             raise
+
+    async def run(
+        self,
+        user_query: str,
+        api_keys: APIKeys | None = None,
+        conversation_history: list[ConversationMessage] | None = None,
+        request_id: str | None = None,
+        stream_callback: Any | None = None,
+    ) -> ResearchState:
+        """Execute the complete research workflow.
+
+        Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
+              REPORT_GENERATION
+
+        Args:
+            user_query: The user's research query
+            api_keys: API keys for various services
+            conversation_history: Previous conversation messages
+            request_id: Unique request identifier
+            stream_callback: Optional callback for streaming updates
+
+        Returns:
+            Final research state with results
+        """
+        self._ensure_initialized()
+
+        # Initialize research state
+        research_state = ResearchState(
+            user_query=user_query,
+            current_stage=ResearchStage.CLARIFICATION,
+            request_id=request_id or ResearchState.generate_request_id(),
+            user_id="default",  # Explicitly set to match the default
+            session_id=None,  # Explicitly set to match the default
+            metadata=ResearchMetadata(),
+        )
+
+        # Store conversation history if provided
+        if conversation_history:
+            research_state.metadata.conversation_messages = conversation_history
+
+        # Emit start event
+        await emit_research_started(research_state.request_id, user_query)
+
+        # Create HTTP client
+        async with httpx.AsyncClient() as http_client:
+            # Create dependencies
+            deps = ResearchDependencies(
+                http_client=http_client,
+                api_keys=api_keys or APIKeys(),
+                research_state=research_state,
+            )
+            deps.source_repository = InMemorySourceRepository()
+
+            try:
+                # Execute two-phase clarification (includes query transformation)
+                await self._execute_two_phase_clarification(deps, user_query)
+
+                research_state.advance_stage()  # Move to RESEARCH_EXECUTION
+
+                # Execute remaining stages with concurrent processing where possible
+                await self._execute_research_stages(deps, stream_callback)
+
+                # Mark as complete
+                research_state.current_stage = ResearchStage.COMPLETED
+                research_state.completed_at = datetime.now()
+
+                duration = (datetime.now() - research_state.started_at).total_seconds()
+
+                logfire.info(
+                    "Research workflow completed successfully",
+                    request_id=research_state.request_id,
+                    duration=duration,
+                )
+
+                # Emit research completed event for CLI and other consumers
+                from core.events import ResearchCompletedEvent, research_event_bus
+
+                await research_event_bus.emit(
+                    ResearchCompletedEvent(
+                        _request_id=research_state.request_id,
+                        report=research_state.final_report,
+                        success=True,
+                        duration_seconds=duration,
+                        error_message=None,
+                    )
+                )
+
+                return research_state
+
+            except Exception as e:
+                logfire.error(f"Research workflow failed: {e}", exc_info=True)
+                research_state.set_error(str(e))
+                await emit_error(
+                    research_state.request_id,
+                    research_state.current_stage,
+                    "WorkflowError",
+                    str(e),
+                    recoverable=False,
+                )
+
+                # Emit research completed event with failure status
+                duration = (datetime.now() - research_state.started_at).total_seconds()
+                from core.events import ResearchCompletedEvent, research_event_bus
+
+                await research_event_bus.emit(
+                    ResearchCompletedEvent(
+                        _request_id=research_state.request_id,
+                        report=research_state.final_report,
+                        success=False,
+                        duration_seconds=duration,
+                        error_message=str(e),
+                    )
+                )
+
+                return research_state
+
+    async def _execute_research_stages(
+        self, deps: ResearchDependencies, stream_callback: Any | None = None
+    ) -> None:
+        """Execute the main research stages after clarification and transformation."""
+
+        research_state = deps.research_state
+
+        # Stage 1: Research Execution
+        await emit_stage_started(research_state.request_id, ResearchStage.RESEARCH_EXECUTION)
+        await emit_streaming_update(
+            research_state.request_id,
+            "Executing research queries and gathering information...",
+            ResearchStage.RESEARCH_EXECUTION,
+        )
+
+        try:
+            # Research executor now receives SearchQueryBatch directly
+            if not deps.search_results:
+                batch = deps.get_search_query_batch()
+                if batch is None:
+                    raise ValueError("Missing SearchQueryBatch prior to search execution")
+                deps.search_results = await self._execute_search_queries(batch, deps)
+
+            results = await self._run_agent_with_circuit_breaker(AgentType.RESEARCH_EXECUTOR, deps)
+            research_state.research_results = results
+
+            await emit_stage_completed(
+                research_state.request_id,
+                ResearchStage.RESEARCH_EXECUTION,
+                True,
+                {"findings_count": (len(getattr(results, "findings", [])) if results else 0)},
+            )
+
+            research_state.advance_stage()  # Move to REPORT_GENERATION
+
+        except Exception as e:
+            logfire.error(f"Research execution failed: {e}")
+            await emit_error(
+                research_state.request_id,
+                ResearchStage.RESEARCH_EXECUTION,
+                "ResearchExecutionError",
+                str(e),
+                recoverable=False,
+            )
+            raise
+
+        # Stage 2: Report Generation
+        await emit_stage_started(research_state.request_id, ResearchStage.REPORT_GENERATION)
+        await emit_streaming_update(
+            research_state.request_id,
+            "Generating comprehensive research report...",
+            ResearchStage.REPORT_GENERATION,
+        )
+
+        try:
+            report = await self._run_agent_with_circuit_breaker(AgentType.REPORT_GENERATOR, deps)
+            research_state.final_report = report
+
+            await emit_stage_completed(
+                research_state.request_id,
+                ResearchStage.REPORT_GENERATION,
+                True,
+                {"report_sections": len(report.sections) if hasattr(report, "sections") else 0},
+            )
+
+        except Exception as e:
+            logfire.error(f"Report generation failed: {e}")
+            await emit_error(
+                research_state.request_id,
+                ResearchStage.REPORT_GENERATION,
+                "ReportGenerationError",
+                str(e),
+                recoverable=False,
+            )
+            raise
+
+    async def _execute_search_queries(
+        self, batch: SearchQueryBatch, deps: ResearchDependencies
+    ) -> list[dict[str, Any]]:
+        """Execute search queries for the current research state."""
+
+        if not batch.queries:
+            logfire.info("No search queries provided for execution")
+            return []
+
+        plan = self._build_query_execution_plan(batch)
+
+        orchestrator = SearchOrchestrator(search_fn=self._orchestrated_search)
+        query_results, _ = await orchestrator.execute_plan(plan)
+
+        aggregated: list[dict[str, Any]] = []
+        for query, result in query_results:
+            if not result:
+                continue
+            for item in result.results:
+                if hasattr(item, "model_dump"):
+                    data = item.model_dump()
+                elif isinstance(item, dict):
+                    data = item
+                else:
+                    data = {"content": str(item)}
+
+                content = data.get("content") or data.get("snippet") or ""
+                aggregated.append(
+                    {
+                        "query": query.query,
+                        "title": data.get("title", ""),
+                        "url": data.get("url", ""),
+                        "snippet": data.get("snippet", ""),
+                        "content": content,
+                        "score": data.get("score", 0.0),
+                        "metadata": data.get("metadata", {}),
+                    }
+                )
+
+        # Record execution metadata if available
+        execution_meta = getattr(deps.research_state.metadata, "execution", None)
+        if execution_meta is not None:
+            execution_meta.results = aggregated
+            execution_meta.status = "completed"
+
+        return aggregated
+
+    def _build_query_execution_plan(self, batch: SearchQueryBatch) -> QueryExecutionPlan:
+        """Convert `SearchQueryBatch` to orchestrator execution plan."""
+
+        strategy_map = {
+            BatchExecutionStrategy.SEQUENTIAL: SearchExecutionStrategy.SEQUENTIAL,
+            BatchExecutionStrategy.PARALLEL: SearchExecutionStrategy.PARALLEL,
+            BatchExecutionStrategy.HIERARCHICAL: SearchExecutionStrategy.HIERARCHICAL,
+            BatchExecutionStrategy.ADAPTIVE: SearchExecutionStrategy.SEQUENTIAL,
+        }
+
+        orchestrator_queries: list[OrchestratorQuery] = []
+        for query in batch.queries:
+            priority = self._map_query_priority(query.priority)
+            context: dict[str, Any] = {
+                "max_results": query.max_results,
+                "search_sources": [source.value for source in query.search_sources],
+                "expected_result_type": query.expected_result_type,
+            }
+            if query.temporal_context:
+                context["temporal_context"] = query.temporal_context.model_dump()
+
+            orchestrator_queries.append(
+                OrchestratorQuery(
+                    id=query.id,
+                    query=query.query,
+                    priority=priority,
+                    context=context,
+                )
+            )
+
+        return QueryExecutionPlan(
+            queries=orchestrator_queries,
+            strategy=strategy_map.get(batch.execution_strategy, SearchExecutionStrategy.SEQUENTIAL),
+        )
+
+    def _map_query_priority(self, priority: int | None) -> int:
+        """Map numeric priority, returning a default if None."""
+        return priority if priority is not None else Priority.DEFAULT_PRIORITY
+
+    async def _orchestrated_search(self, query: OrchestratorQuery) -> OrchestratorResult:
+        """Bridge function that executes a query through WebSearchService."""
+
+        context = query.context or {}
+        max_results = context.get("max_results", 5)
+        provider = context.get("provider")
+
+        response = await self._search_service.search(
+            query.query,
+            num_results=max_results,
+            provider=provider,
+        )
+
+        return OrchestratorResult(
+            query=query.query,
+            results=[res.model_dump() for res in response.results],
+            metadata={
+                "source": response.source,
+                "total_results": response.total_results,
+            },
+        )
 
     async def resume_research(
         self,
@@ -837,12 +685,11 @@ class ResearchWorkflow:
 
         # Create HTTP client
         async with httpx.AsyncClient() as http_client:
-            # Create dependencies with existing state using new pydantic-ai structure
+            # Create dependencies with existing state
             deps = ResearchDependencies(
                 http_client=http_client,
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
-                # metadata now accessed via research_state.metadata
             )
 
             try:
@@ -855,234 +702,70 @@ class ResearchWorkflow:
                         research_state.metadata
                         and research_state.metadata.clarification.awaiting_clarification
                     ):
-                        # Still waiting for user response in HTTP mode
+                        # Still waiting for user response
                         logfire.info("Still awaiting clarification response")
                         return research_state
 
-                    # Re-execute three-phase clarification system
-                    await self._execute_three_phase_clarification(deps, research_state.user_query)
+                    # Re-execute two-phase clarification system
+                    await self._execute_two_phase_clarification(deps, research_state.user_query)
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
-                elif current_stage == ResearchStage.BRIEF_GENERATION:
-                    # Brief generation complete, advance to research execution
+                if current_stage == ResearchStage.QUERY_TRANSFORMATION:
+                    # Query transformation should complete in two-phase
                     research_state.advance_stage()
                     return await self.resume_research(research_state, api_keys, stream_callback)
 
-                elif current_stage == ResearchStage.RESEARCH_EXECUTION:
-                    brief_text = (
-                        research_state.metadata.brief.text if research_state.metadata else None
+                if current_stage in [
+                    ResearchStage.RESEARCH_EXECUTION,
+                    ResearchStage.REPORT_GENERATION,
+                ]:
+                    # Execute remaining stages
+                    await self._execute_research_stages(deps, stream_callback)
+
+                    # Mark as complete
+                    research_state.current_stage = ResearchStage.COMPLETED
+                    research_state.completed_at = datetime.now()
+
+                    # Emit research completed event for resumed research
+                    duration = (datetime.now() - research_state.started_at).total_seconds()
+                    from core.events import ResearchCompletedEvent, research_event_bus
+
+                    await research_event_bus.emit(
+                        ResearchCompletedEvent(
+                            _request_id=research_state.request_id,
+                            report=research_state.final_report,
+                            success=True,
+                            duration_seconds=duration,
+                            error_message=None,
+                        )
                     )
-                    if brief_text:
-                        # Create minimal ResearchBrief for compatibility
-                        # ResearchBrief already imported at top of module
 
-                        questions = [q.strip() + "?" for q in brief_text.split("?") if q.strip()][
-                            :5
-                        ]
-                        if not questions:
-                            questions = ["What are the key aspects of this topic?"]
+                    return research_state
 
-                        minimal_brief = ResearchBrief(
-                            title=f"Research Brief: {research_state.user_query}",
-                            executive_summary=brief_text[:500],
-                            objectives=[
-                                ResearchObjective(
-                                    objective="Research and understand the topic comprehensively",
-                                    priority=5,
-                                    success_criteria="Complete understanding of key aspects",
-                                )
-                            ],
-                            methodology=ResearchMethodology(
-                                approach="Comprehensive research approach",
-                                data_sources=["Academic sources", "Industry reports"],
-                                analysis_methods=["Qualitative analysis"],
-                                quality_checks=["Fact verification"],
-                            ),
-                            scope=brief_text[:500],
-                            constraints=[],
-                            deliverables=["Research findings", "Summary report"],
-                        )
+                if current_stage == ResearchStage.COMPLETED:
+                    logfire.info("Research already completed")
+                    return research_state
 
-                        findings = await research_executor_agent.execute_research(
-                            minimal_brief,
-                            deps,
-                            max_parallel_tasks=3,
-                        )
-                        research_state.findings = findings
-                        research_state.advance_stage()
-                        return await self.resume_research(research_state, api_keys, stream_callback)
-
-                elif current_stage == ResearchStage.COMPRESSION:
-                    brief_text = (
-                        research_state.metadata.brief.text if research_state.metadata else None
-                    )
-                    if research_state.findings and brief_text:
-                        # Extract key questions from brief text (simplified approach)
-                        key_questions = [q.strip() for q in brief_text.split("?") if q.strip()][:5]
-                        compressed = await compression_agent.compress_findings(
-                            research_state.findings,
-                            key_questions,
-                            deps,
-                        )
-                        research_state.compressed_findings = compressed.summary
-                        research_state.metadata.compression.full = compressed
-                        research_state.advance_stage()
-                        return await self.resume_research(research_state, api_keys, stream_callback)
-
-                elif current_stage == ResearchStage.REPORT_GENERATION:
-                    brief_text = (
-                        research_state.metadata.brief.text if research_state.metadata else None
-                    )
-                    if (
-                        brief_text
-                        and research_state.findings
-                        and research_state.compressed_findings
-                    ):
-                        # Reconstruct compressed findings from metadata if available
-                        # CompressedContent already imported at top of module
-
-                        if research_state.metadata.compression.full is not None:
-                            # Use the full object stored in metadata
-                            compressed = research_state.metadata.compression.full
-                        else:
-                            # Fallback to basic reconstruction
-                            compressed = CompressedContent(
-                                original_content="",
-                                compressed_summary=research_state.compressed_findings or "",
-                                compression_strategy="fallback",
-                                total_compression_ratio=0.5,
-                            )
-
-                        # Recreate minimal ResearchBrief for report generation
-                        questions = [q.strip() + "?" for q in brief_text.split("?") if q.strip()][
-                            :5
-                        ]
-                        if not questions:
-                            questions = ["What are the key aspects of this topic?"]
-
-                        minimal_brief = ResearchBrief(
-                            title=f"Research Brief: {research_state.user_query}",
-                            executive_summary=brief_text[:500],
-                            objectives=[
-                                ResearchObjective(
-                                    objective="Research and understand the topic comprehensively",
-                                    priority=5,
-                                    success_criteria="Complete understanding of key aspects",
-                                )
-                            ],
-                            methodology=ResearchMethodology(
-                                approach="Comprehensive research approach",
-                                data_sources=["Academic sources", "Industry reports"],
-                                analysis_methods=["Qualitative analysis"],
-                                quality_checks=["Fact verification"],
-                            ),
-                            scope=brief_text[:500],
-                            constraints=[],
-                            deliverables=["Research findings", "Summary report"],
-                        )
-
-                        report = await report_generator_agent.generate_report(
-                            minimal_brief,
-                            research_state.findings,
-                            compressed,
-                            deps,
-                        )
-
-                        research_state.final_report = report
-                        research_state.advance_stage()
-                        research_state.completed_at = datetime.now()
-
+                logfire.warning(f"Unknown stage: {current_stage}")
                 return research_state
 
             except Exception as e:
-                logfire.error(
-                    "Research resume failed",
-                    request_id=research_state.request_id,
-                    error=str(e),
-                    exc_info=True,
-                )
+                logfire.error(f"Resume failed: {e}", exc_info=True)
                 research_state.set_error(str(e))
-                return research_state
 
-    async def execute_planning_only(
-        self,
-        user_query: str,
-        api_keys: APIKeys | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-    ) -> ResearchState:
-        """Execute only the three-phase clarification and brief generation.
+                # Emit research completed event with failure status for resumed research
+                duration = (datetime.now() - research_state.started_at).total_seconds()
+                from core.events import ResearchCompletedEvent, research_event_bus
 
-        This is perfect for API endpoints that just need the research brief.
-
-        Args:
-            user_query: User's research query
-            api_keys: API keys for various services
-            user_id: Optional user ID for isolation
-            session_id: Optional session ID for user
-
-        Returns:
-            Research state with completed brief generation
-        """
-        self._ensure_initialized()
-
-        # Get user context
-        context = get_current_context()
-        if user_id is None:
-            user_id = context.user_id
-        if session_id is None:
-            session_id = context.session_id
-
-        # Create research state
-        request_id = ResearchState.generate_request_id(user_id, session_id)
-        research_state = ResearchState(
-            request_id=request_id,
-            user_id=user_id,
-            session_id=session_id,
-            user_query=user_query,
-        )
-
-        # Create HTTP client
-        async with httpx.AsyncClient() as http_client:
-            # Create dependencies using new pydantic-ai compliant structure
-            deps = ResearchDependencies(
-                http_client=http_client,
-                api_keys=api_keys or APIKeys(),
-                research_state=research_state,
-                # metadata now accessed via research_state.metadata
-            )
-
-            try:
-                # Start research and execute three-phase clarification
-                research_state.start_research()
-                await emit_research_started(request_id, user_query)
-
-                # Execute integrated three-phase system
-                await self._execute_three_phase_clarification(deps, user_query)
-
-                # Mark planning as complete
-                research_state.current_stage = ResearchStage.BRIEF_GENERATION
-                research_state.advance_stage()
-
-                logfire.info(
-                    "Planning phase completed with three-phase clarification",
-                    request_id=request_id,
-                    brief_confidence=research_state.metadata.brief.confidence,
+                await research_event_bus.emit(
+                    ResearchCompletedEvent(
+                        _request_id=research_state.request_id,
+                        report=research_state.final_report,
+                        success=False,
+                        duration_seconds=duration,
+                        error_message=str(e),
+                    )
                 )
 
                 return research_state
-
-            except Exception as e:
-                logfire.error(
-                    "Planning phase failed",
-                    request_id=request_id,
-                    error=str(e),
-                    exc_info=True,
-                )
-                research_state.set_error(str(e))
-                return research_state
-
-
-# Global workflow instance
-workflow = ResearchWorkflow()

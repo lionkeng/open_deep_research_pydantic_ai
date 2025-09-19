@@ -16,7 +16,11 @@ dependencies = [
   "rich>=13.9.0",
   "sse-starlette>=2.1.0",
   "python-multipart>=0.0.20",
-  "python-dotenv>=1.1.1"
+  "python-dotenv>=1.1.1",
+  "numpy>=1.26.0",
+  "scikit-learn>=1.5.0",
+  "psutil>=7.0.0",
+  "hypothesis>=6.138.17",
 ]
 
 [project.optional-dependencies]
@@ -99,7 +103,7 @@ reportAny = "warning"
 
 # Keep strict error checking for code quality
 reportMissingImports = "error"
-reportMissingTypeStubs = "warning"
+reportMissingTypeStubs = "none"  # Disabled - not needed for internal modules with type hints
 reportUnusedImport = "error"
 reportUnusedClass = "error"
 reportUnusedFunction = "information"  # Lowered for Pydantic-AI tools (called dynamically)

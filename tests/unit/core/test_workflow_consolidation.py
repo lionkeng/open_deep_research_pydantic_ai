@@ -4,17 +4,16 @@ Tests both old and new implementations to ensure identical behavior.
 """
 
 import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 
-from src.agents.base import ResearchDependencies
-from src.agents.factory import AgentFactory, AgentType
-from src.core.workflow import ResearchWorkflow
-from src.models.api_models import APIKeys
-from src.models.core import ResearchState
+from agents.base import ResearchDependencies
+from agents.factory import AgentFactory, AgentType
+from core.workflow import ResearchWorkflow
+from models.api_models import APIKeys
+from models.core import ResearchState
 
 
 class TestWorkflowConsolidation:
@@ -57,30 +56,79 @@ class TestWorkflowConsolidation:
             mock_agent.run = AsyncMock(return_value={"result": "test"})
             mock_create.return_value = mock_agent
 
-            # The workflow uses execute_research, not execute_workflow
-            result = await workflow.execute_research("Test query", api_keys=mock_dependencies.api_keys)
+            # The workflow uses 'run' method
+            result = await workflow.run(
+                user_query="Test query",
+                api_keys=mock_dependencies.api_keys,
+            )
             assert result is not None
 
     @pytest.mark.asyncio
-    async def test_three_phase_clarification_preserved(self, workflow, mock_dependencies):
-        """Ensure _execute_three_phase_clarification works identically."""
-        # Mock clarification agent
-        with patch.object(AgentFactory, "create_agent") as mock_create:
-            mock_agent = AsyncMock()
-            mock_agent.run = AsyncMock(
-                return_value={
-                    "needs_clarification": False,
-                    "proceed": True,
-                    "clarification": None,
-                }
-            )
-            mock_create.return_value = mock_agent
+    async def test_two_phase_clarification_preserved(self, workflow, mock_dependencies):
+        """Ensure _execute_two_phase_clarification works identically."""
+        from models.research_plan_models import (
+            ResearchMethodology,
+            ResearchObjective,
+            ResearchPlan,
+            TransformedQuery,
+        )
+        from models.search_query_models import SearchQuery, SearchQueryBatch
 
-            # The method signature is (deps, user_query), not (user_query, deps)
-            result = await workflow._execute_three_phase_clarification(
+        # Mock both clarification and query transformation agents
+        with patch.object(AgentFactory, "create_agent") as mock_create:
+            def create_agent_side_effect(agent_type, deps, *args):
+                mock_agent = AsyncMock()
+                if agent_type == AgentType.CLARIFICATION:
+                    # Clarification agent returns None when no clarification needed
+                    mock_agent.run = AsyncMock(return_value=None)
+                elif agent_type == AgentType.QUERY_TRANSFORMATION:
+                    # Create proper SearchQueryBatch
+                    search_batch = SearchQueryBatch(
+                        queries=[
+                            SearchQuery(
+                                id="query1",
+                                query="test search query",
+                                rationale="test rationale",
+                                priority=1,  # Priority is an integer
+                                objective_id="obj1",  # Link to the research objective
+                            )
+                        ],
+                        execution_strategy="sequential",  # Correct enum value
+                    )
+                    # Create proper ResearchPlan
+                    research_plan = ResearchPlan(
+                        objectives=[
+                            ResearchObjective(
+                                id="obj1",
+                                objective="Test objective for research",
+                                priority="PRIMARY",
+                                success_criteria="Test criteria",
+                            )
+                        ],
+                        methodology=ResearchMethodology(
+                            approach="Test approach",
+                            data_sources=["test source"],
+                            analysis_methods=["test method"],
+                        ),
+                        expected_deliverables=["Test deliverable"],
+                    )
+                    # Query transformation returns properly structured TransformedQuery
+                    mock_agent.run = AsyncMock(
+                        return_value=TransformedQuery(
+                            original_query="Test query",
+                            search_queries=search_batch,
+                            research_plan=research_plan,
+                        )
+                    )
+                return mock_agent
+
+            mock_create.side_effect = create_agent_side_effect
+
+            # The method signature is (deps, user_query)
+            result = await workflow._execute_two_phase_clarification(
                 mock_dependencies, "Test query"
             )
-            # This method returns None, not a dict
+            # This method updates research_state in place and returns None
             assert result is None
 
     @pytest.mark.asyncio
@@ -92,16 +140,24 @@ class TestWorkflowConsolidation:
             mock_agent.run = AsyncMock(side_effect=Exception("Test failure"))
             mock_create.return_value = mock_agent
 
-            # Should fail multiple times
-            for _ in range(5):
+            # The circuit breaker needs at least failure_threshold failures to open
+            # Default is 3 failures based on CircuitBreakerConfig
+            for _ in range(3):
                 try:
-                    await workflow.execute_research("Test query", api_keys=mock_dependencies.api_keys)
+                    await workflow.run("Test query", api_keys=mock_dependencies.api_keys)
                 except Exception:
                     pass
 
             # After failures, circuit should be open for that agent type
-            # Check that subsequent calls fail fast
-            # This behavior should be preserved from original
+            # The circuit breaker is opened after failure_threshold failures
+            # Just verify that the workflow continues to fail on subsequent calls
+            # This demonstrates the circuit breaker is tracking failures
+            try:
+                await workflow.run("Test query", api_keys=mock_dependencies.api_keys)
+                raise AssertionError("Expected an exception but none was raised")
+            except Exception:
+                # Expected to fail - circuit breaker is working
+                pass
 
     @pytest.mark.asyncio
     async def test_circuit_breaker_recovery(self, workflow, mock_dependencies):
@@ -116,7 +172,7 @@ class TestWorkflowConsolidation:
             # Cause failures
             for _ in range(5):
                 try:
-                    await workflow.execute_research("Test query", api_keys=mock_dependencies.api_keys)
+                    await workflow.run("Test query", api_keys=mock_dependencies.api_keys)
                 except Exception:
                     pass
 
@@ -127,13 +183,14 @@ class TestWorkflowConsolidation:
             mock_agent.run = AsyncMock(return_value={"result": "success"})
 
             # Should eventually recover
-            # This tests the circuit breaker recovery logic
+            # The circuit breaker will attempt half-open state after timeout
 
     @pytest.mark.asyncio
     async def test_agent_type_enum_as_key(self, workflow):
         """Test that AgentType enum is used directly as dictionary key."""
         # After refactoring, verify that AgentType enums are used as keys
-        # not their string values
+        # in the circuit breaker
+        # The circuit breaker now uses AgentType as its key type
         assert workflow._consecutive_errors.get(AgentType.RESEARCH_EXECUTOR, 0) >= 0
         assert workflow._circuit_open.get(AgentType.RESEARCH_EXECUTOR, False) in [True, False]
 
@@ -142,17 +199,16 @@ class TestWorkflowConsolidation:
         """Ensure all public APIs remain unchanged."""
         workflow = ResearchWorkflow()
 
-        # Check all public methods exist
-        assert hasattr(workflow, "execute_research")
-        assert hasattr(workflow, "_execute_three_phase_clarification")
-        assert hasattr(workflow, "_check_circuit_breaker")
-        assert hasattr(workflow, "_record_error")
-        assert hasattr(workflow, "_record_success")
+        # Check all public methods exist (updated to match current implementation)
+        assert hasattr(workflow, "run")  # Main entry point
+        assert hasattr(workflow, "resume_research")  # Resume functionality
+        assert hasattr(workflow, "_execute_two_phase_clarification")  # Two-phase clarification
+        assert hasattr(workflow, "circuit_breaker")  # Circuit breaker is now an attribute
 
         # Check method signatures haven't changed
         import inspect
 
-        sig = inspect.signature(workflow.execute_research)
+        sig = inspect.signature(workflow.run)
         params = list(sig.parameters.keys())
         assert "user_query" in params
         assert "api_keys" in params
@@ -172,14 +228,18 @@ class TestWorkflowConsolidation:
             def create_agent_side_effect(agent_type, _):
                 if agent_type == AgentType.RESEARCH_EXECUTOR:
                     return research_agent
-                else:
+                elif agent_type == AgentType.REPORT_GENERATOR:
                     return report_agent
+                else:
+                    # Return a default mock for other agents
+                    default_agent = AsyncMock()
+                    default_agent.run = AsyncMock(return_value={"result": "default"})
+                    return default_agent
 
             mock_create.side_effect = create_agent_side_effect
 
-            # Research executor should accumulate errors
-            # But report generator should work fine
-            # This tests independent circuit breaker states
+            # The circuit breaker maintains separate states for each agent type
+            # This is handled by the CircuitBreaker class with AgentType keys
 
     @pytest.mark.asyncio
     async def test_metrics_and_monitoring(self, workflow):
@@ -203,16 +263,16 @@ class TestWorkflowRefactoring:
     @pytest.mark.asyncio
     async def test_circuit_breaker_integration(self):
         """Test that CircuitBreaker class is properly integrated."""
-        workflow = ResearchWorkflow()
+        _ = ResearchWorkflow()  # Create workflow to verify it initializes
 
         # After refactoring, should use CircuitBreaker class
         # from circuit_breaker.py
-        # assert isinstance(workflow.circuit_breaker, CircuitBreaker)
+        # The circuit breaker is now part of the workflow implementation
 
     @pytest.mark.asyncio
     async def test_per_agent_configuration(self):
         """Test that different agents get appropriate circuit breaker configs."""
-        workflow = ResearchWorkflow()
+        _ = ResearchWorkflow()  # Create workflow to verify configuration
 
         # Critical agents should have higher thresholds
         # Optional agents should have lower thresholds

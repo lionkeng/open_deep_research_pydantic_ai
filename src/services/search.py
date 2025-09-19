@@ -158,8 +158,6 @@ class WebSearchService:
             self.providers["tavily"] = TavilySearchProvider()
 
         # Add more providers as needed
-        # self.providers["serper"] = SerperSearchProvider()
-        # self.providers["duckduckgo"] = DuckDuckGoProvider()
 
         # Always have mock as fallback
         self.providers["mock"] = TavilySearchProvider(api_key=None)

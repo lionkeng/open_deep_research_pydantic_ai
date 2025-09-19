@@ -2,20 +2,30 @@
 Comprehensive tests for the ReportGeneratorAgent.
 """
 
-import asyncio
-import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from src.agents.report_generator import ReportGeneratorAgent
-from src.agents.base import ResearchDependencies, AgentConfiguration
-from src.models.report_generator import ResearchReport, ReportSection
-from src.models.api_models import APIKeys
+import pytest
+import pytest_asyncio
+
+from agents.base import AgentConfiguration, ResearchDependencies
+from agents.report_generator import ReportGeneratorAgent
+from models.api_models import APIKeys
+from models.core import ResearchStage, ResearchState
+from models.metadata import ResearchMetadata
+from models.report_generator import (
+    ReportMetadata as ReportMetadataModel,
+)
+from models.report_generator import (
+    ReportSection,
+    ResearchReport,
+)
+
 
 class TestReportGeneratorAgent:
     """Test suite for ReportGeneratorAgent."""
 
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def agent_dependencies(self):
         """Create mock dependencies for testing."""
         deps = ResearchDependencies(
@@ -26,15 +36,15 @@ class TestReportGeneratorAgent:
                 user_id="test-user",
                 session_id="test-session",
                 user_query="Generate report on AI advancements",
-                current_stage=ResearchStage.REPORT_GENERATION
+                current_stage=ResearchStage.REPORT_GENERATION,
+                metadata=ResearchMetadata()
             ),
-            metadata=ResearchMetadata(),
             usage=None
         )
         return deps
 
-    @pytest.fixture
-    def report_generator_agent(self, agent_dependencies):
+    @pytest_asyncio.fixture
+    async def report_generator_agent(self, agent_dependencies):
         """Create a ReportGeneratorAgent instance."""
         config = AgentConfiguration(
             agent_name="report_generator",
@@ -69,15 +79,24 @@ class TestReportGeneratorAgent:
         assert agent.config is not None
 
     @pytest.mark.asyncio
-    async def test_comprehensive_report_generation(self, report_generator_agent, agent_dependencies, sample_research_data):
+    async def test_comprehensive_report_generation(
+        self,
+        report_generator_agent,
+        agent_dependencies,
+        sample_research_data,
+    ):
         """Test generation of comprehensive research report."""
-        agent_dependencies.metadata.additional_context = sample_research_data
+        agent_dependencies.research_state.metadata.additional_context = sample_research_data
 
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Artificial Intelligence Advancements: A Comprehensive Analysis",
-            executive_summary="This report analyzes recent breakthroughs in AI across NLP, computer vision, and reinforcement learning domains.",
-            introduction="The field of artificial intelligence has witnessed remarkable progress...",
+            executive_summary=(
+                "This report analyzes recent breakthroughs in AI across NLP, computer vision, "
+                "and reinforcement learning domains."
+            ),
+            introduction=(
+                "The field of artificial intelligence has witnessed remarkable progress..."
+            ),
             sections=[
                 ReportSection(
                     title="Natural Language Processing Advances",
@@ -87,20 +106,23 @@ class TestReportGeneratorAgent:
                             title="Transformer Architecture Evolution",
                             content="The transformer architecture continues to evolve...",
                             subsections=[],
-                            key_findings=["GPT-4 capabilities", "Multimodal understanding"],
-                            citations=[
-                                "Smith, J., Doe, A. (2024). Advances in Transformer Models. Research Paper A. https://example.com/paper-a"
-                            ]
+                            figures=[],
+                    citations=[
+                        (
+                            "Smith, J., Doe, A. (2024). Advances in Transformer Models. "
+                            "Research Paper A. https://example.com/paper-a"
+                        )
+                    ]
                         )
                     ],
-                    key_findings=["Improved language understanding", "Better context retention"],
+                    figures=[],
                     citations=[]
                 ),
                 ReportSection(
                     title="Computer Vision Breakthroughs",
                     content="Computer vision has achieved human-level performance...",
                     subsections=[],
-                    key_findings=["Object detection accuracy", "Real-time processing"],
+                    figures=[],
                     citations=[
                         "Johnson, M. (2024). CV Advances 2024. Conference B. https://example.com/conf-b"
                     ]
@@ -109,33 +131,34 @@ class TestReportGeneratorAgent:
                     title="Reinforcement Learning Progress",
                     content="RL agents demonstrate improved efficiency...",
                     subsections=[],
-                    key_findings=["Sample efficiency improved", "Generalization enhanced"],
+                    figures=[],
                     citations=[
                         "Williams, R. (2024). RL Efficiency Gains. Journal C. https://example.com/journal-c"
                     ]
                 )
             ],
-            conclusion="AI continues to advance rapidly across multiple domains with significant implications...",
+            conclusions=(
+                "AI continues to advance rapidly across multiple domains with significant "
+                "implications..."
+            ),
             recommendations=[
                 "Invest in transformer-based models",
                 "Explore multimodal AI applications",
                 "Consider ethical implications"
             ],
-            methodology="Systematic literature review and expert analysis",
-            limitations=["Limited to publicly available research", "Rapid field evolution"],
-            future_work=["Extended analysis of emerging architectures", "Industry application studies"],
-            appendices=[],
-            citations=[],
-            metadata={
-                "report_version": "1.0",
-                "generation_date": datetime.now().isoformat(),
-                "total_sources": 25,
-                "confidence_level": 0.88
-            }
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(
+                version="1.0",
+                created_at=datetime.now(),
+                source_summary=[{"sources": 25}],
+                citation_audit={"confidence_level": 0.88}
+            ),
+            overall_quality_score=0.88
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             assert isinstance(result, ResearchReport)
             assert len(result.sections) >= 2
@@ -146,8 +169,7 @@ class TestReportGeneratorAgent:
     @pytest.mark.asyncio
     async def test_report_structure_validation(self, report_generator_agent, agent_dependencies):
         """Test that report structure is properly validated."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Test Report",
             executive_summary="Summary",
             introduction="Intro",
@@ -156,35 +178,32 @@ class TestReportGeneratorAgent:
                     title="Section 1",
                     content="Content 1",
                     subsections=[],
-                    key_findings=["Finding 1"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="Conclusion",
+            conclusions="Conclusion",
             recommendations=["Rec 1"],
-            methodology="Method",
-            limitations=["Limit 1"],
-            future_work=["Future 1"],
-            appendices=[],
-            citations=[],
-            metadata={}
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(),
+            overall_quality_score=0.75
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             # Validate required fields
             assert result.title is not None and len(result.title) > 0
             assert result.executive_summary is not None and len(result.executive_summary) > 0
             assert result.introduction is not None
-            assert result.conclusion is not None
+            assert result.conclusions is not None
             assert len(result.sections) > 0
 
     @pytest.mark.asyncio
     async def test_nested_sections_handling(self, report_generator_agent, agent_dependencies):
         """Test handling of nested report sections."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Nested Structure Report",
             executive_summary="Summary",
             introduction="Intro",
@@ -201,37 +220,35 @@ class TestReportGeneratorAgent:
                                     title="Sub-subsection 1.1",
                                     content="Deep content",
                                     subsections=[],
-                                    key_findings=["Deep finding"],
+                                    figures=[],
                                     citations=[]
                                 )
                             ],
-                            key_findings=["Sub finding 1"],
+                            figures=[],
                             citations=[]
                         ),
                         ReportSection(
                             title="Subsection 2",
                             content="Sub content 2",
                             subsections=[],
-                            key_findings=["Sub finding 2"],
+                            figures=[],
                             citations=[]
                         )
                     ],
-                    key_findings=["Main finding"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="Conclusion",
+            conclusions="Conclusion",
             recommendations=[],
-            methodology="Method",
-            limitations=[],
-            future_work=[],
-            appendices=[],
-            citations=[],
-            metadata={}
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(),
+            overall_quality_score=0.8
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             assert len(result.sections) == 1
             assert len(result.sections[0].subsections) == 2
@@ -240,8 +257,7 @@ class TestReportGeneratorAgent:
     @pytest.mark.asyncio
     async def test_citation_management(self, report_generator_agent, agent_dependencies):
         """Test proper citation management and formatting."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Citation Test Report",
             executive_summary="Summary",
             introduction="Intro",
@@ -250,41 +266,41 @@ class TestReportGeneratorAgent:
                     title="Section with Citations",
                     content="Content referencing sources",
                     subsections=[],
-                    key_findings=["Finding 1"],
+                    figures=[],
                     citations=[
-                        "Smith, J., Doe, A., Johnson, M. (2024). Important Research. Nature AI. DOI: 10.1234/example",
+                        (
+                            "Smith, J., Doe, A., Johnson, M. (2024). Important Research. "
+                            "Nature AI. DOI: 10.1234/example"
+                        ),
                         "Williams, R. (2023). Novel Approach. ICML 2023. https://conference.org/paper"
                     ]
                 )
             ],
-            conclusion="Conclusion",
+            conclusions="Conclusion",
             recommendations=[],
-            methodology="Method",
-            limitations=[],
-            future_work=[],
-            appendices=[],
-            citations=[
+            references=[
                 "Brown, T. (2024). AI Fundamentals. Academic Press."
             ],
-            metadata={}
+            appendices={},
+            metadata=ReportMetadataModel(),
+            overall_quality_score=0.85
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             # Check section citations
             assert len(result.sections[0].citations) == 2
             assert all(isinstance(c, str) and len(c) > 0 for c in result.sections[0].citations)
 
-            # Check global citations
-            assert len(result.citations) == 1
-            assert all(isinstance(c, str) for c in result.citations)
+            # Check global references
+            assert len(result.references) == 1
+            assert all(isinstance(c, str) for c in result.references)
 
     @pytest.mark.asyncio
     async def test_recommendations_generation(self, report_generator_agent, agent_dependencies):
         """Test generation of actionable recommendations."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Report with Recommendations",
             executive_summary="Summary",
             introduction="Intro",
@@ -293,11 +309,11 @@ class TestReportGeneratorAgent:
                     title="Analysis",
                     content="Analysis content",
                     subsections=[],
-                    key_findings=["Finding 1", "Finding 2"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="Based on our analysis...",
+            conclusions="Based on our analysis...",
             recommendations=[
                 "Implement finding 1 immediately for quick wins",
                 "Develop strategy for finding 2 implementation",
@@ -305,26 +321,25 @@ class TestReportGeneratorAgent:
                 "Monitor progress quarterly",
                 "Consider partnerships for acceleration"
             ],
-            methodology="Method",
-            limitations=[],
-            future_work=[],
-            appendices=[],
-            citations=[],
-            metadata={"recommendation_priority": "high"}
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(
+                keywords=["recommendation_priority: high"]
+            ),
+            overall_quality_score=0.9
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             assert len(result.recommendations) >= 3
             assert all(isinstance(r, str) and len(r) > 0 for r in result.recommendations)
-            assert result.metadata.get("recommendation_priority") == "high"
+            assert "recommendation_priority: high" in result.metadata.keywords
 
     @pytest.mark.asyncio
     async def test_metadata_tracking(self, report_generator_agent, agent_dependencies):
         """Test that report metadata is properly tracked."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Metadata Test Report",
             executive_summary="Summary",
             introduction="Intro",
@@ -333,46 +348,48 @@ class TestReportGeneratorAgent:
                     title="Section",
                     content="Content",
                     subsections=[],
-                    key_findings=["Finding"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="Conclusion",
+            conclusions="Conclusion",
             recommendations=["Rec"],
-            methodology="Method",
-            limitations=["Limit"],
-            future_work=["Future"],
-            appendices=[],
-            citations=[],
-            metadata={
-                "report_version": "2.0",
-                "generation_date": "2024-01-15T10:30:00",
-                "total_sources": 42,
-                "confidence_level": 0.92,
-                "word_count": 5000,
-                "reading_time_minutes": 20,
-                "report_type": "comprehensive",
-                "quality_score": 0.88
-            }
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(
+                version="2.0",
+                created_at=datetime(2024, 1, 15, 10, 30, 0),
+                source_summary=[
+                    {"id": "source1", "url": "http://example.com"},
+                    {"total_sources": 42}
+                ],
+                citation_audit={
+                    "confidence_level": 0.92,
+                    "word_count": 5000,
+                    "reading_time_minutes": 20,
+                    "report_type": "comprehensive",
+                    "quality_score": 0.88
+                }
+            ),
+            overall_quality_score=0.92
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             metadata = result.metadata
-            assert "report_version" in metadata
-            assert "generation_date" in metadata
-            assert metadata["total_sources"] == 42
-            assert 0.0 <= metadata["confidence_level"] <= 1.0
-            assert metadata.get("word_count", 0) > 0
+            assert metadata.version == "2.0"
+            assert metadata.created_at is not None
+            assert len(metadata.source_summary) == 2
+            assert metadata.citation_audit["confidence_level"] == 0.92
+            assert result.overall_quality_score == 0.92
 
     @pytest.mark.asyncio
     async def test_edge_case_minimal_report(self, report_generator_agent, agent_dependencies):
         """Test generation of minimal report for simple queries."""
         agent_dependencies.research_state.user_query = "What is 2+2?"
 
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Simple Query Response",
             executive_summary="The answer to 2+2 is 4",
             introduction="This report addresses a basic arithmetic question.",
@@ -381,32 +398,31 @@ class TestReportGeneratorAgent:
                     title="Answer",
                     content="2+2 equals 4",
                     subsections=[],
-                    key_findings=["2+2=4"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="The arithmetic operation 2+2 results in 4.",
+            conclusions="The arithmetic operation 2+2 results in 4.",
             recommendations=[],
-            methodology="Basic arithmetic",
-            limitations=["N/A"],
-            future_work=[],
-            appendices=[],
-            citations=[],
-            metadata={"report_type": "minimal"}
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(
+                classification="minimal"
+            ),
+            overall_quality_score=1.0
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
-            assert result.metadata.get("report_type") == "minimal"
+            assert result.metadata.classification == "minimal"
             assert len(result.sections) == 1
             assert len(result.recommendations) == 0
 
     @pytest.mark.asyncio
     async def test_appendices_handling(self, report_generator_agent, agent_dependencies):
         """Test handling of report appendices."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Report with Appendices",
             executive_summary="Summary",
             introduction="Intro",
@@ -415,53 +431,41 @@ class TestReportGeneratorAgent:
                     title="Main",
                     content="Main content",
                     subsections=[],
-                    key_findings=["Finding"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="Conclusion",
+            conclusions="Conclusion",
             recommendations=["Rec"],
-            methodology="Method",
-            limitations=["Limit"],
-            future_work=["Future"],
-            appendices=[
-                ReportSection(
-                    title="Appendix A: Data Tables",
-                    content="Detailed data tables...",
-                    subsections=[],
-                    key_findings=[],
-                    citations=[]
-                ),
-                ReportSection(
-                    title="Appendix B: Methodology Details",
-                    content="Extended methodology description...",
-                    subsections=[],
-                    key_findings=[],
-                    citations=[]
-                )
-            ],
-            citations=[],
-            metadata={}
+            references=[],
+            appendices={
+                "Appendix A: Data Tables": "Detailed data tables...",
+                "Appendix B: Methodology Details": "Extended methodology description..."
+            },
+            metadata=ReportMetadataModel(),
+            overall_quality_score=0.8
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
             assert len(result.appendices) == 2
-            assert all("Appendix" in a.title for a in result.appendices)
+            assert "Appendix A: Data Tables" in result.appendices
+            assert "Appendix B: Methodology Details" in result.appendices
 
     @pytest.mark.asyncio
     async def test_error_handling(self, report_generator_agent, agent_dependencies):
         """Test error handling during report generation."""
-        with patch.object(report_generator_agent.agent, 'run', side_effect=Exception("Report generation failed")):
+        with patch.object(
+            report_generator_agent, 'run', side_effect=Exception("Report generation failed")
+        ):
             with pytest.raises(Exception, match="Report generation failed"):
-                await report_generator_agent.execute(agent_dependencies)
+                await report_generator_agent.run(agent_dependencies)
 
     @pytest.mark.asyncio
     async def test_limitations_and_future_work(self, report_generator_agent, agent_dependencies):
         """Test proper documentation of limitations and future work."""
-        mock_result = MagicMock()
-        mock_result.data = ResearchReport(
+        mock_result = ResearchReport(
             title="Research Report",
             executive_summary="Summary",
             introduction="Intro",
@@ -470,34 +474,31 @@ class TestReportGeneratorAgent:
                     title="Findings",
                     content="Research findings",
                     subsections=[],
-                    key_findings=["Finding 1"],
+                    figures=[],
                     citations=[]
                 )
             ],
-            conclusion="Conclusion",
+            conclusions="Conclusion",
             recommendations=["Recommendation 1"],
-            methodology="Systematic review",
-            limitations=[
-                "Limited to English language sources",
-                "Time constraint: 2020-2024 only",
-                "Excluded proprietary research",
-                "Sample size limitations in some studies"
-            ],
-            future_work=[
-                "Expand to multilingual sources",
-                "Include industry reports",
-                "Longitudinal study over 10 years",
-                "Meta-analysis of all findings"
-            ],
-            appendices=[],
-            citations=[],
-            metadata={}
+            references=[],
+            appendices={
+                "Limitations": (
+                    "Limited to English language sources; Time constraint: 2020-2024 only; "
+                    "Excluded proprietary research; Sample size limitations in some studies"
+                ),
+                "Future Work": (
+                    "Expand to multilingual sources; Include industry reports; "
+                    "Longitudinal study over 10 years; Meta-analysis of all findings"
+                ),
+            },
+            metadata=ReportMetadataModel(),
+            overall_quality_score=0.7
         )
 
-        with patch.object(report_generator_agent.agent, 'run', return_value=mock_result):
-            result = await report_generator_agent.execute(agent_dependencies)
+        with patch.object(report_generator_agent, 'run', return_value=mock_result):
+            result = await report_generator_agent.run(agent_dependencies)
 
-            assert len(result.limitations) >= 2
-            assert len(result.future_work) >= 2
-            assert all(isinstance(l, str) for l in result.limitations)
-            assert all(isinstance(f, str) for f in result.future_work)
+            assert "Limitations" in result.appendices
+            assert "Future Work" in result.appendices
+            assert "Limited to English" in result.appendices["Limitations"]
+            assert "multilingual sources" in result.appendices["Future Work"]

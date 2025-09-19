@@ -2,41 +2,35 @@
 
 # Core models
 # Phase 2 model imports
-from .brief_generator import ResearchBrief, ResearchMethodology, ResearchObjective
-from .compression import CompressedContent, CompressedSection
+from .clarification import (
+    ClarificationAnswer,
+    ClarificationQuestion,
+    ClarificationRequest,
+    ClarificationResponse,
+)
 from .core import (
-    BriefGenerationResult,
     ClarificationResult,
     ResearchPriority,
     ResearchStage,
     ResearchState,
-    TransformedQueryResult,
 )
-from .query_transformation import TransformedQuery
 from .report_generator import ReportMetadata, ReportSection, ResearchReport
-from .research_executor import ResearchFinding, ResearchResults, ResearchSource
+from .research_executor import ResearchResults, ResearchSource
 
 __all__ = [
     # Core models
     "ResearchStage",
     "ResearchPriority",
     "ClarificationResult",
-    "TransformedQueryResult",
-    "BriefGenerationResult",
     "ResearchState",
-    # Query transformation models
-    "TransformedQuery",
-    # Brief generator models
-    "ResearchObjective",
-    "ResearchMethodology",
-    "ResearchBrief",
+    # Clarification models
+    "ClarificationQuestion",
+    "ClarificationAnswer",
+    "ClarificationRequest",
+    "ClarificationResponse",
     # Research executor models
     "ResearchSource",
-    "ResearchFinding",
     "ResearchResults",
-    # Compression models
-    "CompressedSection",
-    "CompressedContent",
     # Report generator models
     "ReportSection",
     "ReportMetadata",

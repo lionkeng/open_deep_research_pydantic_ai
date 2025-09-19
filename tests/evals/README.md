@@ -4,12 +4,20 @@ This directory contains a comprehensive evaluation framework for testing the Cla
 
 ## Overview
 
-The evaluation framework provides multiple approaches to test the ClarificationAgent:
+The evaluation framework provides a hierarchical testing structure from quick smoke tests to comprehensive multi-LLM evaluations:
 
-1. **Integration Tests** (`test_clarification_real.py`) - Real agent tests with actual LLM calls
-2. **Pydantic Evals Framework** (`clarification_evals.py`) - Structured evaluation with custom evaluators
-3. **Test Dataset** (`clarification_dataset.yaml`) - Curated test cases organized by category
-4. **Simple Runner** (`run_clarification_eval.py`) - Standalone evaluation script
+### 📊 Evaluation Files Hierarchy
+
+| File | Purpose | Runtime | Use Case |
+|------|---------|---------|----------|
+| `test_eval_quick.py` | Quick smoke test (4 cases) | < 1 min | Pre-commit validation |
+| `test_single_case.py` | Single case debugging | < 30 sec | Debug specific failures |
+| `run_clarification_eval.py` | Standard evaluation (20+ cases) | 5-10 min | Feature development |
+| `clarification_evals.py` | Pydantic Evals framework | 10-15 min | Detailed analysis |
+| `evaluation_runner.py` | Master orchestrator (all suites) | 20-30 min | Release validation |
+| `multi_judge_evaluation.py` | Multi-LLM judge evaluation | 15-20 min | Quality assurance |
+| `domain_specific_evals.py` | Domain-specific scenarios | 10-15 min | Specialized testing |
+| `regression_tracker.py` | Performance tracking | Continuous | CI/CD monitoring |
 
 ## Key Features
 
@@ -52,29 +60,166 @@ Unlike unit tests that mock all LLM calls, this framework actually runs the agen
 - Very long queries
 - Non-English queries
 
-## Usage
+## 🚀 Running Evaluations
 
-### Running Integration Tests
+### Level 1: Quick Validation (< 1 minute)
+Use for rapid smoke testing before commits or during development:
 
 ```bash
-# Run with pytest
+# Run quick test with 4 essential test cases
+source .env && uv run python tests/evals/test_eval_quick.py
+```
+
+**When to use:**
+- Pre-commit hooks
+- Quick validation during development
+- Sanity checks after code changes
+
+### Level 2: Standard Evaluation (5-10 minutes)
+Use for thorough testing of core functionality:
+
+```bash
+# Run standard evaluation with 20+ diverse test cases
+source .env && uv run python tests/evals/run_clarification_eval.py
+```
+
+**When to use:**
+- After implementing new features
+- Before creating pull requests
+- Daily development testing
+
+### Level 3: Comprehensive Evaluation Suite (20-30 minutes)
+Use for complete system validation:
+
+```bash
+# Run ALL evaluation suites
+source .env && uv run python tests/evals/evaluation_runner.py --suites all
+
+# Run specific evaluation suites
+source .env && uv run python tests/evals/evaluation_runner.py --suites llm_evaluations,multi_judge
+
+# Generate detailed reports in multiple formats
+source .env && uv run python tests/evals/evaluation_runner.py --suites all --output-formats console,html,json
+```
+
+**Available suites:**
+- `unit_tests` - Unit test execution
+- `integration_tests` - Integration test execution
+- `llm_evaluations` - LLM-based evaluations
+- `multi_judge` - Multi-LLM judge evaluation
+- `domain_specific` - Domain-specific scenarios
+- `regression_tracking` - Performance regression detection
+- `performance_benchmarks` - Speed and resource benchmarks
+- `all` - Run everything
+
+### Level 4: Specialized Evaluations
+
+#### Pydantic Evals Framework
+For detailed custom evaluations with multiple evaluators:
+
+```bash
+# Run comprehensive Pydantic-based evaluation
+source .env && uv run python tests/evals/clarification_evals.py
+```
+
+#### Multi-Judge Evaluation
+For quality assessment using multiple LLMs as judges:
+
+```bash
+# Run multi-LLM judge evaluation
+source .env && uv run python tests/evals/multi_judge_evaluation.py
+```
+
+#### Domain-Specific Evaluation
+For testing performance in specific domains:
+
+```bash
+# Run domain-specific test scenarios
+source .env && uv run python tests/evals/domain_specific_evals.py
+```
+
+### Debugging Single Test Cases
+For debugging specific failing test cases without running the entire suite:
+
+```bash
+# Run a single test case by name
+source .env && uv run python tests/evals/test_single_case.py <case_name>
+
+# Example: Test the "code_implementation" case
+source .env && uv run python tests/evals/test_single_case.py code_implementation
+
+# Specify category to narrow search (optional)
+source .env && uv run python tests/evals/test_single_case.py code_implementation --category clear_queries
+
+# List all available test cases if case not found
+source .env && uv run python tests/evals/test_single_case.py nonexistent_case
+```
+
+**When to use `test_single_case.py`:**
+- Debugging a specific failing test from `run_clarification_eval.py`
+- Iterating on prompt changes for a particular query type
+- Investigating inconsistent results for a specific case
+- Quick validation of fixes without running full suite
+
+**Example workflow:**
+1. Run full evaluation: `uv run python tests/evals/run_clarification_eval.py`
+2. Notice failure: `[6/21] Evaluating: comparison (clear_queries) ❌`
+3. Debug single case: `uv run python tests/evals/test_single_case.py comparison`
+4. Fix issue and retest single case until passing
+5. Run full evaluation again to confirm no regressions
+
+### Integration Tests
+For testing with real LLM calls using pytest:
+
+```bash
+# Run all integration tests
 pytest tests/integration/test_clarification_real.py -v
 
 # Run specific test
 pytest tests/integration/test_clarification_real.py::TestClarificationAgentReal::test_golden_dataset -v
 ```
 
-### Running Evaluation Suite
+## 📈 Evaluation Decision Tree
 
-```bash
-# Simple evaluation runner
-python tests/evals/run_clarification_eval.py
-
-# Quick test with minimal cases
-python tests/evals/test_eval_quick.py
+```
+Start Here
+    │
+    ├─ Need quick validation? (< 1 min)
+    │   └─► Run: test_eval_quick.py
+    │
+    ├─ Testing new feature? (5-10 min)
+    │   └─► Run: run_clarification_eval.py
+    │
+    ├─ Pre-release validation? (20-30 min)
+    │   └─► Run: evaluation_runner.py --suites all
+    │
+    └─ Specific concern?
+        ├─ Quality assurance?
+        │   └─► Run: multi_judge_evaluation.py
+        ├─ Domain performance?
+        │   └─► Run: domain_specific_evals.py
+        └─ Regression detection?
+            └─► Run: evaluation_runner.py --suites regression_tracking
 ```
 
-### Using Pydantic Evals Framework
+## 📊 Test Coverage Matrix
+
+| Evaluation Aspect | Quick | Standard | Pydantic | Multi-Judge | Domain | Runner |
+|------------------|-------|----------|----------|-------------|---------|---------|
+| Binary Accuracy | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Multi-Question Support | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Dimension Coverage | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Question Quality | ❌ | ⚡ | ✅ | ✅ | ✅ | ✅ |
+| Response Time | ⚡ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Consistency Check | ❌ | ❌ | ✅ | ✅ | ⚡ | ✅ |
+| LLM-as-Judge | ❌ | ❌ | ✅ | ✅ | ⚡ | ✅ |
+| Domain Specific | ❌ | ❌ | ⚡ | ⚡ | ✅ | ✅ |
+| Regression Tracking | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| CI/CD Integration | ⚡ | ✅ | ✅ | ⚡ | ⚡ | ✅ |
+
+**Legend:** ✅ Full support | ⚡ Partial support | ❌ Not supported
+
+### Using Pydantic Evals Framework Programmatically
 
 ```python
 from tests.evals.clarification_evals import (
@@ -144,20 +289,87 @@ cases:
           - "specific aspect"
 ```
 
-## Configuration
+## ⚙️ Configuration
 
 ### API Keys
 Set your API keys in the `.env` file:
 ```bash
 OPENAI_API_KEY=your-key-here
-ANTHROPIC_API_KEY=your-key-here  # Optional
+ANTHROPIC_API_KEY=your-key-here  # Optional for multi-judge evaluation
+MODEL_NAME=gpt-5-mini  # Optional, defaults to gpt-5-mini
 ```
 
-### Evaluation Settings
-Adjust evaluation parameters in the code:
-- `temperature=0` for more consistent outputs
-- `num_runs=3` for consistency testing
-- Custom weights for different evaluators
+### Evaluation Runner Configuration
+Configure comprehensive evaluation settings:
+
+```bash
+# Run with specific configuration
+source .env && uv run python tests/evals/evaluation_runner.py \
+    --suites llm_evaluations,regression_tracking \
+    --output-formats console,html,json \
+    --output-dir ./evaluation_results \
+    --baseline-days 30 \
+    --fail-on-regression \
+    --fail-on-accuracy-drop 0.05
+```
+
+**Configuration Options:**
+- `--suites`: Choose evaluation suites to run
+- `--output-formats`: Output format (console, html, json, markdown, dashboard)
+- `--output-dir`: Directory for saving results
+- `--baseline-days`: Days of historical data for regression detection
+- `--fail-on-regression`: Exit with error code if regression detected
+- `--fail-on-accuracy-drop`: Threshold for accuracy drop (0.05 = 5%)
+- `--include-trends`: Include trend analysis in reports
+- `--include-recommendations`: Generate improvement recommendations
+
+### Evaluation Parameters
+Customize evaluation behavior in individual scripts:
+
+```python
+# In test files, adjust these parameters:
+TEMPERATURE = 0  # For consistent outputs
+NUM_RUNS = 3  # For consistency testing
+TIMEOUT = 30  # API timeout in seconds
+MAX_RETRIES = 2  # Retry failed API calls
+```
+
+### CI/CD Integration
+Example GitHub Actions workflow:
+
+```yaml
+name: Evaluation Suite
+on: [push, pull_request]
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Quick Validation
+        run: |
+          source .env
+          uv run python tests/evals/test_eval_quick.py
+      - name: Standard Evaluation (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          source .env
+          uv run python tests/evals/run_clarification_eval.py
+      - name: Comprehensive Evaluation (main branch)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          source .env
+          uv run python tests/evals/evaluation_runner.py \
+            --suites all \
+            --fail-on-regression \
+            --output-formats json \
+            --output-dir ./results
+      - name: Upload Results
+        uses: actions/upload-artifact@v2
+        with:
+          name: evaluation-results
+          path: ./results/
+```
 
 ## Output
 
@@ -171,13 +383,50 @@ The evaluation generates:
    - Common failure patterns
    - Dimension distribution
 
+## 📖 Interpreting Results
+
+### Success Criteria
+
+| Metric | Excellent | Good | Needs Improvement |
+|--------|-----------|------|-------------------|
+| Binary Accuracy | > 95% | 85-95% | < 85% |
+| Precision | > 90% | 80-90% | < 80% |
+| Recall | > 90% | 80-90% | < 80% |
+| F1 Score | > 0.90 | 0.80-0.90 | < 0.80 |
+| Response Time | < 2s | 2-5s | > 5s |
+| Consistency | > 95% | 85-95% | < 85% |
+| Question Quality* | > 4.5/5 | 3.5-4.5/5 | < 3.5/5 |
+
+*As judged by LLM evaluators
+
+### Common Failure Patterns
+
+1. **False Positives**: Agent asks for clarification when query is clear
+   - Usually indicates overly cautious prompting
+   - Check dimension detection thresholds
+
+2. **False Negatives**: Agent misses ambiguous queries
+   - May need more training examples
+   - Review edge cases in dataset
+
+3. **Poor Question Quality**: Questions are irrelevant or unhelpful
+   - Review question generation templates
+   - Check dimension mapping logic
+
+4. **Inconsistent Results**: Same query gets different responses
+   - Reduce temperature setting
+   - Add more structured prompting
+
 ## Best Practices
 
-1. **Use Semantic Similarity**: Don't expect exact matches for LLM outputs
-2. **Allow Variation**: Set reasonable thresholds (e.g., 80% similarity)
-3. **Run Multiple Times**: Check consistency across runs
-4. **Monitor Performance**: Track metrics over time to catch regressions
-5. **Update Golden Dataset**: Add new edge cases as discovered
+1. **Start Small, Scale Up**: Begin with quick tests, progressively run more comprehensive evaluations
+2. **Use Semantic Similarity**: Don't expect exact matches for LLM outputs
+3. **Allow Variation**: Set reasonable thresholds (e.g., 80% similarity)
+4. **Run Multiple Times**: Check consistency across runs (use NUM_RUNS=3)
+5. **Monitor Performance**: Track metrics over time to catch regressions
+6. **Update Golden Dataset**: Add new edge cases as discovered
+7. **Version Control Results**: Save evaluation results with git commits for tracking
+8. **Automate in CI/CD**: Integrate appropriate evaluation levels in your pipeline
 
 ## Extending the Framework
 

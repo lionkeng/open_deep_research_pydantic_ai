@@ -14,9 +14,9 @@ from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.logging import configure_logging
 from core.workflow import workflow
-from src.models.api_models import APIKeys, ConversationMessage
-from src.models.clarification import ClarificationResponse
-from src.models.core import ResearchStage, ResearchState
+from models.api_models import APIKeys, ConversationMessage
+from models.clarification import ClarificationResponse
+from models.core import ResearchStage, ResearchState
 
 
 @asynccontextmanager
@@ -314,8 +314,7 @@ async def get_clarification_question(request_id: str):
             "original_query": state.user_query,
             "awaiting_response": True,
         }
-    else:
-        raise HTTPException(status_code=404, detail="No pending clarification questions")
+    raise HTTPException(status_code=404, detail="No pending clarification questions")
 
 
 @app.post("/research/{request_id}/clarification")

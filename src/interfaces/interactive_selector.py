@@ -83,8 +83,7 @@ class InteractiveSelector:
                     if key in (b"\x00", b"\xe0"):  # Special keys (arrows, etc.)
                         key += getch()
                     return key.decode("utf-8", errors="ignore")
-                else:
-                    return input()
+                return input()
             else:
                 # Fallback - just read a line
                 return input()
@@ -347,5 +346,4 @@ def interactive_select(
 
     if multiple:
         return selector.select_multiple(question, choices, default, allow_skip, context)
-    else:
-        return selector.select_single(question, choices, default, allow_skip, context)
+    return selector.select_single(question, choices, default, allow_skip, context)

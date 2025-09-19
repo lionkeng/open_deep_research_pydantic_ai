@@ -3,9 +3,13 @@
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from models.research_plan_models import TransformedQuery
+    from models.search_query_models import SearchQueryBatch
 
 import httpx
 import logfire
@@ -20,8 +24,9 @@ from core.events import (
     research_event_bus,
 )
 from core.logging import configure_logging
-from src.models.api_models import APIKeys
-from src.models.core import ResearchState
+from models.api_models import APIKeys
+from models.core import ResearchState
+from services.source_repository import AbstractSourceRepository
 
 
 # Enhanced exception system for agent errors
@@ -134,6 +139,21 @@ class ResearchDependencies:
     # Removed redundant metadata field - access via research_state.metadata
     usage: RunUsage | None = None
     stream_callback: Any | None = None
+    search_results: list[dict[str, Any]] = field(default_factory=list)
+    source_repository: AbstractSourceRepository | None = None
+
+    def get_transformed_query(self) -> "TransformedQuery | None":
+        """Return the transformed query stored on metadata, if any."""
+
+        return getattr(self.research_state.metadata.query, "transformed_query", None)
+
+    def get_search_query_batch(self) -> "SearchQueryBatch | None":
+        """Return the stored search query batch without copying."""
+
+        transformed_query = self.get_transformed_query()
+        if transformed_query is None:
+            return None
+        return transformed_query.search_queries
 
 
 DepsT = TypeVar("DepsT", bound=ResearchDependencies)
@@ -194,12 +214,6 @@ class PerformanceMonitoringMixin:
     def __init__(self):
         self.metrics = PerformanceMetrics()
         self._execution_start_time: float | None = None
-        # self._hooks: dict[str, list[Callable[[dict[str, Any]], Any]]] = {
-        #     "before_execution": [],
-        #     "after_execution": [],
-        #     "on_error": [],
-        #     "on_retry": [],
-        # }
 
     def start_execution_timer(self) -> None:
         """Start timing execution."""
@@ -210,22 +224,6 @@ class PerformanceMonitoringMixin:
         if self._execution_start_time:
             self.metrics.update_execution_time(self._execution_start_time)
             self._execution_start_time = None
-
-    # def add_hook(self, event: str, hook: Callable[[dict[str, Any]], Any]) -> None:
-    #     """Add a lifecycle hook."""
-    #     if event in self._hooks:
-    #         self._hooks[event].append(hook)
-
-    # async def execute_hooks(self, event: str, context: dict[str, Any] | None = None) -> None:
-    #     """Execute hooks for a given event."""
-    #     for hook in self._hooks.get(event, []):
-    #         try:
-    #             if asyncio.iscoroutinefunction(hook):
-    #                 await hook(context or {})
-    #             else:
-    #                 hook(context or {})
-    #         except Exception as e:
-    #             logfire.error(f"Hook execution failed: {e}")
 
 
 class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
@@ -264,19 +262,12 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         self.model = self.config.model or model_config["model"]
         self._output_type = self._get_output_type()
 
-        # Handle output type properly
-        if self._output_type is None:
-            # Default to dict output
-            actual_output_type = dict
-        else:
-            actual_output_type = self._output_type
-
         # Create the Pydantic AI agent with proper configuration
-        self.agent: Agent[DepsT | ResearchDependencies, OutputT | dict[Any, Any]] = Agent(
+        self.agent: Agent[DepsT | ResearchDependencies, OutputT] = Agent(
             model=self.model,
             retries=self.config.max_retries,
             deps_type=type(dependencies) if dependencies else ResearchDependencies,
-            output_type=actual_output_type,
+            output_type=self._output_type,
             system_prompt=self.config.system_prompt or self._get_default_system_prompt(),
         )
 
@@ -342,7 +333,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         pass
 
     @abstractmethod
-    def _get_output_type(self) -> type[OutputT] | None:
+    def _get_output_type(self) -> type[OutputT]:
         """Get the output type for this agent. Override in subclasses."""
         pass
 
@@ -372,7 +363,7 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         deps: DepsT | None = None,
         message_history: list[ModelMessage] | None = None,
         stream: bool = False,
-    ) -> OutputT | dict[Any, Any]:
+    ) -> OutputT:
         """Run the agent with the given prompt.
 
         Args:
@@ -394,12 +385,6 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         # Update status and start monitoring
         self.status = AgentStatus.RUNNING
         self.start_execution_timer()
-
-        # Execute before_execution hooks
-        # await self.execute_hooks(
-        #     "before_execution",
-        #     {"user_prompt": self.get_conversation_context()[-1]},
-        # )
 
         try:
             # Emit streaming update if callback provided
@@ -432,23 +417,22 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
                 if "rate limit" in str(e).lower():
                     self.metrics.record_retry()
                     raise ModelRetry(f"Rate limit hit, retrying: {e}") from e
-                elif "timeout" in str(e).lower():
+                if "timeout" in str(e).lower():
                     self.metrics.record_retry()
                     raise ModelRetry(f"Request timeout, retrying: {e}") from e
-                else:
-                    self.status = AgentStatus.FAILED
-                    raise AgentExecutionError(
-                        f"Agent execution failed: {e}",
-                        agent_name=self.name,
-                        context={
-                            "user_prompt": (
-                                self.get_conversation_context()[-1]
-                                if self.get_conversation_context()
-                                else None
-                            ),
-                            "error": str(e),
-                        },
-                    ) from e
+                self.status = AgentStatus.FAILED
+                raise AgentExecutionError(
+                    f"Agent execution failed: {e}",
+                    agent_name=self.name,
+                    context={
+                        "user_prompt": (
+                            self.get_conversation_context()[-1]
+                            if self.get_conversation_context()
+                            else None
+                        ),
+                        "error": str(e),
+                    },
+                ) from e
 
             # Log completion and update conversation history
             logfire.info(
@@ -500,10 +484,3 @@ class BaseResearchAgent[DepsT: ResearchDependencies, OutputT: BaseModel](
         finally:
             # Always complete monitoring and execute after hooks
             self.end_execution_timer()
-            # await self.execute_hooks(
-            #     "after_execution",
-            #     {
-            #         "status": self.status.name,
-            #         "metrics": self.metrics.model_dump(),
-            #     },
-            # )

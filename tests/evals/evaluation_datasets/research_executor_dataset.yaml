@@ -1,0 +1,618 @@
+metadata:
+  name: research_executor_evaluation_dataset
+  version: 1.0.0
+  description: Comprehensive evaluation dataset for Research Executor Agent
+  created: 2024-01-01
+  evaluator_mapping:
+    - FindingsRelevanceEvaluator
+    - SourceCredibilityEvaluator
+    - InsightQualityEvaluator
+    - DataGapIdentificationEvaluator
+    - ComprehensiveEvaluator
+    - ConfidenceCalibrationEvaluator
+    - EvidenceSupportEvaluator
+    - CategoryCoverageEvaluator
+    - CrossReferenceEvaluator
+
+cases:
+  golden_standard:
+    - name: technical_framework_comparison
+      description: Comprehensive technical framework comparison research
+      inputs:
+        query: "Compare React, Angular, and Vue.js for enterprise-scale applications"
+        domain: technical
+        complexity: complex
+        temporal_relevance: true
+        research_brief: "Analyze modern JavaScript frameworks for enterprise use"
+        methodology: "Comparative analysis with focus on scalability, maintainability, and ecosystem"
+      expected_output:
+        min_findings: 6
+        max_findings: 15
+        min_sources: 4
+        max_sources: 12
+        expected_categories:
+          - technical
+          - business
+        expected_insights_themes:
+          - performance
+          - scalability
+          - ecosystem
+          - learning curve
+          - community support
+        expected_gaps:
+          - long-term maintenance costs
+          - migration complexity
+        min_quality_score: 0.7
+        source_credibility_threshold: 0.65
+        confidence_calibration: well-calibrated
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+        - InsightQualityEvaluator
+        - DataGapIdentificationEvaluator
+        - ComprehensiveEvaluator
+        - CrossReferenceEvaluator
+
+    - name: medical_research_breakthrough
+      description: Recent medical research on treatment breakthroughs
+      inputs:
+        query: "Latest breakthroughs in CAR-T cell therapy for solid tumors"
+        domain: medical
+        complexity: complex
+        temporal_relevance: true
+        research_brief: "Investigate recent advances in CAR-T therapy effectiveness for solid tumors"
+      expected_output:
+        min_findings: 5
+        max_findings: 12
+        min_sources: 5
+        source_credibility_threshold: 0.8  # Higher for medical
+        expected_categories:
+          - medical
+          - scientific
+        expected_insights_themes:
+          - efficacy
+          - clinical trials
+          - safety profile
+          - FDA approval
+        expected_gaps:
+          - long-term outcomes
+          - cost-effectiveness
+          - accessibility
+        confidence_calibration: well-calibrated
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+        - DataGapIdentificationEvaluator
+        - EvidenceSupportEvaluator
+
+    - name: business_market_analysis
+      description: Market analysis for emerging business opportunities
+      inputs:
+        query: "Market opportunities and challenges for sustainable packaging in e-commerce"
+        domain: business
+        complexity: medium
+        temporal_relevance: true
+        research_brief: "Analyze market potential for eco-friendly packaging solutions"
+      expected_output:
+        min_findings: 5
+        max_findings: 12
+        expected_categories:
+          - business
+          - environmental
+          - economic
+        expected_insights_themes:
+          - market size
+          - growth potential
+          - regulatory drivers
+          - consumer demand
+          - cost implications
+        min_quality_score: 0.65
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+        - CategoryCoverageEvaluator
+        - ComprehensiveEvaluator
+
+  technical:
+    - name: kubernetes_security_best_practices
+      description: Security best practices for Kubernetes deployments
+      inputs:
+        query: "Comprehensive security best practices for Kubernetes in production environments"
+        domain: technical
+        complexity: complex
+        research_brief: "Deep dive into K8s security hardening techniques"
+      expected_output:
+        min_findings: 6
+        expected_categories:
+          - technical
+          - security
+        expected_insights_themes:
+          - RBAC
+          - network policies
+          - secrets management
+          - pod security
+          - supply chain security
+        source_credibility_threshold: 0.7
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+        - EvidenceSupportEvaluator
+
+    - name: database_performance_optimization
+      description: Database performance optimization strategies
+      inputs:
+        query: "PostgreSQL performance optimization for high-volume OLTP workloads"
+        domain: technical
+        complexity: complex
+        research_brief: "Investigate PostgreSQL tuning for transaction-heavy applications"
+      expected_output:
+        min_findings: 5
+        expected_categories:
+          - technical
+        expected_insights_themes:
+          - indexing strategies
+          - query optimization
+          - connection pooling
+          - hardware considerations
+          - monitoring
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+        - EvidenceSupportEvaluator
+
+    - name: api_design_patterns
+      description: Modern API design patterns and best practices
+      inputs:
+        query: "GraphQL vs REST vs gRPC for microservices communication"
+        domain: technical
+        complexity: medium
+        temporal_relevance: true
+      expected_output:
+        min_findings: 4
+        expected_categories:
+          - technical
+        expected_insights_themes:
+          - performance comparison
+          - use case suitability
+          - tooling ecosystem
+          - learning curve
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - CrossReferenceEvaluator
+
+    - name: cloud_cost_optimization
+      description: Cloud infrastructure cost optimization strategies
+      inputs:
+        query: "AWS cost optimization strategies for data-intensive applications"
+        domain: technical
+        complexity: medium
+        research_brief: "Identify cost-saving opportunities in AWS deployments"
+      expected_output:
+        min_findings: 5
+        expected_categories:
+          - technical
+          - economic
+        expected_insights_themes:
+          - reserved instances
+          - spot instances
+          - storage tiers
+          - data transfer costs
+          - serverless options
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+        - CategoryCoverageEvaluator
+
+  scientific:
+    - name: climate_technology_research
+      description: Climate change mitigation technology research
+      inputs:
+        query: "Direct air capture technology: current state and future potential"
+        domain: scientific
+        complexity: complex
+        temporal_relevance: true
+        research_brief: "Assess DAC technology viability for climate mitigation"
+      expected_output:
+        min_findings: 6
+        min_sources: 5
+        expected_categories:
+          - scientific
+          - environmental
+          - technical
+        expected_gaps:
+          - scalability challenges
+          - energy requirements
+          - cost projections
+        source_credibility_threshold: 0.7
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+        - DataGapIdentificationEvaluator
+
+    - name: quantum_computing_applications
+      description: Quantum computing practical applications research
+      inputs:
+        query: "Quantum computing applications in pharmaceutical drug discovery"
+        domain: scientific
+        complexity: complex
+        research_brief: "Explore quantum computing's impact on drug development"
+      expected_output:
+        min_findings: 4
+        expected_categories:
+          - scientific
+          - technical
+          - medical
+        expected_insights_themes:
+          - molecular simulation
+          - protein folding
+          - current limitations
+          - timeline to practical use
+        confidence_calibration: underconfident  # Emerging field
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - ConfidenceCalibrationEvaluator
+        - CrossReferenceEvaluator
+
+    - name: renewable_energy_storage
+      description: Energy storage solutions for renewable energy
+      inputs:
+        query: "Comparison of battery technologies for grid-scale energy storage"
+        domain: scientific
+        complexity: medium
+        temporal_relevance: true
+      expected_output:
+        min_findings: 5
+        expected_categories:
+          - scientific
+          - technical
+          - environmental
+        expected_insights_themes:
+          - lithium-ion
+          - flow batteries
+          - solid-state
+          - cost per kWh
+          - lifecycle analysis
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+
+  business:
+    - name: ai_market_disruption
+      description: AI impact on traditional business models
+      inputs:
+        query: "How generative AI is disrupting content creation and marketing industries"
+        domain: business
+        complexity: medium
+        temporal_relevance: true
+        research_brief: "Analyze GenAI's transformative impact on creative industries"
+      expected_output:
+        min_findings: 5
+        expected_categories:
+          - business
+          - technical
+          - social
+        expected_insights_themes:
+          - productivity gains
+          - job displacement
+          - new business models
+          - quality concerns
+          - regulatory considerations
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+        - CategoryCoverageEvaluator
+
+    - name: supply_chain_resilience
+      description: Supply chain resilience strategies post-pandemic
+      inputs:
+        query: "Building resilient supply chains: lessons from global disruptions"
+        domain: business
+        complexity: medium
+        research_brief: "Investigate supply chain resilience strategies"
+      expected_output:
+        min_findings: 4
+        expected_categories:
+          - business
+          - economic
+        expected_insights_themes:
+          - diversification
+          - nearshoring
+          - digital twins
+          - risk assessment
+          - inventory strategies
+        expected_gaps:
+          - implementation costs
+          - ROI metrics
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - DataGapIdentificationEvaluator
+        - InsightQualityEvaluator
+
+    - name: fintech_innovation
+      description: Financial technology innovation trends
+      inputs:
+        query: "Embedded finance and Banking-as-a-Service market opportunities"
+        domain: business
+        complexity: medium
+        temporal_relevance: true
+      expected_output:
+        min_findings: 4
+        expected_categories:
+          - business
+          - technical
+          - regulatory
+        expected_insights_themes:
+          - market size
+          - key players
+          - regulatory landscape
+          - technology stack
+          - revenue models
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - CategoryCoverageEvaluator
+
+  medical:
+    - name: mental_health_digital_interventions
+      description: Digital mental health intervention effectiveness
+      inputs:
+        query: "Effectiveness of AI-powered mental health chatbots vs traditional therapy"
+        domain: medical
+        complexity: complex
+        research_brief: "Compare digital vs traditional mental health interventions"
+      expected_output:
+        min_findings: 5
+        min_sources: 4
+        source_credibility_threshold: 0.75
+        expected_categories:
+          - medical
+          - technical
+          - social
+        expected_insights_themes:
+          - clinical outcomes
+          - accessibility
+          - cost-effectiveness
+          - patient satisfaction
+          - ethical considerations
+        expected_gaps:
+          - long-term efficacy
+          - privacy concerns
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+        - DataGapIdentificationEvaluator
+        - EvidenceSupportEvaluator
+
+    - name: personalized_medicine_genomics
+      description: Personalized medicine based on genomics
+      inputs:
+        query: "Current state of pharmacogenomics in clinical practice"
+        domain: medical
+        complexity: complex
+        temporal_relevance: true
+      expected_output:
+        min_findings: 4
+        source_credibility_threshold: 0.8
+        expected_categories:
+          - medical
+          - scientific
+        expected_insights_themes:
+          - drug-gene interactions
+          - clinical implementation
+          - cost-benefit analysis
+          - FDA guidelines
+        confidence_calibration: well-calibrated
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+        - ConfidenceCalibrationEvaluator
+
+  edge_cases:
+    - name: minimal_ambiguous_query
+      description: Test handling of minimal, ambiguous queries
+      inputs:
+        query: "AI"
+        complexity: simple
+      expected_output:
+        min_findings: 2
+        max_findings: 6
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - ComprehensiveEvaluator
+
+    - name: ultra_specific_technical
+      description: Test handling of ultra-specific technical queries
+      inputs:
+        query: "Performance comparison of BERT-base vs RoBERTa-base on GLUE benchmark with focus on CoLA and SST-2 tasks"
+        domain: technical
+        complexity: complex
+      expected_output:
+        min_findings: 2
+        max_findings: 5
+        expected_categories:
+          - technical
+          - scientific
+        source_credibility_threshold: 0.7
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+
+    - name: multi_domain_complex
+      description: Test handling of multi-domain complex queries
+      inputs:
+        query: "Legal, ethical, technical, and economic implications of autonomous vehicles in urban environments"
+        complexity: complex
+        research_brief: "Comprehensive analysis across multiple domains"
+      expected_output:
+        min_findings: 7
+        expected_categories:
+          - technical
+          - regulatory
+          - social
+          - economic
+          - environmental
+        expected_gaps:
+          - liability frameworks
+          - insurance models
+          - infrastructure requirements
+      evaluators:
+        - CategoryCoverageEvaluator
+        - DataGapIdentificationEvaluator
+        - ComprehensiveEvaluator
+
+    - name: contradictory_evidence_topic
+      description: Test handling of topics with contradictory evidence
+      inputs:
+        query: "Effectiveness of intermittent fasting for weight loss and metabolic health"
+        domain: medical
+        complexity: medium
+      expected_output:
+        min_findings: 5
+        expected_categories:
+          - medical
+          - scientific
+        confidence_calibration: well-calibrated
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - CrossReferenceEvaluator
+        - ConfidenceCalibrationEvaluator
+
+    - name: emerging_technology_limited_data
+      description: Test handling of emerging tech with limited data
+      inputs:
+        query: "Commercial applications of room-temperature superconductors"
+        domain: scientific
+        complexity: complex
+      expected_output:
+        min_findings: 2
+        max_findings: 6
+        expected_gaps:
+          - practical demonstrations
+          - manufacturing scalability
+          - cost projections
+        confidence_calibration: underconfident
+      evaluators:
+        - DataGapIdentificationEvaluator
+        - ConfidenceCalibrationEvaluator
+
+  performance:
+    - name: simple_factual_query
+      description: Simple factual query for performance baseline
+      inputs:
+        query: "What is the current world population?"
+        complexity: simple
+      expected_output:
+        min_findings: 1
+        max_findings: 3
+        max_response_time: 8.0
+      evaluators:
+        - FindingsRelevanceEvaluator
+
+    - name: medium_research_task
+      description: Medium complexity research for performance testing
+      inputs:
+        query: "Benefits and risks of nuclear energy for climate change mitigation"
+        complexity: medium
+      expected_output:
+        min_findings: 4
+        max_findings: 10
+        max_response_time: 20.0
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+
+    - name: complex_synthesis_task
+      description: Complex synthesis task for stress testing
+      inputs:
+        query: "Comprehensive analysis of global semiconductor supply chain vulnerabilities and mitigation strategies across technological, geopolitical, and economic dimensions"
+        complexity: complex
+        research_brief: "Deep multi-dimensional analysis of semiconductor supply chains"
+      expected_output:
+        min_findings: 8
+        max_response_time: 45.0
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - ComprehensiveEvaluator
+        - InsightQualityEvaluator
+
+  temporal_sensitive:
+    - name: current_events_research
+      description: Research on current events requiring recent sources
+      inputs:
+        query: "Latest developments in global inflation and central bank responses"
+        domain: economic
+        complexity: medium
+        temporal_relevance: true
+      expected_output:
+        min_findings: 4
+        min_sources: 3
+        expected_categories:
+          - economic
+          - business
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - SourceCredibilityEvaluator
+
+    - name: technology_trends_2024
+      description: Technology trends requiring current information
+      inputs:
+        query: "Emerging programming languages and frameworks gaining traction in 2024"
+        domain: technical
+        complexity: medium
+        temporal_relevance: true
+      expected_output:
+        min_findings: 4
+        expected_categories:
+          - technical
+        expected_insights_themes:
+          - new languages
+          - framework updates
+          - adoption trends
+          - use cases
+      evaluators:
+        - FindingsRelevanceEvaluator
+        - InsightQualityEvaluator
+
+  cross_domain:
+    - name: ai_ethics_law_technology
+      description: Cross-domain research on AI ethics and regulation
+      inputs:
+        query: "Legal frameworks for AI liability and ethical AI development practices"
+        complexity: complex
+        research_brief: "Explore intersection of law, ethics, and AI technology"
+      expected_output:
+        min_findings: 6
+        expected_categories:
+          - technical
+          - regulatory
+          - social
+        expected_insights_themes:
+          - EU AI Act
+          - liability models
+          - ethical frameworks
+          - technical safeguards
+        expected_gaps:
+          - enforcement mechanisms
+          - international coordination
+      evaluators:
+        - CategoryCoverageEvaluator
+        - InsightQualityEvaluator
+        - DataGapIdentificationEvaluator
+
+    - name: biotech_business_ethics
+      description: Biotechnology business and ethics intersection
+      inputs:
+        query: "Business models and ethical considerations for human genome editing services"
+        complexity: complex
+        research_brief: "Analyze commercial and ethical aspects of genome editing"
+      expected_output:
+        min_findings: 5
+        expected_categories:
+          - business
+          - medical
+          - social
+          - regulatory
+        confidence_calibration: well-calibrated
+      evaluators:
+        - CategoryCoverageEvaluator
+        - ConfidenceCalibrationEvaluator
+        - CrossReferenceEvaluator

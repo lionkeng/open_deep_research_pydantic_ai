@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test runner script for the three-phase clarification system."""
+"""Test runner script for the two-phase clarification system."""
 
 import subprocess
 import sys
@@ -58,7 +58,7 @@ def run_command(cmd: str, description: str) -> bool:
 
 def main():
     """Main test runner."""
-    parser = argparse.ArgumentParser(description="Run three-phase clarification system tests")
+    parser = argparse.ArgumentParser(description="Run two-phase clarification system tests")
     parser.add_argument("--quick", action="store_true", help="Run quick tests only")
     parser.add_argument("--integration", action="store_true", help="Run integration tests only")
     parser.add_argument("--performance", action="store_true", help="Run performance tests only")
@@ -72,7 +72,7 @@ def main():
 
     verbose_flag = "-v" if args.verbose else ""
 
-    print("🚀 Three-Phase Clarification System Test Runner")
+    print("🚀 Two-phase Clarification System Test Runner")
     print("=" * 60)
 
     total_tests = 0
@@ -90,8 +90,8 @@ def main():
     elif args.integration:
         # Integration tests only
         tests = [
-            (f"{test_prefix} test_three_phase_integration.py {verbose_flag}",
-             "Integration: Three-Phase Workflow"),
+            (f"{test_prefix} test_two_phase_integration.py {verbose_flag}",
+             "Integration: Two-phase Workflow"),
         ]
 
     elif args.performance:
@@ -118,10 +118,10 @@ def main():
              "Validation: Agent Initialization"),
 
             # Core integration tests
-            (f"{test_prefix} test_three_phase_integration.py::TestThreePhaseIntegration::test_specific_query_minimal_processing {verbose_flag}",
+            (f"{test_prefix} test_two_phase_integration.py::TestTwoPhaseIntegration::test_specific_query_minimal_processing {verbose_flag}",
              "Integration: Specific Query Processing"),
 
-            (f"{test_prefix} test_three_phase_integration.py::TestThreePhaseIntegration::test_metadata_schema_consistency {verbose_flag}",
+            (f"{test_prefix} test_two_phase_integration.py::TestTwoPhaseIntegration::test_metadata_schema_consistency {verbose_flag}",
              "Integration: Metadata Schema"),
 
             # Performance validation

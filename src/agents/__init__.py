@@ -25,24 +25,22 @@ from .base import (
     ToolMixin,
 )
 
-# Phase 2 agent imports
-from .brief_generator import brief_generator_agent
-from .compression import compression_agent
-
 # Factory system for agent creation and management
 from .factory import (
     AgentFactory,
     AgentType,
-    create_brief_generator_agent,
     create_clarification_agent,
-    create_compression_agent,
     create_query_transformation_agent,
     create_report_generator_agent,
     create_research_executor_agent,
 )
 from .query_transformation import query_transformation_agent
 from .report_generator import report_generator_agent
-from .research_executor import research_executor_agent
+from .research_executor import (
+    ResearchExecutorAgent,
+    get_research_executor_agent,
+    research_executor_agent,
+)
 
 __all__ = [
     # Enhanced base agent system
@@ -64,14 +62,12 @@ __all__ = [
     # Factory convenience functions
     "create_clarification_agent",
     "create_query_transformation_agent",
-    "create_brief_generator_agent",
     "create_research_executor_agent",
-    "create_compression_agent",
     "create_report_generator_agent",
     # Phase 2 agents
     "query_transformation_agent",
-    "brief_generator_agent",
     "research_executor_agent",
-    "compression_agent",
+    "get_research_executor_agent",
+    "ResearchExecutorAgent",
     "report_generator_agent",
 ]

@@ -17,6 +17,7 @@ from .clarification import (
     ClarificationRequest,
     ClarificationResponse,
 )
+from .research_plan_models import TransformedQuery
 
 
 class ClarificationMetadata(BaseModel):
@@ -114,10 +115,9 @@ class QueryMetadata(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True)
 
-    transformed_query: dict[str, Any] | None = Field(
+    transformed_query: TransformedQuery | None = Field(
         default=None, description="Query transformation results"
     )
-    search_queries: list[str] = Field(default_factory=list, description="Search queries executed")
 
 
 class BriefMetadata(BaseModel):
@@ -130,17 +130,6 @@ class BriefMetadata(BaseModel):
     confidence: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Confidence score for research brief"
     )
-
-
-class CompressionMetadata(BaseModel):
-    """Metadata specific to the compression agent."""
-
-    model_config = ConfigDict(validate_assignment=True)
-
-    summary: dict[str, Any] | None = Field(
-        default=None, description="Summary of compressed research findings"
-    )
-    full: dict[str, Any] | None = Field(default=None, description="Full compressed findings object")
 
 
 class ExecutionMetadata(BaseModel):
@@ -176,7 +165,6 @@ class ResearchMetadata(BaseModel):
     clarification: ClarificationMetadata = Field(default_factory=ClarificationMetadata)
     query: QueryMetadata = Field(default_factory=QueryMetadata)
     brief: BriefMetadata = Field(default_factory=BriefMetadata)
-    compression: CompressionMetadata = Field(default_factory=CompressionMetadata)
     execution: ExecutionMetadata = Field(default_factory=ExecutionMetadata)
     report: ReportMetadata = Field(default_factory=ReportMetadata)
 

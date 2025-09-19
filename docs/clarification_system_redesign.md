@@ -129,7 +129,7 @@ class ClarificationResponse(BaseModel):
 ```python
 # src/agents/clarification.py (updated model)
 
-from src.models.clarification import ClarificationRequest, ClarificationQuestion
+from models.clarification import ClarificationRequest, ClarificationQuestion
 
 
 class ClarifyWithUser(BaseModel):
@@ -202,7 +202,7 @@ class ClarifyWithUser(BaseModel):
 from typing import Optional, Self
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent
-from src.models.clarification import (
+from models.clarification import (
     ClarificationRequest,
     ClarificationQuestion,
     ClarificationResponse
@@ -236,7 +236,7 @@ class ClarifyWithUser(BaseModel):
 class ClarificationAgent:
     """Agent for generating clarification questions."""
 
-    def __init__(self, model_name: str = "openai:gpt-4"):
+    def __init__(self, model_name: str = "openai:gpt-5"):
         self.agent = Agent(
             model_name,
             result_type=ClarifyWithUser,
@@ -270,13 +270,13 @@ class ClarificationAgent:
 
 ```python
 from datetime import datetime, timezone
-from src.models.clarification import (
+from models.clarification import (
     ClarificationRequest,
     ClarificationResponse
 )
-from src.agents.clarification import ClarificationAgent
-from src.interfaces.cli_clarification import CLIClarificationInterface
-from src.models.core import ResearchState
+from agents.clarification import ClarificationAgent
+from interfaces.cli_clarification import CLIClarificationInterface
+from models.core import ResearchState
 
 
 class ResearchWorkflow:
@@ -362,7 +362,7 @@ from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
 from rich.table import Table
-from src.models.clarification import (
+from models.clarification import (
     ClarificationRequest,
     ClarificationResponse,
     ClarificationAnswer,
@@ -473,7 +473,7 @@ class CLIClarificationInterface:
 # Updates to existing API endpoints in src/api/main.py
 # These changes integrate with the existing ResearchState management
 
-from src.models.clarification import (
+from models.clarification import (
     ClarificationRequest,
     ClarificationResponse
 )
@@ -529,7 +529,7 @@ async def respond_to_clarification(
 
 import pytest
 from datetime import datetime, timezone
-from src.models.clarification import (
+from models.clarification import (
     ClarificationQuestion,
     ClarificationAnswer,
     ClarificationRequest,
@@ -641,8 +641,8 @@ class TestClarificationRequest:
 
 import pytest
 from unittest.mock import AsyncMock, patch
-from src.core.workflow import ResearchWorkflow
-from src.models.clarification import (
+from core.workflow import ResearchWorkflow
+from models.clarification import (
     ClarificationRequest,
     ClarificationQuestion,
     ClarificationResponse,
@@ -719,7 +719,7 @@ Run once during deployment.
 
 import json
 from pathlib import Path
-from src.models.clarification import (
+from models.clarification import (
     ClarificationRequest,
     ClarificationQuestion
 )

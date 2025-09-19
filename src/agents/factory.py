@@ -6,9 +6,7 @@ from typing import Any, cast
 import logfire
 
 from .base import AgentConfiguration, BaseResearchAgent, ResearchDependencies
-from .brief_generator import BriefGeneratorAgent
 from .clarification import ClarificationAgent
-from .compression import CompressionAgent
 from .query_transformation import QueryTransformationAgent
 from .report_generator import ReportGeneratorAgent
 from .research_executor import ResearchExecutorAgent
@@ -19,9 +17,7 @@ class AgentType(str, Enum):
 
     CLARIFICATION = "clarification"
     QUERY_TRANSFORMATION = "query_transformation"
-    BRIEF_GENERATOR = "brief_generator"
     RESEARCH_EXECUTOR = "research_executor"
-    COMPRESSION = "compression"
     REPORT_GENERATOR = "report_generator"
 
 
@@ -36,9 +32,7 @@ class AgentFactory:
     _agent_registry: dict[AgentType, type[BaseResearchAgent[ResearchDependencies, Any]]] = {
         AgentType.CLARIFICATION: ClarificationAgent,
         AgentType.QUERY_TRANSFORMATION: QueryTransformationAgent,
-        AgentType.BRIEF_GENERATOR: BriefGeneratorAgent,
         AgentType.RESEARCH_EXECUTOR: ResearchExecutorAgent,
-        AgentType.COMPRESSION: CompressionAgent,
         AgentType.REPORT_GENERATOR: ReportGeneratorAgent,
     }
 
@@ -190,16 +184,6 @@ def create_query_transformation_agent(
     )
 
 
-def create_brief_generator_agent(
-    dependencies: ResearchDependencies, config: AgentConfiguration | None = None
-) -> BriefGeneratorAgent:
-    """Create a brief generator agent."""
-    return cast(
-        BriefGeneratorAgent,
-        AgentFactory.create_agent(AgentType.BRIEF_GENERATOR, dependencies, config),
-    )
-
-
 def create_research_executor_agent(
     dependencies: ResearchDependencies, config: AgentConfiguration | None = None
 ) -> ResearchExecutorAgent:
@@ -207,15 +191,6 @@ def create_research_executor_agent(
     return cast(
         ResearchExecutorAgent,
         AgentFactory.create_agent(AgentType.RESEARCH_EXECUTOR, dependencies, config),
-    )
-
-
-def create_compression_agent(
-    dependencies: ResearchDependencies, config: AgentConfiguration | None = None
-) -> CompressionAgent:
-    """Create a compression agent."""
-    return cast(
-        CompressionAgent, AgentFactory.create_agent(AgentType.COMPRESSION, dependencies, config)
     )
 
 

@@ -1,205 +1,246 @@
 # Deep Research System Architecture
 
-## Executive Summary
+## Overview
 
-The Deep Research System is a sophisticated AI-powered research automation platform built with **Pydantic-AI**, featuring an innovative **three-phase clarification system** that dramatically improves research quality through intelligent query enhancement. The system orchestrates specialized AI agents through a resilient pipeline with concurrent processing, circuit breaker patterns, and memory-safe event handling.
+The production workflow is a four-agent pipeline orchestrated by `ResearchWorkflow`
+(`src/core/workflow.py`). The workflow coordinates clarification, query transformation,
+search execution, synthesis, and report writing while streaming progress events to the CLI
+and HTTP interfaces. Agents are implemented with Pydantic AI through `BaseResearchAgent`
+(`src/agents/base.py`) and exchange strongly typed data via `ResearchState` and
+`ResearchMetadata` (`src/models/core.py`, `src/models/metadata.py`).
 
-**Key Architectural Innovations:**
-- **Three-Phase Clarification System**: Assessment → Transformation → Enhanced Brief Generation
-- **Circuit Breaker Resilience**: Automatic error recovery and system stability
-- **Memory-Safe Event Bus**: WeakRef patterns preventing memory leaks in long-running processes
-- **Centralized Agent Registry**: Type-safe coordination eliminating circular import issues
-- **Concurrent Processing**: Semaphore-controlled parallel execution with timeout handling
+Key characteristics visible in the implementation:
 
-**Pipeline Overview**: 6-stage research workflow (Pending → Clarification → Brief Generation → Research Execution → Compression → Report Generation → Completed) supporting both web interfaces (SSE streaming) and CLI operations (direct and HTTP client modes).
+- **Streamlined four-stage pipeline** – Clarification, query transformation, research execution,
+  and report generation are the only runtime stages (`ResearchStage`).
+- **Typed cross-agent state** – `ResearchMetadata` captures clarification sessions, the
+  `TransformedQuery`, execution diagnostics, and reserves a report namespace for future enrichments,
+  giving agents a consistent location for shared context.
+- **Deterministic query execution** – `SearchQueryBatch` outputs from the transformation agent
+  are executed through `SearchOrchestrator` with caching, retry, and priority handling.
+- **Centralized agent execution guard** – `_run_agent_with_circuit_breaker` channels all agent
+  calls, applies per-agent "critical" flags, and returns predefined fallbacks for non-critical
+  failures. A `CircuitBreaker` instance and per-agent `CircuitBreakerConfig` objects are prepared
+  even though automatic retry windows are not yet wired into the runtime.
+- **Granular streaming events** – Stage lifecycle and status updates are emitted through
+  `core.events`, enabling both CLI Rich rendering and HTTP SSE clients to observe progress.
 
-> **📖 For detailed implementation patterns, code examples, and production deployment guidance, see [Implementation Design](./implementation_design.md)**
+## Runtime Pipeline
 
-## Core Design Principles
-
-### 1. Three-Phase Intelligence
-Advanced clarification system that transforms broad queries into precise research objectives through systematic assessment, transformation, and enhanced brief generation. *For detailed implementation patterns and code examples, see [Implementation Design](./implementation_design.md#three-phase-clarification-implementation)*
-
-### 2. Circuit Breaker Resilience
-Automatic failure recovery with configurable thresholds, timeout-based reset, and graceful degradation. *For implementation details and configuration examples, see [Implementation Design](./implementation_design.md#circuit-breaker-implementation)*
-
-### 3. Memory-Safe Coordination
-WeakRef-based event system with automatic cleanup, bounded history, and user isolation patterns. *See [Implementation Design](./implementation_design.md#memory-safe-event-system) for WeakRef patterns and code examples.*
-
-### 4. Type-Safe Agent Registry
-Centralized coordination with Pydantic-AI integration, tool registration, and output validation patterns. *For agent development patterns and tool registration examples, see [Implementation Design](./implementation_design.md#pydantic-ai-agent-patterns)*
-
-### 5. Concurrent Processing
-Semaphore-controlled parallel execution with timeout management and performance monitoring for optimal resource utilization and system stability.
-
-## System Component Overview
+`ResearchWorkflow.run()` drives the runtime pipeline, starting in `ResearchStage.CLARIFICATION`
+and advancing through the remaining stages until `ResearchStage.COMPLETED`.
 
 ```mermaid
-graph TD
-    subgraph "User Interfaces"
-        CLI["CLI (Rich)<br/>Direct & HTTP Modes"]
-        WebAPI["FastAPI Server<br/>SSE Streaming"]
-    end
+sequenceDiagram
+    participant User
+    participant ClarificationAgent
+    participant QueryTransformationAgent
+    participant SearchOrchestrator
+    participant ResearchExecutorAgent
+    participant ReportGeneratorAgent
 
-    CLI --> Orchestrator["Research Workflow Orchestrator<br/>(Circuit Breaker Protection)"]
-    WebAPI --> Orchestrator
+    User->>ClarificationAgent: Submit research query
+    activate ClarificationAgent
+    ClarificationAgent-->>ClarificationAgent: Assess clarity & optionally gather responses
+    ClarificationAgent-->>User: Clarification prompts (if needed)
+    deactivate ClarificationAgent
 
-    Orchestrator --> EventBus["Memory-Safe Event Bus<br/>(WeakRef Collections)"]
-    Orchestrator --> AgentRegistry["Centralized Agent Registry<br/>(Type-Safe Coordination)"]
+    ClarificationAgent->>QueryTransformationAgent: Clarified query & metadata
+    activate QueryTransformationAgent
+    QueryTransformationAgent-->>QueryTransformationAgent: Produce TransformedQuery
+    QueryTransformationAgent-->>SearchOrchestrator: Emit SearchQueryBatch
+    deactivate QueryTransformationAgent
 
-    AgentRegistry --> ThreePhase["Three-Phase Clarification System"]
-    ThreePhase --> ClarificationAgent["Clarification Agent<br/>(Assessment & Questions)"]
-    ThreePhase --> TransformationAgent["Query Transformation Agent<br/>(Specificity Enhancement)"]
-    ThreePhase --> BriefAgent["Brief Generation Agent<br/>(Research Planning)"]
+    activate SearchOrchestrator
+    SearchOrchestrator-->>SearchOrchestrator: Execute prioritized search batch
+    SearchOrchestrator-->>ResearchExecutorAgent: Aggregated search results
+    deactivate SearchOrchestrator
 
-    EventBus --> SharedDeps["Research Dependencies<br/>(HTTP Client, API Keys,<br/>ResearchState, Metadata)"]
-    AgentRegistry --> SharedDeps
+    activate ResearchExecutorAgent
+    ResearchExecutorAgent-->>ResearchExecutorAgent: Run synthesis tools (extraction, clustering, contradictions, patterns, quality)
+    ResearchExecutorAgent-->>ReportGeneratorAgent: `ResearchResults`
+    deactivate ResearchExecutorAgent
 
-    subgraph "Resilience Patterns"
-        CircuitBreakers["Circuit Breakers<br/>(Error Tracking)"]
-        ConcurrentProcessing["Concurrent Processing<br/>(Semaphore Control)"]
-        MemoryManagement["Memory Management<br/>(Automatic Cleanup)"]
-    end
-
-    Orchestrator --> CircuitBreakers
-    Orchestrator --> ConcurrentProcessing
-    EventBus --> MemoryManagement
+    activate ReportGeneratorAgent
+    ReportGeneratorAgent-->>ReportGeneratorAgent: Compose `ResearchReport`
+    ReportGeneratorAgent-->>User: Final report delivery
+    deactivate ReportGeneratorAgent
 ```
 
-## Research Pipeline Flow
+The workflow is intentionally linear—each stage is a single top-level agent invocation and
+there are no subordinate agent trees or runtime delegation. `AgentFactory` only registers the
+four agents shown above, so `ResearchWorkflow` simply chains them together while reusing shared
+`ResearchDependencies`. When additional computation is needed (for example, clustering or
+contradiction analysis), the owning agent calls helper tools or services rather than spawning
+nested agents.
 
-The system features a **6-stage pipeline** with integrated three-phase clarification:
+### Stage Responsibilities
 
-```mermaid
-flowchart TD
-    A[User Query] --> B["1 PENDING<br/>- Request ID generated<br/>- Research state initialized<br/><i>Initial setup</i>"]
+1. **Clarification** (`ResearchStage.CLARIFICATION`)
+   - `ClarificationAgent` evaluates query readiness and can trigger an interactive clarification
+     flow handled by `interfaces/clarification_flow.handle_clarification_with_review` when
+     additional user input is required.
+   - Results populate `ResearchMetadata.clarification` with the assessment, outstanding
+     questions, and user responses.
 
-    B --> C["2 CLARIFICATION<br/>🔄 Three-Phase System<br/>- Phase 1: Assessment Analysis<br/>- Phase 2: Query Transformation<br/>- Phase 3: Enhanced Brief Generation"]
-    C -- "Interactive CLI" --> C
-    C -- "HTTP Pause" --> WAIT["⏸ Awaiting HTTP Response"]
-    WAIT --> C
+2. **Query Transformation** (`ResearchStage.QUERY_TRANSFORMATION`)
+   - `QueryTransformationAgent` converts the clarified request into a `TransformedQuery`
+     (`src/models/research_plan_models.py`), combining a prioritized `SearchQueryBatch` and a
+     structured `ResearchPlan` with objectives, methodology, and success metrics.
+   - The transformed query is stored at `research_state.metadata.query.transformed_query` for
+     downstream use.
 
-    C --> D["3 BRIEF GENERATION<br/>✅ Completed in Phase 3<br/>- Comprehensive research plan<br/>- Key research areas identified<br/>- Methodology defined"]
+3. **Research Execution** (`ResearchStage.RESEARCH_EXECUTION`)
+   - `_execute_research_stages` first calls `_execute_search_queries` to hand the
+     `SearchQueryBatch` to `SearchOrchestrator`, which fans out requests through
+     `_orchestrated_search` into `WebSearchService` providers (e.g., Tavily) while respecting
+     priorities, max parallelism, caching, and retry policies.
+   - The aggregated search results are attached to `ResearchDependencies.search_results`, allowing
+     the research executor to reason over real web content without repeating external calls.
+   - `ResearchExecutorAgent` then treats synthesis as a multi-step ML/analytics problem: hierarchical
+     extraction uses the LLM to build structured findings, clustering applies the pattern
+     recognizer to group semantically related insights, contradiction detection calls the
+     `ContradictionDetector` heuristics to score claim agreement, pattern analysis surfaces emerging
+     trends and divergences, and the quality assessor quantifies coverage/completeness. These tool calls are
+     orchestrated in-code (not via sub-agents) and culminate in a `ResearchResults` object that is
+     stored on `research_state.research_results` for downstream consumers.
 
-    D --> E["4 RESEARCH EXECUTION<br/>- Parallel search execution<br/>- Source evaluation & findings<br/>- Concurrent processing<br/>- Circuit breaker protection"]
+4. **Report Generation** (`ResearchStage.REPORT_GENERATION`)
+   - `ReportGeneratorAgent` reads the synthesized results, metadata, and the populated
+     source repository to craft a `ResearchReport` with executive summaries, key findings,
+     recommendations, and inline `[Sx]` citations. The completed report is persisted to
+     `research_state.final_report`, and the report model itself carries section/citation metadata
+     for downstream consumers.
 
-    E --> F["5 COMPRESSION<br/>- Finding synthesis<br/>- Theme identification<br/>- Contradiction detection<br/>- Statistical analysis"]
+## Orchestration Layer
 
-    F --> G["6 REPORT GENERATION<br/>- Structured report creation<br/>- Citation compilation<br/>- Recommendation generation"]
+- `ResearchWorkflow.run()` initializes `ResearchState`, creates `ResearchDependencies`, emits
+  `ResearchStarted` events, and ensures agents are registered via `AgentFactory`.
+- `_execute_two_phase_clarification` encapsulates the clarification ➔ query transformation flow,
+  updating metadata, streaming status messages, and enforcing recovery semantics if
+  clarification fails.
+- `_execute_research_stages` issues search requests, runs the research executor and report
+  generator, advances the stage machine, and emits `StageCompleted` events with lightweight
+  payloads.
+- `_execute_search_queries` converts canonical `SearchQueryBatch` records into orchestrator
+  `QueryExecutionPlan` instances, maps priorities (`models/priority.py`), and writes execution
+  results to `ResearchMetadata.execution` for diagnostics.
+- `resume_research` enables workflows to resume from persisted `ResearchState` instances, rerunning
+  pending stages and emitting `ResearchCompletedEvent` updates upon success or failure.
 
-    G --> H["7 COMPLETED<br/>- Final report available<br/>- Research state finalized<br/>- Event cleanup"]
+## Agent Implementations
 
-    %% Enhanced flow connectors
-    C -.->|"Clarification Enhancement"| D
-    D -.->|"Research Plan"| E
-    E -.->|"Raw Findings"| F
-    F -.->|"Structured Insights"| G
-    G -.->|"Final Output"| H
-```
+### Clarification Agent (`src/agents/clarification.py`)
 
-### Stage Details
+- Runs under a detailed system prompt that classifies ambiguity, scopes, and audience needs.
+- Emits structured assessments (`needs_clarification`, `missing_dimensions`, `reasoning`) and
+  generates multi-question `ClarificationRequest` objects when extra information is required.
+- Integration with the CLI review flow ensures answers can be edited before advancing.
 
-**Stage 1-3: Three-Phase Clarification System**
-Integrated assessment, transformation, and brief generation phases that convert broad queries into actionable research plans. *See [Implementation Design](./implementation_design.md#three-phase-clarification-implementation) for detailed phase implementations.*
+### Query Transformation Agent (`src/agents/query_transformation.py`)
 
-**Stage 4: Research Execution**
-- Parallel web searches with circuit breaker protection
-- Source credibility evaluation and finding extraction
-- Real-time progress updates via event bus
+- Incorporates clarification context, conversation history, and transformation exemplars to
+  produce 10–15 prioritized search queries plus a `ResearchPlan` describing objectives,
+  methodology, and success criteria.
+- Ensures primary objectives have associated queries and documents assumptions, potential gaps,
+  and confidence scores for the downstream stages.
 
-**Stage 5: Compression**
-- Finding synthesis and theme identification
-- Contradiction detection and resolution
-- Statistical analysis and confidence scoring
+### Research Executor Agent (`src/agents/research_executor.py`)
 
-**Stage 6: Report Generation**
-- Structured report creation with executive summaries
-- Citation compilation and bibliography generation
-- Actionable recommendations based on findings
+- Supplies dynamic instructions summarizing the active query, search queries, and fetched search
+  results to the Pydantic AI agent.
+- Registers tool bindings that delegate to `extract_hierarchical_findings`, `identify_theme_clusters`,
+  `detect_contradictions`, `analyze_patterns`, `assess_synthesis_quality`, and
+  `generate_executive_summary` in `src/agents/research_executor_tools.py`.
+- Combines tool outputs into a `ResearchResults` object containing hierarchical findings, clusters,
+  contradictions, synthesis quality scores, and a decision-ready executive summary.
 
-## Integration Interfaces
+### Report Generator Agent (`src/agents/report_generator.py`)
 
-### CLI Interface
-- **Direct Mode**: Native workflow execution with Rich terminal formatting
-- **HTTP Client Mode**: Connects to running FastAPI server with SSE streaming
-- **Interactive Clarification**: Real-time question/answer flow
+- Tailors instructions using the research topic, audience, generated findings, and
+  `summarize_sources_for_prompt` output from the source repository.
+- Enforces citation contracts (`[Sx]` markers) and produces sectioned reports matching the
+  executive summary, introduction, main body, and recommendation blueprint.
+- Returns a `ResearchReport` whose embedded metadata captures section breakdowns, citation audits,
+  and source summaries; `ResearchWorkflow` stores this report on `research_state.final_report` for
+  downstream access.
 
-### Web API Interface
-- **FastAPI Integration**: High-performance async HTTP server
-- **Server-Sent Events**: Real-time progress streaming to web clients
-- **RESTful Endpoints**: Standard HTTP patterns for research management
+## Shared Infrastructure
 
-### Event System
-- **Memory-Safe Architecture**: WeakRef-based handler management
-- **User Isolation**: Scoped events preventing cross-user data leakage
-- **Multiple Consumers**: Unlimited concurrent event observers
+- **Research State & Metadata** – `ResearchState` (`src/models/core.py`) tracks the pipeline stage,
+  timestamps, research artifacts, and errors. `ResearchMetadata` namespaces data for each agent:
+  clarification and query slots are actively populated, execution metadata captures search
+  diagnostics, and the report namespace remains available for future enrichments. Legacy fields such
+  as `metadata.brief` remain for backward compatibility but are not populated by the current
+  pipeline.
+- **Dependencies Container** – `ResearchDependencies` bundles the shared async HTTP client,
+  `APIKeys`, accumulated search results, optional `source_repository`, and helper accessors (e.g.,
+  `get_transformed_query()`, `get_search_query_batch()`). Agents receive this container at
+  instantiation time via `AgentFactory`.
+- **Source Repository** – `InMemorySourceRepository` (`src/services/source_repository.py`) stores
+  fetched sources so agents can retrieve enriched metadata when generating findings or citations.
+- **Agent Factory** – `AgentFactory` (`src/agents/factory.py`) maps `AgentType` enumerations to
+  concrete agent classes and supplies default `AgentConfiguration` instances when none are
+  provided.
 
-## Technology Stack
+## Search Execution Services
 
-### Core Technology Stack
-- **Pydantic-AI Framework**: Type-safe AI agents with structured outputs
-- **FastAPI + Rich CLI**: High-performance async interfaces
-- **Python 3.12+**: Modern language features and type safety
-- **Anthropic Claude**: Primary language model (claude-3-5-sonnet-20241022)
-- **Observability**: Logfire structured logging with real-time monitoring
-- **Production**: Docker/Kubernetes deployment with comprehensive testing
+- `SearchOrchestrator` (`src/services/search_orchestrator.py`) manages deterministic query
+  execution with priority queues, caching, retry backoff, and execution traces that feed into
+  diagnostic reports.
+- `_orchestrated_search` bridges orchestrator queries to `WebSearchService` (`src/services/search.py`),
+  which in turn manages concrete providers such as Tavily via typed `SearchProvider` classes.
+- Search responses are normalized to dictionaries so both the research executor and report writer
+  can access titles, URLs, snippets, confidence scores, and provider metadata.
 
-*For detailed technology choices, configuration patterns, and deployment guides, see [Implementation Design](./implementation_design.md#production-deployment)*
+## Events & Interfaces
 
-## Data Flow Architecture
+- `core/events.py` defines immutable event dataclasses (`StageStarted`, `StageCompleted`,
+  `StreamingUpdate`, `ResearchCompletedEvent`, etc.) and an async event bus.
+- Both the CLI (`src/cli`) and HTTP API (`src/api/main.py`) subscribe to the event bus to render
+  live progress. CLI interactions use Rich panels for clarification reviews, while the HTTP layer
+  exposes FastAPI endpoints with server-sent events for streaming updates.
 
-### Input Processing
-1. **Query Reception**: User input via CLI or HTTP API
-2. **Three-Phase Enhancement**: Assessment → Transformation → Brief Generation
-3. **Research Planning**: Methodology selection and scope definition
+## Resilience & Observability
 
-### Research Execution
-1. **Parallel Processing**: Concurrent search and analysis operations
-2. **Circuit Breaker Protection**: Automatic failure recovery and stability
-3. **Real-Time Updates**: Event-driven progress notifications
+- A `CircuitBreaker` (`src/core/circuit_breaker.py`) and per-agent configs are instantiated, and
+  `_run_agent_with_circuit_breaker` uses the `critical` markers together with predefined fallbacks to
+  decide whether to propagate failures. Automated open/half-open retry cycles are planned but not yet
+  enabled.
+- `PerformanceMetrics` on `BaseResearchAgent` reserve slots for timing, retries, and usage data,
+  supporting future telemetry aggregation.
+- Logfire instrumentation is applied throughout the workflow, agents, and services to capture
+  operational metrics, search execution details, and error traces for debugging.
 
-### Output Generation
-1. **Finding Compression**: Synthesis and contradiction resolution
-2. **Report Structuring**: Executive summaries and detailed analysis
-3. **Citation Management**: Comprehensive source attribution
+## Comparison with LangChain Open Deep Research
 
-## Production Considerations
+LangChain's [Open Deep Research](https://github.com/langchain-ai/open_deep_research) couples
+LangGraph with a supervisor/sub-agent design. The compiled graph (`src/open_deep_research/deep_researcher.py`)
+spawns a lead supervisor that breaks work into `ConductResearch` tasks, dispatches them to parallel
+researcher subgraphs, and iterates until the supervisor chooses `ResearchComplete`. Each researcher
+loops through tool calling, MCP-compatible search, and compression passes before handing results
+back for aggregation. That control flow yields a branching, feedback-driven research tree rather than
+our single-pass chain.
 
-### System Reliability
-- **Memory Safety**: WeakRef patterns with automatic cleanup and user isolation
-- **Error Resilience**: Circuit breaker protection with graceful degradation
-- **Security**: Rate limiting, input validation, and authentication patterns
-- **Scalability**: Kubernetes integration with comprehensive monitoring
+**Pros of our linear workflow**
+- Deterministic stage ordering simplifies reasoning, testing, and recovery; each stage runs once with
+  predictable inputs/outputs.
+- Shared `ResearchDependencies` and typed metadata reduce context-management overhead compared to
+  coordinating per-branch state objects.
+- Circuit-breaker policy and fallbacks are straightforward because agent lifetimes are short and
+  serialized.
+- Resource usage is easier to bound—no concurrent researcher fan-out or dynamic tool loops run unless
+  explicitly triggered inside a stage.
 
-*For detailed production deployment guides, security configurations, and monitoring setups, see [Implementation Design](./implementation_design.md#production-deployment)*
-
-## Architectural Design Decisions
-
-### Sequential Pipeline vs. Graph-Based Approaches
-Our linear pipeline with event bus architecture optimizes for:
-- **Simplicity**: Predictable execution flow and easier debugging
-- **Client Resilience**: Stateful reconnection and progress recovery
-- **Production Stability**: Server fault tolerance with persistent state
-- **Multiple Consumers**: Event-driven updates to unlimited clients
-
-This approach trades dynamic routing flexibility for operational simplicity and production robustness, making it ideal for research workflows where linear progression with clarification pauses is the primary pattern.
-
-## System Extensibility
-
-The architecture supports extension through:
-- **Agent Development**: Plugin system with Pydantic-AI tool registration
-- **Data Model Extension**: Type-safe Pydantic models with custom validation
-- **Integration Patterns**: Event subscriptions and API extensions
-
-*For detailed extension patterns, code examples, and development guides, see [Implementation Design](./implementation_design.md#development-patterns)*
-
----
-
-**Next Steps:**
-- Review [Implementation Design](./implementation_design.md) for detailed code patterns and examples
-- Explore [Getting Started Guide](./getting_started.md) for development setup
-- Check [Production Deployment Guide](./production_deployment.md) for operational guidance
-
----
-
-*This architecture documentation provides a high-level overview of system design and principles. For implementation details, code examples, and production patterns, refer to the companion [Implementation Design](./implementation_design.md) document.*
+**Trade-offs versus the LangChain design**
+- Lacks hierarchical delegation: we do not dynamically spawn specialized researchers, so coverage depth
+  depends entirely on the single research executor pass.
+- Limited opportunity for iterative critique or self-refinement; there is no supervisor deciding to
+  re-run sub-tasks when evidence is weak or contradictory.
+- Concurrency is restricted to search batching; LangChain's approach can perform multiple research
+  strands in parallel and merge them under the supervisor loop.
+- Less configurable at runtime: swapping models or search tooling requires touching configuration code,
+  whereas LangGraph exposes per-node overrides through configuration surfaces described in the LangChain
+  blog.
+- Benchmark integrations (e.g., Deep Research Bench harnesses shipped with Open Deep Research) are not
+  bundled here, so comparative evaluation needs to be wired in separately.
