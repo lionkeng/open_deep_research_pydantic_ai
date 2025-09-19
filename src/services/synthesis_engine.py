@@ -4,8 +4,10 @@ from typing import Any
 
 import numpy as np
 from sklearn.cluster import KMeans
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import Normalizer
 
 from models.research_executor import (
     Contradiction,
@@ -29,6 +31,7 @@ class SynthesisEngine:
         max_clusters: int = 10,
         vectorizer_max_features: int = 100,
         random_state: int = 42,
+        svd_components: int = 50,
     ):
         """Initialize the synthesis engine.
 
@@ -42,16 +45,10 @@ class SynthesisEngine:
         self.max_clusters = max_clusters
         self.random_state = random_state
 
-        # Initialize TF-IDF vectorizer with scikit-learn
-        self.vectorizer = TfidfVectorizer(
-            max_features=vectorizer_max_features,
-            stop_words="english",
-            ngram_range=(1, 2),  # Use unigrams and bigrams
-            min_df=0.1,  # Ignore terms that appear in less than 10% of documents
-            max_df=0.9,  # Ignore terms that appear in more than 90% of documents
-        )
+        self.vectorizer_max_features = vectorizer_max_features
+        self.svd_components = svd_components
 
-        self.last_vectorized_data: np.ndarray | None = None
+        self.last_vectorized_data: Any | None = None
         self.last_labels: np.ndarray | None = None
 
     def cluster_findings(self, findings: list[HierarchicalFinding]) -> list[ThemeCluster]:
@@ -80,10 +77,10 @@ class SynthesisEngine:
 
         # Vectorize the text using TF-IDF
         try:
-            X = self.vectorizer.fit_transform(texts)
+            vectorizer = self._create_vectorizer(len(findings))
+            X = vectorizer.fit_transform(texts)
             # Keep sparse matrix to avoid memory issues with large datasets
-            # Only convert to dense when absolutely necessary for specific operations
-            self.last_vectorized_data = X  # Keep as sparse matrix
+            self.last_vectorized_data = X
         except ValueError:
             # If vectorization fails (e.g., all texts are too similar)
             return [
@@ -96,8 +93,11 @@ class SynthesisEngine:
                 )
             ]
 
-        # Determine optimal number of clusters
-        optimal_k = self._find_optimal_clusters(X)
+        # Reduce dimensionality to keep clustering stable in high-dimensional space
+        reduced_matrix = self._reduce_dimensions(X)
+
+        # Determine optimal number of clusters using reduced representations
+        optimal_k = self._find_optimal_clusters(reduced_matrix)
 
         # Perform KMeans clustering
         kmeans = KMeans(
@@ -105,7 +105,7 @@ class SynthesisEngine:
             random_state=self.random_state,
             n_init=10,
         )
-        labels = kmeans.fit_predict(X)
+        labels = kmeans.fit_predict(reduced_matrix)
         self.last_labels = labels
 
         # Group findings by cluster
@@ -122,7 +122,7 @@ class SynthesisEngine:
             theme_name = self._extract_theme_name(cluster_findings, label)
 
             # Calculate coherence score based on cluster tightness
-            coherence = self._calculate_coherence(X, labels, label)
+            coherence = self._calculate_coherence(reduced_matrix, labels, label)
 
             # Calculate importance score
             importance = self._calculate_importance_score(cluster_findings)
@@ -141,6 +141,59 @@ class SynthesisEngine:
         theme_clusters.sort(key=lambda x: x.importance_score, reverse=True)
 
         return theme_clusters
+
+    def _create_vectorizer(self, n_documents: int) -> TfidfVectorizer:
+        """Create a TF-IDF vectorizer that adapts thresholds to corpus size."""
+
+        params = self._dataset_aware_tfidf_params(n_documents)
+
+        return TfidfVectorizer(
+            max_features=min(self.vectorizer_max_features, max(50, n_documents * 10)),
+            stop_words="english",
+            ngram_range=(1, 2),
+            **params,
+        )
+
+    def _dataset_aware_tfidf_params(self, n_documents: int) -> dict[str, Any]:
+        """Derive TF-IDF bounds that scale with the number of documents."""
+
+        if n_documents <= 5:
+            # Keep all terms when data is sparse
+            return {"min_df": 1, "max_df": 1.0}
+
+        if n_documents <= 25:
+            return {"min_df": 1, "max_df": 0.95}
+
+        # For larger corpora switch to proportion-based thresholds
+        min_df = max(2, int(0.02 * n_documents))
+        max_df = 0.85 if n_documents < 100 else 0.8
+
+        # Ensure min_df < total documents to avoid empty vocabularies
+        min_df = min(min_df, n_documents - 1)
+
+        return {"min_df": min_df, "max_df": max_df}
+
+    def _reduce_dimensions(self, X: Any) -> np.ndarray:
+        """Project sparse TF-IDF data into a lower-dimensional dense space."""
+
+        n_samples, n_features = X.shape
+
+        # Skip reduction when data is already low-dimensional
+        if n_samples < 3 or n_features <= 3:
+            return X.toarray() if hasattr(X, "toarray") else X
+
+        max_components = min(self.svd_components, n_features - 1, n_samples - 1)
+
+        if max_components < 2:
+            return X.toarray() if hasattr(X, "toarray") else X
+
+        svd = TruncatedSVD(n_components=max_components, random_state=self.random_state)
+        normalizer = Normalizer(copy=False)
+
+        reduced = svd.fit_transform(X)
+        reduced = normalizer.fit_transform(reduced)
+
+        return reduced
 
     def _finding_to_text(self, finding: HierarchicalFinding) -> str:
         """Convert a finding to text for vectorization.
@@ -391,10 +444,9 @@ class SynthesisEngine:
         texts = [self._finding_to_text(f) for f in findings]
 
         try:
+            vectorizer = self._create_vectorizer(len(findings))
             # Vectorize findings
-            X = self.vectorizer.fit_transform(texts)
-            # Keep sparse for memory efficiency
-            vectors = X
+            vectors = vectorizer.fit_transform(texts)
         except ValueError:
             return []
 
