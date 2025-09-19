@@ -179,7 +179,7 @@ problem-solving. Our research shows 65% of jobs will transform, not disappear."
 # OUTPUT STRUCTURE REQUIREMENTS
 
 ## 1. Executive Summary (10% of report)
-- Hook: One compelling insight
+- Start with one compelling insight (without labeling it as "Hook")
 - Key Findings: 3-5 bullets
 - Critical Recommendation: The one thing to do
 - Impact Statement: What's at stake
@@ -651,7 +651,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         def replacement(match: re.Match[str]) -> str:
             source_id = f"S{match.group(1)}"
             number = ordered_markers.get(source_id)
-            return match.group(0) if number is None else f"[^{number}]"
+            return match.group(0) if number is None else f"[{number}]"
 
         for obj, attr in text_targets:
             current = getattr(obj, attr, "")
@@ -676,7 +676,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 descriptor += f" ({source.date.strftime('%Y-%m-%d')})"
             if source.url:
                 descriptor += f" <{source.url}>"
-            footnotes.append(f"[^{footnote_number}]: {descriptor}")
+            footnotes.append(f"[{footnote_number}]: {descriptor}")
             source_summary.append(
                 {
                     "id": source_id,
