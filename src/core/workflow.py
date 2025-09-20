@@ -1,5 +1,6 @@
 """Main workflow orchestrator for the streamlined 4-agent research system."""
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
@@ -18,6 +19,7 @@ from core.events import (
 )
 from interfaces.clarification_flow import handle_clarification_with_review
 from models.api_models import APIKeys, ConversationMessage
+from models.clarification import ClarificationRequest, ClarificationResponse
 from models.core import (
     ResearchMetadata,
     ResearchStage,
@@ -230,7 +232,7 @@ class ResearchWorkflow:
 
     async def _execute_two_phase_clarification(
         self, deps: ResearchDependencies, user_query: str
-    ) -> None:
+    ) -> bool:
         """Execute two-phase clarification system.
 
         Phase 1: Initial clarification check
@@ -278,22 +280,34 @@ class ResearchWorkflow:
 
                 # If clarification needed, handle it
                 if clarification_result.needs_clarification:
-                    logfire.info("Clarification needed, entering interactive flow")
-                    # Handle clarification flow
-                    if clarification_result.request:
+                    logfire.info("Clarification needed, initiating follow-up flow")
+                    request_model = clarification_result.request
+                    if not request_model:
+                        logfire.warning("Clarification requested but no question payload provided")
+                        return False
+
+                    if research_state.metadata:
+                        research_state.metadata.clarification.request = request_model
+                        research_state.metadata.clarification.awaiting_clarification = True
+
+                    callback = getattr(deps, "clarification_callback", None)
+                    if callback:
+                        clarification_response = await callback(request_model, research_state)
+                        if not clarification_response:
+                            logfire.info("Clarification pending via external handler")
+                            return False
+                    else:
                         clarification_response = await handle_clarification_with_review(
-                            request=clarification_result.request,
+                            request=request_model,
                             original_query=research_state.user_query,
                         )
                         if not clarification_response:
                             logfire.info("Clarification still pending")
-                            return
-                        # Store the clarification response in metadata
-                        if research_state.metadata and clarification_response:
-                            research_state.metadata.clarification.response = clarification_response
-                    else:
-                        logfire.warn("Clarification needed but no request provided")
-                        return
+                            return False
+
+                    if research_state.metadata and clarification_response:
+                        research_state.metadata.clarification.response = clarification_response
+                        research_state.metadata.clarification.awaiting_clarification = False
 
             except Exception as e:
                 logfire.error(f"Clarification failed: {e}")
@@ -354,6 +368,8 @@ class ResearchWorkflow:
                 )
                 raise
 
+            return True
+
         except Exception as e:
             # Log phase completion failure
             logfire.error(f"Two-phase clarification system failed: {e}", exc_info=True)
@@ -373,6 +389,10 @@ class ResearchWorkflow:
         conversation_history: list[ConversationMessage] | None = None,
         request_id: str | None = None,
         stream_callback: Any | None = None,
+        clarification_callback: (
+            Callable[[ClarificationRequest, ResearchState], Awaitable[ClarificationResponse | None]]
+            | None
+        ) = None,
     ) -> ResearchState:
         """Execute the complete research workflow.
 
@@ -416,11 +436,26 @@ class ResearchWorkflow:
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
             )
+            if clarification_callback is None:
+
+                async def default_cli_callback(
+                    request: ClarificationRequest, state: ResearchState
+                ) -> ClarificationResponse | None:
+                    return await handle_clarification_with_review(
+                        request=request,
+                        original_query=state.user_query,
+                    )
+
+                deps.clarification_callback = default_cli_callback
+            else:
+                deps.clarification_callback = clarification_callback
             deps.source_repository = InMemorySourceRepository()
 
             try:
                 # Execute two-phase clarification (includes query transformation)
-                await self._execute_two_phase_clarification(deps, user_query)
+                ready_to_continue = await self._execute_two_phase_clarification(deps, user_query)
+                if not ready_to_continue:
+                    return research_state
 
                 research_state.advance_stage()  # Move to RESEARCH_EXECUTION
 
@@ -670,6 +705,10 @@ class ResearchWorkflow:
         research_state: ResearchState,
         api_keys: APIKeys | None = None,
         stream_callback: Any | None = None,
+        clarification_callback: (
+            Callable[[ClarificationRequest, ResearchState], Awaitable[ClarificationResponse | None]]
+            | None
+        ) = None,
     ) -> ResearchState:
         """Resume a research workflow from a given state.
 
@@ -691,6 +730,19 @@ class ResearchWorkflow:
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
             )
+            if clarification_callback is None:
+
+                async def default_cli_callback(
+                    request: ClarificationRequest, state: ResearchState
+                ) -> ClarificationResponse | None:
+                    return await handle_clarification_with_review(
+                        request=request,
+                        original_query=state.user_query,
+                    )
+
+                deps.clarification_callback = default_cli_callback
+            else:
+                deps.clarification_callback = clarification_callback
 
             try:
                 # Resume from current stage
@@ -707,14 +759,28 @@ class ResearchWorkflow:
                         return research_state
 
                     # Re-execute two-phase clarification system
-                    await self._execute_two_phase_clarification(deps, research_state.user_query)
+                    ready_to_continue = await self._execute_two_phase_clarification(
+                        deps, research_state.user_query
+                    )
+                    if not ready_to_continue:
+                        return research_state
                     research_state.advance_stage()
-                    return await self.resume_research(research_state, api_keys, stream_callback)
+                    return await self.resume_research(
+                        research_state,
+                        api_keys,
+                        stream_callback,
+                        clarification_callback,
+                    )
 
                 if current_stage == ResearchStage.QUERY_TRANSFORMATION:
                     # Query transformation should complete in two-phase
                     research_state.advance_stage()
-                    return await self.resume_research(research_state, api_keys, stream_callback)
+                    return await self.resume_research(
+                        research_state,
+                        api_keys,
+                        stream_callback,
+                        clarification_callback,
+                    )
 
                 if current_stage in [
                     ResearchStage.RESEARCH_EXECUTION,

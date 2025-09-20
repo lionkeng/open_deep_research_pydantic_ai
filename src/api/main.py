@@ -8,25 +8,23 @@ from typing import Annotated
 import logfire
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
+from api.core.clarification import ClarificationHandler
+from api.core.session import InMemorySessionStore, SessionManager, SessionState
+from api.core.session.models import ClarificationExchange, SessionMetadata
+from api.error_handlers import install_error_handlers
 from api.sse_handler import create_sse_response
 from api.task_manager import task_manager
 from core.context import ResearchContextManager
 from core.events import research_event_bus
+from core.exceptions import OpenDeepResearchError
 from core.logging import configure_logging
 from core.workflow import workflow
-from models.api_models import (
-    APIKeys,
-    ConversationMessage,
-)
-from models.api_models import (
-    ResearchRequest as APIResearchRequest,
-)
-from models.api_models import (
-    ResearchResponse as APIResearchResponse,
-)
-from models.clarification import ClarificationResponse
+from models.api_models import APIKeys, ConversationMessage
+from models.api_models import ResearchRequest as APIResearchRequest
+from models.api_models import ResearchResponse as APIResearchResponse
+from models.clarification import ClarificationRequest, ClarificationResponse
 from models.core import ResearchStage, ResearchState
 
 
@@ -36,13 +34,16 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     # Startup logic
     configure_logging(enable_console=True)  # Enable console logging for FastAPI server
     logfire.info("Deep Research API started")
+    await session_manager.start()
 
-    yield  # Application runs here
-
-    # Shutdown logic
-    await research_event_bus.cleanup()
-    await task_manager.shutdown()
-    logfire.info("Deep Research API shutdown")
+    try:
+        yield  # Application runs here
+    finally:
+        # Shutdown logic
+        await session_manager.stop()
+        await research_event_bus.cleanup()
+        await task_manager.shutdown()
+        logfire.info("Deep Research API shutdown")
 
 
 app = FastAPI(
@@ -51,6 +52,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+install_error_handlers(app)
 
 # Add CORS middleware with proper configuration
 app.add_middleware(
@@ -67,6 +70,10 @@ app.add_middleware(
 active_sessions: dict[str, ResearchState] = {}
 _sessions_lock = asyncio.Lock()  # Lock for thread-safe access to active_sessions
 
+session_store = InMemorySessionStore()
+session_manager = SessionManager(store=session_store)
+clarification_handler = ClarificationHandler(session_manager)
+
 
 def load_api_keys_from_env() -> APIKeys:
     """Build APIKeys object from environment variables."""
@@ -82,6 +89,113 @@ def load_api_keys_from_env() -> APIKeys:
     )
 
 
+class ClarificationStatusResponse(BaseModel):
+    """Status payload when clarification is pending."""
+
+    request_id: str
+    state: str
+    awaiting_response: bool
+    clarification_request: ClarificationRequest | None = None
+    original_query: str | None = None
+
+
+class ClarificationResumeResponse(BaseModel):
+    """Response payload when clarification has been accepted."""
+
+    request_id: str
+    status: str
+    message: str
+    current_stage: str
+
+
+async def http_clarification_callback(
+    request: ClarificationRequest, state: ResearchState
+) -> ClarificationResponse | None:
+    """Trigger clarification handling for HTTP-mode sessions."""
+
+    try:
+        await clarification_handler.request_clarification(state.request_id, request)
+    except OpenDeepResearchError as exc:
+        logfire.warning(
+            "Clarification request failed",
+            request_id=state.request_id,
+            status_code=exc.status_code,
+            error=exc.message,
+        )
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.to_payload() | {"request_id": state.request_id},
+        ) from exc
+    return None
+
+
+async def _update_session_after_run(state: ResearchState) -> None:
+    if state.metadata.clarification.awaiting_clarification:
+        return
+
+    session = await session_manager.get_session(state.request_id, for_update=True)
+    if not session:
+        return
+
+    session.query = state.user_query
+    if state.research_results is not None:
+        try:
+            session.research_results = state.research_results.model_dump()
+        except AttributeError:
+            session.research_results = state.research_results  # type: ignore[assignment]
+    if state.final_report is not None:
+        session.synthesis_result = state.final_report.model_dump()
+
+    if state.error_message:
+        session.record_error(state.error_message)
+        session.transition_to(SessionState.ERROR)
+    elif state.is_completed():
+        session.transition_to(SessionState.COMPLETED)
+    else:
+        session.transition_to(SessionState.SYNTHESIZING)
+
+    await session_manager.update_session(session)
+
+
+async def _mark_session_failed(session_id: str, error: str) -> None:
+    session = await session_manager.get_session(session_id, for_update=True)
+    if not session:
+        return
+    session.record_error(error)
+    session.transition_to(SessionState.ERROR)
+    await session_manager.update_session(session)
+
+
+def _find_pending_exchange(session) -> ClarificationExchange | None:  # type: ignore[name-defined]
+    for exchange in reversed(session.clarification_exchanges):
+        if exchange.response is None and not exchange.timed_out:
+            return exchange
+    return None
+
+
+async def _resume_research(state: ResearchState) -> None:
+    try:
+        async with ResearchContextManager(
+            user_id=state.user_id,
+            session_id=state.session_id,
+            request_id=state.request_id,
+        ):
+            updated_state = await workflow.resume_research(
+                state,
+                api_keys=load_api_keys_from_env(),
+                stream_callback=True,
+                clarification_callback=http_clarification_callback,
+            )
+
+        async with _sessions_lock:
+            active_sessions[state.request_id] = updated_state
+
+        await _update_session_after_run(updated_state)
+    except Exception as exc:  # pragma: no cover - resume failures logged
+        logfire.error("Failed to resume research", request_id=state.request_id, error=str(exc))
+        await _mark_session_failed(state.request_id, str(exc))
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -95,6 +209,7 @@ async def root():
 @app.post("/research", response_model=APIResearchResponse)
 async def start_research(
     request: APIResearchRequest,
+    fastapi_request: Request,
     x_user_id: Annotated[str | None, Header(alias="X-User-ID")] = None,
     x_session_id: Annotated[str | None, Header(alias="X-Session-ID")] = None,
 ) -> APIResearchResponse:
@@ -126,6 +241,12 @@ async def start_research(
         )
         initial_state.start_research()
 
+        client_ip = fastapi_request.client.host if fastapi_request.client else None
+        await session_manager.create_session(
+            query=request.query,
+            session_id=request_id,
+            metadata=SessionMetadata(client_ip=client_ip),
+        )
         async with _sessions_lock:
             active_sessions[request_id] = initial_state
 
@@ -194,6 +315,7 @@ async def execute_research_background(
                 api_keys=api_keys,
                 stream_callback=True if stream else None,
                 request_id=request_id,
+                clarification_callback=http_clarification_callback,
             )
 
             # Update state with user context
@@ -203,6 +325,8 @@ async def execute_research_background(
             # Store completed state
             async with _sessions_lock:
                 active_sessions[request_id] = state
+
+            await _update_session_after_run(state)
 
     except Exception as e:
         logfire.error(f"Background research failed: {str(e)}")
@@ -216,6 +340,7 @@ async def execute_research_background(
         error_state.set_error(str(e))
         async with _sessions_lock:
             active_sessions[request_id] = error_state
+        await _mark_session_failed(request_id, str(e))
 
 
 @app.get("/research/{request_id}")
@@ -306,7 +431,7 @@ async def cancel_research(request_id: str):
     }
 
 
-@app.get("/research/{request_id}/clarification")
+@app.get("/research/{request_id}/clarification", response_model=ClarificationStatusResponse)
 async def get_clarification_question(request_id: str):
     """Get pending clarification questions for a research request.
 
@@ -316,28 +441,37 @@ async def get_clarification_question(request_id: str):
     Returns:
         Clarification request with questions if pending, otherwise 404
     """
-    async with _sessions_lock:
-        if request_id not in active_sessions:
-            raise HTTPException(status_code=404, detail="Research request not found")
-        state = active_sessions[request_id]
+    session = await session_manager.get_session(request_id)
+    if session and session.state == SessionState.AWAITING_CLARIFICATION:
+        pending = _find_pending_exchange(session)
+        if pending:
+            return ClarificationStatusResponse(
+                request_id=request_id,
+                state=session.state.value,
+                awaiting_response=True,
+                clarification_request=pending.request,
+                original_query=session.query,
+            )
 
-    # Check if there's a pending clarification
+    async with _sessions_lock:
+        state = active_sessions.get(request_id)
     if (
-        state.metadata
+        state
         and state.metadata.clarification.awaiting_clarification
         and state.metadata.clarification.request
     ):
-        # Return the full clarification request
-        return {
-            "request_id": request_id,
-            "clarification_request": state.metadata.clarification.request.model_dump(),
-            "original_query": state.user_query,
-            "awaiting_response": True,
-        }
+        return ClarificationStatusResponse(
+            request_id=request_id,
+            state=state.current_stage.value,
+            awaiting_response=True,
+            clarification_request=state.metadata.clarification.request,
+            original_query=state.user_query,
+        )
+
     raise HTTPException(status_code=404, detail="No pending clarification questions")
 
 
-@app.post("/research/{request_id}/clarification")
+@app.post("/research/{request_id}/clarification", response_model=ClarificationResumeResponse)
 async def respond_to_clarification(request_id: str, clarification_response: ClarificationResponse):
     """Respond to clarification questions and resume research.
 
@@ -387,37 +521,23 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
                     conversation.extend(new_messages)
 
     state.metadata.conversation_messages = conversation
-
-    # Update metadata to clear the pending clarification
     state.metadata.clarification.awaiting_clarification = False
 
-    # Resume research workflow
-    try:
-        # Set up user context for this research
-        async with ResearchContextManager(
-            user_id=state.user_id, session_id=state.session_id, request_id=request_id
-        ):
-            # Resume the workflow
-            updated_state = await workflow.resume_research(
-                state,
-                api_keys=load_api_keys_from_env(),
-                stream_callback=True,
-            )
+    processed = await clarification_handler.submit_response(request_id, clarification_response)
+    if not processed:
+        raise HTTPException(status_code=409, detail="Clarification already processed")
 
-            # Update session storage
-            async with _sessions_lock:
-                active_sessions[request_id] = updated_state
+    async with _sessions_lock:
+        active_sessions[request_id] = state
 
-            return {
-                "request_id": request_id,
-                "status": "resumed",
-                "message": "Clarification received, research resumed",
-                "current_stage": updated_state.current_stage.value,
-            }
-    except Exception as e:
-        logfire.error("Failed to resume research after clarification", error=str(e))
-        state.set_error(f"Failed to resume research: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to resume research") from e
+    asyncio.create_task(_resume_research(state))
+
+    return ClarificationResumeResponse(
+        request_id=request_id,
+        status="resumed",
+        message="Clarification received, research resumed",
+        current_stage=state.current_stage.value,
+    )
 
 
 def main() -> None:

@@ -9,8 +9,9 @@ from unittest.mock import patch
 
 import pytest
 
-from api.main import active_sessions
+from api.main import active_sessions, clarification_handler, session_manager
 from models.core import ResearchStage, ResearchState
+
 
 @pytest.mark.asyncio
 async def test_complete_research_flow_without_clarification(client):
@@ -117,7 +118,7 @@ async def test_clarification_flow_integration(client):
     )
 
     # Set up clarification in state
-    from models.clarification import ClarificationRequest, ClarificationQuestion
+    from models.clarification import ClarificationQuestion, ClarificationRequest
 
     clarification_request = ClarificationRequest(
         questions=[
@@ -139,7 +140,12 @@ async def test_clarification_flow_integration(client):
     state.metadata.clarification.request = clarification_request
     state.metadata.clarification.awaiting_clarification = True
 
-    # Add to active sessions
+    await session_manager.create_session(
+        query=state.user_query,
+        session_id=request_id,
+    )
+    await clarification_handler.request_clarification(request_id, clarification_request)
+
     active_sessions[request_id] = state
 
     # Get clarification questions
@@ -182,6 +188,7 @@ async def test_clarification_flow_integration(client):
         assert resume_data["status"] == "resumed"
         assert resume_data["message"] == "Clarification received, research resumed"
 
+        await asyncio.sleep(0.05)
         # Verify workflow.resume_research was called with correct state
         mock_resume.assert_called_once()
         call_state = mock_resume.call_args[0][0]
@@ -191,6 +198,8 @@ async def test_clarification_flow_integration(client):
         # Verify clarification was stored in state
         assert not call_state.metadata.clarification.awaiting_clarification
         assert call_state.metadata.clarification.response is not None
+
+    await session_manager.delete_session(request_id)
 
 
 @pytest.mark.asyncio
@@ -341,10 +350,14 @@ async def test_state_persistence_across_requests(client):
     for i in range(1, len(states_seen)):
         if states_seen[i] != states_seen[i-1]:
             # If state changed, it should be forward progress
-            prev_index = stage_order.index(states_seen[i-1]) if states_seen[i-1] in stage_order else -1
-            curr_index = stage_order.index(states_seen[i]) if states_seen[i] in stage_order else -1
+            prev_state = states_seen[i - 1]
+            curr_state = states_seen[i]
+            prev_index = stage_order.index(prev_state) if prev_state in stage_order else -1
+            curr_index = stage_order.index(curr_state) if curr_state in stage_order else -1
             if prev_index >= 0 and curr_index >= 0:
-                assert curr_index >= prev_index, f"State went backward: {states_seen[i-1]} -> {states_seen[i]}"
+                assert curr_index >= prev_index, (
+                    f"State went backward: {prev_state} -> {curr_state}"
+                )
 
 
 def test_headers_affect_request_id(client):

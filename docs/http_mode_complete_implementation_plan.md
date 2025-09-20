@@ -126,6 +126,11 @@ This document provides the complete implementation plan for aligning the HTTP AP
 - Deployment guide
 - Troubleshooting guide
 
+## Future Work
+
+- Integrate a Locust-based load testing harness to validate HTTP mode under sustained concurrency.
+- Provide an optional Redis-backed `ResearchSession` store so session data can persist across processes and support TTL-based cleanup in production deployments.
+
 ## Technical Architecture
 
 ### Core Components
