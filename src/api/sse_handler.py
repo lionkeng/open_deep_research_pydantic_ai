@@ -106,7 +106,7 @@ class SSEHandler:
                     if isinstance(event, StreamingUpdateEvent):
                         update_msg = UpdateMessage(
                             request_id=self.request_id,
-                            stage=event.stage.value,
+                            stage=event.stage.name,
                             content=event.content,
                             is_partial=event.is_partial,
                         )
@@ -120,7 +120,7 @@ class SSEHandler:
                     elif isinstance(event, StageCompletedEvent):
                         stage_msg = StageCompletedMessage(
                             request_id=self.request_id,
-                            stage=event.stage.value,
+                            stage=event.stage.name,
                             success=event.success,
                             result=event.result,
                             error=event.error_message,
@@ -135,7 +135,7 @@ class SSEHandler:
                     elif isinstance(event, ErrorEvent):
                         error_msg = ErrorMessage(
                             request_id=self.request_id,
-                            stage=event.stage.value,
+                            stage=event.stage.name,
                             error_type=event.error_type,
                             message=event.error_message,
                             recoverable=event.recoverable,

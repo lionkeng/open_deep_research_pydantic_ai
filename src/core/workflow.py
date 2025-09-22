@@ -241,84 +241,123 @@ class ResearchWorkflow:
         research_state = deps.research_state
 
         try:
+            skip_assessment = False
+            # Fast-path: if we already have a completed clarification response
+            # and are not awaiting further input, skip running the agent again.
+            if (
+                research_state.metadata
+                and not research_state.metadata.clarification.awaiting_clarification
+                and research_state.metadata.clarification.response is not None
+            ):
+                # If there's a request, validate completeness; otherwise treat as complete.
+                try:
+                    is_complete = (
+                        research_state.metadata.is_clarification_complete()
+                        if research_state.metadata.clarification.request is not None
+                        else True
+                    )
+                except Exception:
+                    is_complete = True
+
+                if is_complete:
+                    await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
+                    await emit_streaming_update(
+                        research_state.request_id,
+                        "Using previously provided clarification to proceed...",
+                        ResearchStage.CLARIFICATION,
+                    )
+                    await emit_stage_completed(
+                        research_state.request_id,
+                        ResearchStage.CLARIFICATION,
+                        True,
+                        {"used_existing_response": True},
+                    )
+                    # Proceed directly to transformation
+                    skip_assessment = True
+
             # Phase 1: Clarification Assessment
-            logfire.info("Phase 1: Clarification assessment")
+            if not skip_assessment:
+                logfire.info("Phase 1: Clarification assessment")
 
-            await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
-            await emit_streaming_update(
-                research_state.request_id,
-                "Analyzing your query for clarity and completeness...",
-                ResearchStage.CLARIFICATION,
-            )
-
-            try:
-                # Run clarification agent
-                clarification_result = await self._run_agent_with_circuit_breaker(
-                    AgentType.CLARIFICATION, deps
-                )
-
-                # Store clarification metadata
-                if research_state.metadata:
-                    research_state.metadata.clarification.assessment = {
-                        "needs_clarification": clarification_result.needs_clarification,
-                        "confidence": 0.8,  # Default confidence for now
-                        "clarification_type": "general",  # Default type
-                        "assessment_reasoning": clarification_result.reasoning,
-                        "missing_dimensions": clarification_result.missing_dimensions,
-                    }
-
-                    if clarification_result.needs_clarification:
-                        research_state.metadata.clarification.request = clarification_result.request
-                        research_state.metadata.clarification.awaiting_clarification = True
-
-                await emit_stage_completed(
+                await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
+                await emit_streaming_update(
                     research_state.request_id,
+                    "Analyzing your query for clarity and completeness...",
                     ResearchStage.CLARIFICATION,
-                    True,
-                    clarification_result,
                 )
 
-                # If clarification needed, handle it
-                if clarification_result.needs_clarification:
-                    logfire.info("Clarification needed, initiating follow-up flow")
-                    request_model = clarification_result.request
-                    if not request_model:
-                        logfire.warning("Clarification requested but no question payload provided")
-                        return False
+                try:
+                    # Run clarification agent
+                    clarification_result = await self._run_agent_with_circuit_breaker(
+                        AgentType.CLARIFICATION, deps
+                    )
 
+                    # Store clarification metadata
                     if research_state.metadata:
-                        research_state.metadata.clarification.request = request_model
-                        research_state.metadata.clarification.awaiting_clarification = True
+                        research_state.metadata.clarification.assessment = {
+                            "needs_clarification": clarification_result.needs_clarification,
+                            "confidence": 0.8,  # Default confidence for now
+                            "clarification_type": "general",  # Default type
+                            "assessment_reasoning": clarification_result.reasoning,
+                            "missing_dimensions": clarification_result.missing_dimensions,
+                        }
 
-                    callback = getattr(deps, "clarification_callback", None)
-                    if callback:
-                        clarification_response = await callback(request_model, research_state)
-                        if not clarification_response:
-                            logfire.info("Clarification pending via external handler")
+                        if clarification_result.needs_clarification:
+                            research_state.metadata.clarification.request = (
+                                clarification_result.request
+                            )
+                            research_state.metadata.clarification.awaiting_clarification = True
+
+                    await emit_stage_completed(
+                        research_state.request_id,
+                        ResearchStage.CLARIFICATION,
+                        True,
+                        clarification_result,
+                    )
+
+                    # If clarification needed, handle it
+                    if clarification_result.needs_clarification:
+                        logfire.info("Clarification needed, initiating follow-up flow")
+                        request_model = clarification_result.request
+                        if not request_model:
+                            logfire.warning(
+                                "Clarification requested but no question payload provided"
+                            )
                             return False
-                    else:
-                        clarification_response = await handle_clarification_with_review(
-                            request=request_model,
-                            original_query=research_state.user_query,
-                        )
-                        if not clarification_response:
-                            logfire.info("Clarification still pending")
-                            return False
 
-                    if research_state.metadata and clarification_response:
-                        research_state.metadata.clarification.response = clarification_response
-                        research_state.metadata.clarification.awaiting_clarification = False
+                        if research_state.metadata:
+                            research_state.metadata.clarification.request = request_model
+                            research_state.metadata.clarification.awaiting_clarification = True
 
-            except Exception as e:
-                logfire.error(f"Clarification failed: {e}")
-                # Continue without clarification
-                await emit_error(
-                    research_state.request_id,
-                    ResearchStage.CLARIFICATION,
-                    "ClarificationError",
-                    str(e),
-                    recoverable=True,
-                )
+                        callback = getattr(deps, "clarification_callback", None)
+                        if callback:
+                            clarification_response = await callback(request_model, research_state)
+                            if not clarification_response:
+                                logfire.info("Clarification pending via external handler")
+                                return False
+                        else:
+                            clarification_response = await handle_clarification_with_review(
+                                request=request_model,
+                                original_query=research_state.user_query,
+                            )
+                            if not clarification_response:
+                                logfire.info("Clarification still pending")
+                                return False
+
+                        if research_state.metadata and clarification_response:
+                            research_state.metadata.clarification.response = clarification_response
+                            research_state.metadata.clarification.awaiting_clarification = False
+
+                except Exception as e:
+                    logfire.error(f"Clarification failed: {e}")
+                    # Continue without clarification
+                    await emit_error(
+                        research_state.request_id,
+                        ResearchStage.CLARIFICATION,
+                        "ClarificationError",
+                        str(e),
+                        recoverable=True,
+                    )
 
             # Phase 2: Query Transformation (produces SearchQueryBatch and ResearchPlan)
             logfire.info("Phase 2: Query transformation with research planning")

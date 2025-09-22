@@ -2,6 +2,26 @@
 
 This document provides context and instructions for AI assistants working on the Open Deep Research with Pydantic AI project.
 
+## Repository Guidelines
+
+### Project Structure & Module Organization
+Keep application code under `src/`, with `core/` housing research workflows, `agents/` defining reusable agent presets, and `services/` containing external integrations. API adapters live in `api/`, shared Pydantic models in `models/`, and configuration helpers in `config/`. Command-line entry points are in `cli.py`. Tests mirror the package layout in `tests/`, while reference material and design notes live in `docs/`.
+
+### Build, Test, and Development Commands
+Install or update dependencies with `uv sync`. Run the full test suite via `uv run pytest`, adding `--cov` when you need coverage numbers. Execute linting with `uv run ruff check src tests`, formatting with `uv run ruff format src tests`, and strict type checks through `uv run pyright src`. Use `uv run python -m src.cli` to exercise the CLI locally.
+
+### Coding Style & Naming Conventions
+Target Python 3.12 with 4-space indentation and double-quoted strings. Follow ruff's enforced PEP 8 extensions and keep lines under 100 characters. Declare explicit type hints for every function, prefer `pathlib` and dataclasses from the standard library, and centralize shared validation logic in Pydantic models. Module, file, and package names stay lowercase with underscores; exported classes use `PascalCase`, functions and variables use `snake_case`.
+
+### Testing Guidelines
+Write pytest tests alongside the feature they cover using the `tests/test_<module>.py` pattern. Cover async code paths, and stub external services with fixtures or Logfire captures. Include regression cases for new agents or research flows, and ensure `uv run pytest` passes before pushing. Aim to keep meaningful coverage; generate reports with `uv run pytest --cov` when refining complex logic.
+
+### Commit & Pull Request Guidelines
+Follow the existing history by writing short, imperative commit subjects (e.g., `add tests`, `improve report generator`). Each commit should focus on a single concern and include updated tests. Pull requests must describe the change, link to any tracking issue, summarize validation commands run, and call out user-facing impacts or screenshots when relevant.
+
+### Configuration & Security Tips
+Store API keys and secrets in `.env`, never in source control. Reference settings through typed helpers in `config/` and prefer environment-driven configuration over hard-coded defaults. Enable Logfire locally when debugging AI behavior, and scrub sensitive research data before sharing logs or artifacts.
+
 ## Project Overview
 
 This is a Python project for conducting deep research using Pydantic AI. The project:

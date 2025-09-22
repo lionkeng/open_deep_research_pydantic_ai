@@ -30,6 +30,7 @@ class ClarificationHandler:
         session_id: str,
         request: ClarificationRequest,
     ) -> ClarificationExchange:
+        # Load current session state to validate and to read config values
         session = await self._session_manager.get_session(session_id, for_update=True)
         if not session:
             raise SessionNotFoundError(session_id)
@@ -45,24 +46,63 @@ class ClarificationHandler:
                 limit=session.config.max_clarifications,
             )
 
-        exchange = ClarificationExchange(request=request)
-        session.clarification_exchanges.append(exchange)
-        session.transition_to(SessionState.AWAITING_CLARIFICATION)
-        await self._session_manager.update_session(session)
+        # Determine the index at which the new exchange will be appended
+        next_index = len(session.clarification_exchanges)
 
-        key = self._make_key(session_id, len(session.clarification_exchanges) - 1)
+        # Append the exchange using the SessionManager helper for consistency
+        exchange = ClarificationExchange(request=request)
+
+        # Telemetry: log the questions that will be sent to the client
+        try:
+            question_summaries = [
+                {
+                    "id": q.id,
+                    "order": q.order,
+                    "required": q.is_required,
+                    "type": q.question_type,
+                    "text": (q.question[:120] if isinstance(q.question, str) else ""),
+                }
+                for q in request.questions
+            ]
+            logfire.info(
+                "Preparing clarification request",
+                session_id=session_id,
+                clar_request_id=request.id,
+                num_questions=len(request.questions),
+                questions=question_summaries,
+            )
+        except Exception:
+            # Best-effort logging only
+            logfire.debug("Failed to log clarification question summaries", session_id=session_id)
+        appended = await self._session_manager.append_clarification_exchange(session_id, exchange)
+        if not appended:
+            raise SessionNotFoundError(session_id)
+
+        # Transition state via SessionManager to ensure persisted, locked update
+        _ = await self._session_manager.transition_state(
+            session_id, SessionState.AWAITING_CLARIFICATION
+        )
+
+        # Register a pending future keyed by session and exchange index
+        key = self._make_key(session_id, next_index)
         future: asyncio.Future[ClarificationResponse] = asyncio.get_running_loop().create_future()
         self._pending[key] = future
 
+        # Schedule timeout monitoring using the session's configured timeout
         asyncio.create_task(
             self._handle_timeout(
                 session_id,
-                len(session.clarification_exchanges) - 1,
+                next_index,
                 session.config.clarification_timeout_seconds,
             )
         )
 
-        logfire.info("Clarification requested", session_id=session_id)
+        logfire.info(
+            "Clarification requested",
+            session_id=session_id,
+            clar_request_id=request.id,
+            num_questions=len(request.questions),
+        )
         return exchange
 
     async def submit_response(self, session_id: str, response: ClarificationResponse) -> bool:

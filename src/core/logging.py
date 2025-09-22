@@ -47,9 +47,9 @@ def configure_logging(enable_console: bool = False) -> None:
             try:
                 # Configure with console options if enabled, otherwise disable console
                 if enable_console:
-                    logfire.configure(console=logfire.ConsoleOptions())
+                    logfire.configure(console=logfire.ConsoleOptions(), min_level="debug")
                 else:
-                    logfire.configure(console=False)
+                    logfire.configure(console=False, min_level="debug")
                 _configured = True
             except Exception as e:
                 # Log to stderr since logfire isn't configured yet

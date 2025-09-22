@@ -114,7 +114,7 @@ async def http_clarification_callback(
     """Trigger clarification handling for HTTP-mode sessions."""
 
     try:
-        await clarification_handler.request_clarification(state.request_id, request)
+        _ = await clarification_handler.request_clarification(state.request_id, request)
     except OpenDeepResearchError as exc:
         logfire.warning(
             "Clarification request failed",

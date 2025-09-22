@@ -60,6 +60,7 @@ from core.sse_models import (
     parse_sse_message,
 )
 from models.api_models import APIKeys
+from models.clarification import ClarificationRequest, ClarificationResponse
 from models.core import ResearchStage
 from models.report_generator import ResearchReport
 
@@ -410,6 +411,10 @@ class HTTPResearchClient:
         Raises:
             ImportError: If httpx-sse is not installed
             ValueError: If base_url is invalid
+
+        Note:
+            API tokens are expected to be configured on the server side; the CLI does
+            not send secrets over the network.
         """
         if not _http_mode_available:
             raise ImportError("HTTP mode requires httpx-sse. Install with: uv add --optional cli")
@@ -435,12 +440,11 @@ class HTTPResearchClient:
         _ = exc_type, exc_val, exc_tb  # Mark as intentionally unused
         await self.close()
 
-    async def start_research(self, query: str, api_keys: APIKeys | None) -> str:
+    async def start_research(self, query: str) -> str:
         """Start research via HTTP POST.
 
         Args:
             query: Research query
-            api_keys: Optional API keys
 
         Returns:
             Research request ID
@@ -449,7 +453,6 @@ class HTTPResearchClient:
             f"{self.base_url}/research",
             json={
                 "query": query,
-                "api_keys": api_keys.to_dict() if api_keys else None,
                 "stream": True,
             },
         )
@@ -583,6 +586,59 @@ class HTTPResearchClient:
     async def close(self) -> None:
         """Close HTTP client."""
         await self.client.aclose()
+
+    async def get_clarification(self, request_id: str) -> dict[str, Any]:
+        """Fetch pending clarification status and questions.
+
+        Args:
+            request_id: Research request ID
+
+        Returns:
+            Dict with keys: awaiting_response (bool), clarification_request (dict|None),
+            original_query (str|None), and additional metadata from the server.
+            If no clarification is pending (404), returns {"awaiting_response": False}.
+        """
+        if httpx is None:
+            raise ImportError("httpx not available")
+        try:
+            resp = await self.client.get(f"{self.base_url}/research/{request_id}/clarification")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 404:
+                return {"awaiting_response": False}
+            raise
+
+    async def submit_clarification(
+        self, request_id: str, response: ClarificationResponse | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit clarification answers.
+
+        Args:
+            request_id: Research request ID
+            response: ClarificationResponse model or equivalent dict
+
+        Returns:
+            Server response as dict
+        """
+        if httpx is None:
+            raise ImportError("httpx not available")
+        payload: dict[str, Any]
+        if hasattr(response, "model_dump"):
+            try:
+                # Use JSON mode to ensure datetimes are ISO strings, etc.
+                payload = response.model_dump(mode="json")  # type: ignore[assignment]
+            except Exception:
+                # Best effort fallback
+                payload = dict(response)  # type: ignore[arg-type]
+        else:
+            payload = dict(response)
+
+        resp = await self.client.post(
+            f"{self.base_url}/research/{request_id}/clarification", json=payload
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 def display_report_object(report: ResearchReport) -> None:
@@ -814,6 +870,180 @@ def save_http_report(report_data: dict[str, Any], filename: str) -> None:
         f.write("\n".join(content))
 
 
+async def handle_http_clarification_flow(
+    client: "HTTPResearchClient",
+    request_id: str,
+    console: Console,
+    stream_task: "asyncio.Task[None]",
+    handler: "CLIStreamHandler",
+) -> None:
+    """Poll server for clarification, prompt user, and submit answers.
+
+    Runs alongside SSE streaming. Exits when the stream completes or no
+    clarification is pending. Designed to affect only HTTP mode.
+    """
+    # Try to import interactive clarification UI
+    try:
+        from interfaces.cli_multi_clarification import handle_multi_clarification_cli
+    except ImportError:
+        handle_multi_clarification_cli = None  # type: ignore[assignment]
+
+    # If we cannot interactively prompt, just return (server may timeout)
+    if handle_multi_clarification_cli is None:
+        return
+
+    backoff = 1.0
+    max_backoff = 5.0
+    handled_request_ids: set[str] = set()
+
+    while not stream_task.done():
+        try:
+            status = await client.get_clarification(request_id)
+        except Exception as e:  # Network or other error; keep trying while stream active
+            logfire.debug(f"Clarification poll error: {e}")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff + 1.0, max_backoff)
+            continue
+
+        awaiting = bool(status.get("awaiting_response"))
+        if not awaiting:
+            # No pending clarification – backoff and continue while stream active
+            await asyncio.sleep(backoff)
+            backoff = min(backoff + 1.0, max_backoff)
+            continue
+
+        # Reset backoff when we have work to do
+        backoff = 1.0
+
+        # Parse request payload
+        req_data = status.get("clarification_request")
+        original_query = str(status.get("original_query") or "")
+        if not isinstance(req_data, dict):
+            # Malformed payload – skip this cycle
+            await asyncio.sleep(1.0)
+            continue
+
+        try:
+            request_model = ClarificationRequest.model_validate(req_data)
+        except Exception as e:
+            logfire.warning(f"Failed to parse ClarificationRequest: {e}")
+            await asyncio.sleep(1.0)
+            continue
+
+        # Deduplicate prompts: if we've already answered this request id,
+        # wait for the server to resume the workflow instead of re-prompting.
+        if request_model.id in handled_request_ids:
+            await asyncio.sleep(1.0)
+            continue
+
+        # Telemetry: log the questions received from server (helps debug UI issues)
+        try:
+            question_summaries = [
+                {
+                    "id": q.id,
+                    "order": q.order,
+                    "required": q.is_required,
+                    "type": q.question_type,
+                    "text": (q.question[:120] if isinstance(q.question, str) else ""),
+                }
+                for q in request_model.questions
+            ]
+            logfire.info(
+                "Clarification prompt received",
+                request_id=request_id,
+                clar_request_id=request_model.id,
+                num_questions=len(request_model.questions),
+                first_question=(
+                    request_model.questions[0].question if request_model.questions else None
+                ),
+                questions=question_summaries,
+            )
+        except Exception:
+            logfire.debug("Failed to log clarification questions", request_id=request_id)
+
+        # Stop any active progress display so prompts render cleanly
+        try:
+            handler.progress_manager.stop()
+        except Exception:
+            pass
+
+        # Prompt user interactively for answers
+        try:
+            response_model = await handle_multi_clarification_cli(
+                request_model, original_query, console
+            )
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Clarification cancelled by user[/yellow]")
+            # Keep polling; user can respond later
+            await asyncio.sleep(1.0)
+            continue
+        except Exception as e:
+            console.print(f"[red]Clarification UI error: {e}[/red]")
+            await asyncio.sleep(1.0)
+            continue
+
+        if response_model is None:
+            # User chose not to answer now; keep polling
+            await asyncio.sleep(1.0)
+            continue
+
+        # Submit answers
+        try:
+            _ = await client.submit_clarification(request_id, response_model)
+            console.print("[green]Clarification submitted. Resuming research...[/green]")
+            handled_request_ids.add(request_model.id)
+            try:
+                logfire.info(
+                    "Clarification submitted",
+                    request_id=request_id,
+                    clar_request_id=request_model.id,
+                    answers=len(response_model.answers),
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            if httpx and isinstance(e, httpx.HTTPStatusError):
+                if e.response.status_code == 400:
+                    try:
+                        err = e.response.json()
+                    except Exception:
+                        err = {"detail": str(e)}
+                    console.print(
+                        f"[yellow]Validation error submitting clarification: {err}[/yellow]"
+                    )
+                    # Re-prompt next loop iteration
+                elif e.response.status_code == 409:
+                    console.print("[yellow]Clarification already processed. Continuing...[/yellow]")
+                    handled_request_ids.add(request_model.id)
+                else:
+                    console.print(f"[red]Failed to submit clarification: {e}[/red]")
+            else:
+                console.print(f"[red]Failed to submit clarification: {e}[/red]")
+
+        # After submit, poll until server clears pending or stream completes
+        settle_backoff = 0.5
+        for _ in range(10):  # up to ~5 seconds
+            if stream_task.done():
+                break
+            try:
+                post_status = await client.get_clarification(request_id)
+                if not bool(post_status.get("awaiting_response")):
+                    break
+                # If a new request id appears, allow loop to handle it next
+                new_req = post_status.get("clarification_request") or {}
+                new_id = str(new_req.get("id") or "")
+                if new_id and new_id != request_model.id:
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(settle_backoff)
+            settle_backoff = min(settle_backoff + 0.5, 2.0)
+
+        # Minimal change: after a successful submit + brief settle, stop polling for this run.
+        # A new research run will start a fresh poller instance.
+        return
+
+
 async def run_research(
     query: str,
     api_keys: APIKeys | None = None,
@@ -898,11 +1128,17 @@ async def run_research(
 
         async with HTTPResearchClient(server_url) as client:
             # Start research
-            request_id = await client.start_research(query, api_keys)
+            request_id = await client.start_research(query)
             console.print(f"[cyan]Research started with ID: {request_id}[/cyan]")
 
-            # Stream events with retry logic
-            await client.stream_events_with_retry(request_id, handler)
+            # Start streaming in the background
+            stream_task = asyncio.create_task(client.stream_events_with_retry(request_id, handler))
+
+            # Handle clarification flow concurrently (HTTP-only)
+            await handle_http_clarification_flow(client, request_id, console, stream_task, handler)
+
+            # Ensure streaming completes
+            await stream_task
 
             # Fetch and display final report
             try:
@@ -1083,6 +1319,14 @@ def research(query: str, api_key: tuple[str, ...], verbose: bool, mode: str, ser
                 else (SecretStr(tavily_val) if tavily_val else None),
             )
 
+            if mode == "http" and parsed_keys:
+                console.print(
+                    "[yellow]CLI-supplied API keys are ignored in HTTP mode."
+                    " Configure keys on the server instead.[/yellow]"
+                )
+
+            api_keys_for_mode = api_keys if mode == "direct" else None
+
             console.print(
                 Panel(
                     f"[bold cyan]Research Query:[/bold cyan] {query}\n"
@@ -1094,7 +1338,7 @@ def research(query: str, api_key: tuple[str, ...], verbose: bool, mode: str, ser
             )
 
             # Run research with selected mode
-            await run_research(query, api_keys, mode=mode, server_url=server_url)
+            await run_research(query, api_keys_for_mode, mode=mode, server_url=server_url)
 
         except BootstrapError as e:
             console.print(f"[red]Failed to initialize CLI: {e}[/red]")
@@ -1158,6 +1402,14 @@ def interactive(mode: str, server_url: str):
                 tavily=SecretStr(tavily_key) if tavily_key else None,
             )
 
+            if mode == "http":
+                console.print(
+                    "[yellow]HTTP mode expects API keys to be configured on the server."
+                    " Local keys will not be sent.[/yellow]"
+                )
+
+            api_keys_for_mode = api_keys if mode == "direct" else None
+
             while True:
                 try:
                     query = Prompt.ask("\n[cyan]Research query[/cyan]")
@@ -1176,7 +1428,12 @@ def interactive(mode: str, server_url: str):
                     elif query.lower() == "clear":
                         console.clear()
                     else:
-                        await run_research(query, api_keys, mode=mode, server_url=server_url)
+                        await run_research(
+                            query,
+                            api_keys_for_mode,
+                            mode=mode,
+                            server_url=server_url,
+                        )
 
                 except KeyboardInterrupt:
                     console.print("\n[yellow]Use 'exit' to quit[/yellow]")

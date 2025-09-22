@@ -30,7 +30,7 @@ class AsyncReadWriteLock:
                 while self._writers > 0 or self._write_waiters > 0:
                     await self._condition.wait()
                 self._readers += 1
-                logfire.debug(
+                logfire.trace(
                     "Read lock acquired",
                     lock=self._name,
                     readers=self._readers,
@@ -46,7 +46,7 @@ class AsyncReadWriteLock:
             self._readers -= 1
             if self._readers == 0:
                 self._condition.notify_all()
-            logfire.debug(
+            logfire.trace(
                 "Read lock released",
                 lock=self._name,
                 readers=self._readers,
@@ -58,7 +58,7 @@ class AsyncReadWriteLock:
             self._write_waiters += 1
             try:
                 while self._readers > 0 or self._writers > 0:
-                    await self._condition.wait()
+                    _ = await self._condition.wait()
                 self._writers += 1
                 logfire.debug("Write lock acquired", lock=self._name)
             finally:
