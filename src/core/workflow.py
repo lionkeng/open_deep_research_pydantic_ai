@@ -1,5 +1,6 @@
 """Main workflow orchestrator for the streamlined 4-agent research system."""
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
@@ -18,6 +19,7 @@ from core.events import (
 )
 from interfaces.clarification_flow import handle_clarification_with_review
 from models.api_models import APIKeys, ConversationMessage
+from models.clarification import ClarificationRequest, ClarificationResponse
 from models.core import (
     ResearchMetadata,
     ResearchStage,
@@ -230,7 +232,7 @@ class ResearchWorkflow:
 
     async def _execute_two_phase_clarification(
         self, deps: ResearchDependencies, user_query: str
-    ) -> None:
+    ) -> bool:
         """Execute two-phase clarification system.
 
         Phase 1: Initial clarification check
@@ -239,72 +241,123 @@ class ResearchWorkflow:
         research_state = deps.research_state
 
         try:
+            skip_assessment = False
+            # Fast-path: if we already have a completed clarification response
+            # and are not awaiting further input, skip running the agent again.
+            if (
+                research_state.metadata
+                and not research_state.metadata.clarification.awaiting_clarification
+                and research_state.metadata.clarification.response is not None
+            ):
+                # If there's a request, validate completeness; otherwise treat as complete.
+                try:
+                    is_complete = (
+                        research_state.metadata.is_clarification_complete()
+                        if research_state.metadata.clarification.request is not None
+                        else True
+                    )
+                except Exception:
+                    is_complete = True
+
+                if is_complete:
+                    await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
+                    await emit_streaming_update(
+                        research_state.request_id,
+                        "Using previously provided clarification to proceed...",
+                        ResearchStage.CLARIFICATION,
+                    )
+                    await emit_stage_completed(
+                        research_state.request_id,
+                        ResearchStage.CLARIFICATION,
+                        True,
+                        {"used_existing_response": True},
+                    )
+                    # Proceed directly to transformation
+                    skip_assessment = True
+
             # Phase 1: Clarification Assessment
-            logfire.info("Phase 1: Clarification assessment")
+            if not skip_assessment:
+                logfire.info("Phase 1: Clarification assessment")
 
-            await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
-            await emit_streaming_update(
-                research_state.request_id,
-                "Analyzing your query for clarity and completeness...",
-                ResearchStage.CLARIFICATION,
-            )
-
-            try:
-                # Run clarification agent
-                clarification_result = await self._run_agent_with_circuit_breaker(
-                    AgentType.CLARIFICATION, deps
-                )
-
-                # Store clarification metadata
-                if research_state.metadata:
-                    research_state.metadata.clarification.assessment = {
-                        "needs_clarification": clarification_result.needs_clarification,
-                        "confidence": 0.8,  # Default confidence for now
-                        "clarification_type": "general",  # Default type
-                        "assessment_reasoning": clarification_result.reasoning,
-                        "missing_dimensions": clarification_result.missing_dimensions,
-                    }
-
-                    if clarification_result.needs_clarification:
-                        research_state.metadata.clarification.request = clarification_result.request
-                        research_state.metadata.clarification.awaiting_clarification = True
-
-                await emit_stage_completed(
+                await emit_stage_started(research_state.request_id, ResearchStage.CLARIFICATION)
+                await emit_streaming_update(
                     research_state.request_id,
+                    "Analyzing your query for clarity and completeness...",
                     ResearchStage.CLARIFICATION,
-                    True,
-                    clarification_result,
                 )
 
-                # If clarification needed, handle it
-                if clarification_result.needs_clarification:
-                    logfire.info("Clarification needed, entering interactive flow")
-                    # Handle clarification flow
-                    if clarification_result.request:
-                        clarification_response = await handle_clarification_with_review(
-                            request=clarification_result.request,
-                            original_query=research_state.user_query,
-                        )
-                        if not clarification_response:
-                            logfire.info("Clarification still pending")
-                            return
-                        # Store the clarification response in metadata
+                try:
+                    # Run clarification agent
+                    clarification_result = await self._run_agent_with_circuit_breaker(
+                        AgentType.CLARIFICATION, deps
+                    )
+
+                    # Store clarification metadata
+                    if research_state.metadata:
+                        research_state.metadata.clarification.assessment = {
+                            "needs_clarification": clarification_result.needs_clarification,
+                            "confidence": 0.8,  # Default confidence for now
+                            "clarification_type": "general",  # Default type
+                            "assessment_reasoning": clarification_result.reasoning,
+                            "missing_dimensions": clarification_result.missing_dimensions,
+                        }
+
+                        if clarification_result.needs_clarification:
+                            research_state.metadata.clarification.request = (
+                                clarification_result.request
+                            )
+                            research_state.metadata.clarification.awaiting_clarification = True
+
+                    await emit_stage_completed(
+                        research_state.request_id,
+                        ResearchStage.CLARIFICATION,
+                        True,
+                        clarification_result,
+                    )
+
+                    # If clarification needed, handle it
+                    if clarification_result.needs_clarification:
+                        logfire.info("Clarification needed, initiating follow-up flow")
+                        request_model = clarification_result.request
+                        if not request_model:
+                            logfire.warning(
+                                "Clarification requested but no question payload provided"
+                            )
+                            return False
+
+                        if research_state.metadata:
+                            research_state.metadata.clarification.request = request_model
+                            research_state.metadata.clarification.awaiting_clarification = True
+
+                        callback = getattr(deps, "clarification_callback", None)
+                        if callback:
+                            clarification_response = await callback(request_model, research_state)
+                            if not clarification_response:
+                                logfire.info("Clarification pending via external handler")
+                                return False
+                        else:
+                            clarification_response = await handle_clarification_with_review(
+                                request=request_model,
+                                original_query=research_state.user_query,
+                            )
+                            if not clarification_response:
+                                logfire.info("Clarification still pending")
+                                return False
+
                         if research_state.metadata and clarification_response:
                             research_state.metadata.clarification.response = clarification_response
-                    else:
-                        logfire.warn("Clarification needed but no request provided")
-                        return
+                            research_state.metadata.clarification.awaiting_clarification = False
 
-            except Exception as e:
-                logfire.error(f"Clarification failed: {e}")
-                # Continue without clarification
-                await emit_error(
-                    research_state.request_id,
-                    ResearchStage.CLARIFICATION,
-                    "ClarificationError",
-                    str(e),
-                    recoverable=True,
-                )
+                except Exception as e:
+                    logfire.error(f"Clarification failed: {e}")
+                    # Continue without clarification
+                    await emit_error(
+                        research_state.request_id,
+                        ResearchStage.CLARIFICATION,
+                        "ClarificationError",
+                        str(e),
+                        recoverable=True,
+                    )
 
             # Phase 2: Query Transformation (produces SearchQueryBatch and ResearchPlan)
             logfire.info("Phase 2: Query transformation with research planning")
@@ -354,6 +407,8 @@ class ResearchWorkflow:
                 )
                 raise
 
+            return True
+
         except Exception as e:
             # Log phase completion failure
             logfire.error(f"Two-phase clarification system failed: {e}", exc_info=True)
@@ -373,6 +428,10 @@ class ResearchWorkflow:
         conversation_history: list[ConversationMessage] | None = None,
         request_id: str | None = None,
         stream_callback: Any | None = None,
+        clarification_callback: (
+            Callable[[ClarificationRequest, ResearchState], Awaitable[ClarificationResponse | None]]
+            | None
+        ) = None,
     ) -> ResearchState:
         """Execute the complete research workflow.
 
@@ -416,11 +475,26 @@ class ResearchWorkflow:
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
             )
+            if clarification_callback is None:
+
+                async def default_cli_callback(
+                    request: ClarificationRequest, state: ResearchState
+                ) -> ClarificationResponse | None:
+                    return await handle_clarification_with_review(
+                        request=request,
+                        original_query=state.user_query,
+                    )
+
+                deps.clarification_callback = default_cli_callback
+            else:
+                deps.clarification_callback = clarification_callback
             deps.source_repository = InMemorySourceRepository()
 
             try:
                 # Execute two-phase clarification (includes query transformation)
-                await self._execute_two_phase_clarification(deps, user_query)
+                ready_to_continue = await self._execute_two_phase_clarification(deps, user_query)
+                if not ready_to_continue:
+                    return research_state
 
                 research_state.advance_stage()  # Move to RESEARCH_EXECUTION
 
@@ -670,6 +744,10 @@ class ResearchWorkflow:
         research_state: ResearchState,
         api_keys: APIKeys | None = None,
         stream_callback: Any | None = None,
+        clarification_callback: (
+            Callable[[ClarificationRequest, ResearchState], Awaitable[ClarificationResponse | None]]
+            | None
+        ) = None,
     ) -> ResearchState:
         """Resume a research workflow from a given state.
 
@@ -691,6 +769,19 @@ class ResearchWorkflow:
                 api_keys=api_keys or APIKeys(),
                 research_state=research_state,
             )
+            if clarification_callback is None:
+
+                async def default_cli_callback(
+                    request: ClarificationRequest, state: ResearchState
+                ) -> ClarificationResponse | None:
+                    return await handle_clarification_with_review(
+                        request=request,
+                        original_query=state.user_query,
+                    )
+
+                deps.clarification_callback = default_cli_callback
+            else:
+                deps.clarification_callback = clarification_callback
 
             try:
                 # Resume from current stage
@@ -707,14 +798,28 @@ class ResearchWorkflow:
                         return research_state
 
                     # Re-execute two-phase clarification system
-                    await self._execute_two_phase_clarification(deps, research_state.user_query)
+                    ready_to_continue = await self._execute_two_phase_clarification(
+                        deps, research_state.user_query
+                    )
+                    if not ready_to_continue:
+                        return research_state
                     research_state.advance_stage()
-                    return await self.resume_research(research_state, api_keys, stream_callback)
+                    return await self.resume_research(
+                        research_state,
+                        api_keys,
+                        stream_callback,
+                        clarification_callback,
+                    )
 
                 if current_stage == ResearchStage.QUERY_TRANSFORMATION:
                     # Query transformation should complete in two-phase
                     research_state.advance_stage()
-                    return await self.resume_research(research_state, api_keys, stream_callback)
+                    return await self.resume_research(
+                        research_state,
+                        api_keys,
+                        stream_callback,
+                        clarification_callback,
+                    )
 
                 if current_stage in [
                     ResearchStage.RESEARCH_EXECUTION,
@@ -769,3 +874,7 @@ class ResearchWorkflow:
                 )
 
                 return research_state
+
+
+# Create a module-level singleton instance for API usage
+workflow = ResearchWorkflow()

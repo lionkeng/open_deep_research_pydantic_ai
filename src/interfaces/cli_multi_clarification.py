@@ -2,6 +2,7 @@
 
 import sys
 
+import logfire
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
@@ -339,6 +340,20 @@ async def handle_multi_clarification_cli(
         )
 
         for idx, question in enumerate(sorted_questions, 1):
+            # Telemetry: log which question we are about to ask
+            try:
+                logfire.info(
+                    "Asking clarification question",
+                    question_id=question.id,
+                    order=question.order,
+                    required=question.is_required,
+                    type=question.question_type,
+                    preview=(question.question[:120] if isinstance(question.question, str) else ""),
+                    index=idx,
+                    total=len(sorted_questions),
+                )
+            except Exception:
+                pass
             # Display question progress with enhanced formatting
             progress_bar = f"[{'█' * idx}{'░' * (len(sorted_questions) - idx)}]"
             if question.is_required:
@@ -382,6 +397,17 @@ async def handle_multi_clarification_cli(
                     skipped=True,
                 )
             answers.append(answer)
+
+            # Telemetry: log answer outcome (no content for privacy)
+            try:
+                logfire.info(
+                    "Clarification answer captured",
+                    question_id=question.id,
+                    skipped=answer.skipped,
+                    answer_len=(len(answer.answer) if answer.answer else 0),
+                )
+            except Exception:
+                pass
 
         # Create response
         response = ClarificationResponse(

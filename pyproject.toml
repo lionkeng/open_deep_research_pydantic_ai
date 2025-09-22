@@ -41,7 +41,7 @@ cli = [
 ]
 
 [project.scripts]
-deep-research = "cli:cli"
+deep-research = "cli.app:cli"
 deep-research-server = "api.main:main"
 test = "pytest:main"
 

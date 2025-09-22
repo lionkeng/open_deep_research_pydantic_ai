@@ -2,7 +2,7 @@
 
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -25,6 +25,7 @@ from core.events import (
 )
 from core.logging import configure_logging
 from models.api_models import APIKeys
+from models.clarification import ClarificationRequest, ClarificationResponse
 from models.core import ResearchState
 from services.source_repository import AbstractSourceRepository
 
@@ -141,6 +142,13 @@ class ResearchDependencies:
     stream_callback: Any | None = None
     search_results: list[dict[str, Any]] = field(default_factory=list)
     source_repository: AbstractSourceRepository | None = None
+    clarification_callback: (
+        Callable[
+            [ClarificationRequest, ResearchState],
+            Awaitable[ClarificationResponse | None],
+        ]
+        | None
+    ) = None
 
     def get_transformed_query(self) -> "TransformedQuery | None":
         """Return the transformed query stored on metadata, if any."""

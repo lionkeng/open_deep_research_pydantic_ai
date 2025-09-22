@@ -1,17 +1,16 @@
 # Deep Research with Pydantic AI
 
-A comprehensive AI-powered deep research system built with Pydantic-AI, reimplementing the concepts from the Open Deep Research project using a modern, event-driven architecture.
+A comprehensive AI-powered deep research system built with Pydantic-AI using an event-driven architecture.
 
 ## Features
 
 ### Multi-Agent Research System
 
-- **5-Stage Research Workflow**:
-  1. User Clarification - Validates and refines research queries
-  2. Research Brief Generation - Creates structured research plans
-  3. Research Execution - Parallel information gathering with delegation
-  4. Compression - Synthesizes findings into insights
-  5. Report Generation - Creates comprehensive research reports
+- **4-Stage Research Workflow**:
+  1. Clarification – Validates and refines the research query (two‑phase flow)
+  2. Query Transformation – Produces a TransformedQuery (SearchQueryBatch + ResearchPlan)
+  3. Research Execution – Executes prioritized search batch and synthesizes findings
+  4. Report Generation – Composes the final ResearchReport with citations
 
 ### Event-Driven Architecture
 
@@ -61,17 +60,17 @@ uv sync --extra research  # Research/data science tools
 uv run pytest
 ```
 
-### Code Formatting and Linting
+### Code Quality
 
 ```bash
-# Format code
-uv run black src tests
-
-# Lint code
+# Lint
 uv run ruff check src tests
 
-# Type checking
-uv run mypy src
+# Format (uses ruff format)
+uv run ruff format src tests
+
+# Type checking (strict)
+uv run pyright src
 ```
 
 ### Building Documentation
@@ -85,16 +84,18 @@ uv run mkdocs serve
 ```
 open_deep_research_pydantic_ai/
 ├── src/
-│   └── open_deep_research_pydantic_ai/
-│       ├── __init__.py
-│       ├── cli.py           # Command-line interface
-│       ├── core/            # Core functionality
-│       ├── models/          # Pydantic models
-│       └── utils/           # Utility functions
-├── tests/                   # Test files
-├── docs/                    # Documentation
-├── pyproject.toml          # Project configuration
-└── README.md               # This file
+│   ├── api/           # FastAPI app and HTTP endpoints (SSE streaming)
+│   ├── agents/        # Agent implementations (clarification, transformation, execution, report)
+│   ├── cli/           # Modular CLI (app, runner, http_client, stream, clarification_http, report_io)
+│   ├── core/          # Workflow orchestrator, events, logging bootstrap
+│   ├── models/        # Pydantic models for state, reports, queries
+│   ├── services/      # Search orchestrator, source repository, validation, tools
+│   ├── utils/         # Utilities
+│   └── __init__.py
+├── tests/
+├── docs/
+├── pyproject.toml
+└── README.md
 ```
 
 ## Configuration
@@ -123,6 +124,9 @@ uv run deep-research research "Your query" -k openai:sk-... -k tavily:tvly-...
 
 # Enable verbose logging
 uv run deep-research research "Your query" -v
+
+# HTTP mode (client/server)
+uv run deep-research research "Your query" --mode http --server-url http://localhost:8000
 ```
 
 ### Web API
@@ -130,7 +134,11 @@ uv run deep-research research "Your query" -v
 Start the FastAPI server:
 
 ```bash
-uv run uvicorn open_deep_research_pydantic_ai.api.main:app --reload
+# Recommended script entry
+uv run deep-research-server
+
+# Or directly with uvicorn
+uv run uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
 API Endpoints:
@@ -143,15 +151,13 @@ API Endpoints:
 ### Python API
 
 ```python
-from open_deep_research_pydantic_ai import workflow
+from open_deep_research_pydantic_ai import ResearchWorkflow
 
-# Execute research
-state = await workflow.execute_research(
+# Execute research (async)
+state = await ResearchWorkflow().run(
     user_query="What are the applications of AI in healthcare?",
-    api_keys={"openai": "sk-..."},
 )
 
-# Access results
 if state.final_report:
     print(state.final_report.title)
     print(state.final_report.executive_summary)
@@ -161,25 +167,23 @@ if state.final_report:
 
 ### Core Components
 
-- **Event Bus** (`core/events.py`) - Async event-driven coordination
-- **Workflow Orchestrator** (`core/workflow.py`) - Manages research pipeline
-- **Research Models** (`models/research.py`) - Pydantic models for data validation
-- **Base Agent** (`agents/base.py`) - Dependency injection and delegation support
+- **Event Bus** (`src/core/events.py`) – Async event-driven coordination via immutable events
+- **Workflow Orchestrator** (`src/core/workflow.py`) – Manages the 4-stage research pipeline
+- **Models** (`src/models/`) – Typed Pydantic models for state, queries, and reports
+- **Base Agent** (`src/agents/base.py`) – Typed agent base with DI, metrics, tools
 
 ### Agents
 
-1. **Clarification Agent** - Validates research scope and clarity
-2. **Brief Generator Agent** - Creates structured research plans
-3. **Research Executor Agent** - Parallel information gathering with sub-agent delegation
-4. **Compression Agent** - Synthesizes and organizes findings
-5. **Report Generator Agent** - Creates comprehensive reports with citations
+1. Clarification Agent – Evaluates readiness and triggers interactive clarification when needed
+2. Query Transformation Agent – Emits TransformedQuery with SearchQueryBatch + ResearchPlan
+3. Research Executor Agent – Executes prioritized search and synthesizes findings
+4. Report Generator Agent – Composes the final report with citations
 
-### Key Design Patterns
+### Patterns
 
-- **Agent Delegation**: Agents can delegate tasks to specialized sub-agents
-- **Dependency Injection**: Shared resources passed via `ResearchDependencies`
-- **Event-Driven Coordination**: Lock-free async communication
-- **Streaming Support**: Real-time updates via SSE and CLI progress
+- Dependency Injection: Shared resources passed via `ResearchDependencies`
+- Event-Driven Coordination: Lock-free async communication through the event bus
+- Streaming Support: Real-time updates via SSE (HTTP) and Rich UI (CLI)
 
 ## Key Differences from Original
 

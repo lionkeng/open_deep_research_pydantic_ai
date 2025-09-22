@@ -15,7 +15,6 @@ from core.sse_models import (
     SSEEventType,
     UpdateMessage,
 )
-from models.api_models import APIKeys
 from models.core import ResearchStage
 
 
@@ -165,15 +164,13 @@ class TestHTTPResearchClient:
 
                 # Test
                 client = HTTPResearchClient("http://localhost:8000")
-                api_keys = APIKeys(openai="test-key")
-                request_id = await client.start_research("Test query", api_keys)
+                request_id = await client.start_research("Test query")
 
                 assert request_id == "test-123"
                 mock_instance.post.assert_called_once_with(
                     "http://localhost:8000/research",
                     json={
                         "query": "Test query",
-                        "api_keys": {"openai": "test-key"},
                         "stream": True,
                     },
                 )
