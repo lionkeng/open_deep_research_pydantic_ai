@@ -195,8 +195,8 @@ nested agents.
 
 ## Events & Interfaces
 
-- `core/events.py` defines immutable event dataclasses (`StageStarted`, `StageCompleted`,
-  `StreamingUpdate`, `ResearchCompletedEvent`, etc.) and an async event bus.
+- `core/events.py` defines immutable event dataclasses (`StageStartedEvent`, `StageCompletedEvent`,
+  `StreamingUpdateEvent`, `ResearchCompletedEvent`, etc.) and an async event bus.
 - Both the CLI (`src/cli`) and HTTP API (`src/api/main.py`) subscribe to the event bus to render
   live progress. CLI interactions use Rich panels for clarification reviews, while the HTTP layer
   exposes FastAPI endpoints with server-sent events for streaming updates.
@@ -215,7 +215,7 @@ nested agents.
 ## Comparison with LangChain Open Deep Research
 
 LangChain's [Open Deep Research](https://github.com/langchain-ai/open_deep_research) couples
-LangGraph with a supervisor/sub-agent design. The compiled graph (`src/open_deep_research/deep_researcher.py`)
+LangGraph with a supervisor/sub-agent design. The compiled graph in that project
 spawns a lead supervisor that breaks work into `ConductResearch` tasks, dispatches them to parallel
 researcher subgraphs, and iterates until the supervisor chooses `ResearchComplete`. Each researcher
 loops through tool calling, MCP-compatible search, and compression passes before handing results
