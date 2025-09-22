@@ -60,7 +60,7 @@ class AsyncReadWriteLock:
                 while self._readers > 0 or self._writers > 0:
                     _ = await self._condition.wait()
                 self._writers += 1
-                logfire.debug("Write lock acquired", lock=self._name)
+                logfire.trace("Write lock acquired", lock=self._name)
             finally:
                 self._write_waiters -= 1
 
@@ -71,7 +71,7 @@ class AsyncReadWriteLock:
                 raise RuntimeError("release_write() called without matching acquire")
             self._writers -= 1
             self._condition.notify_all()
-            logfire.debug("Write lock released", lock=self._name)
+            logfire.trace("Write lock released", lock=self._name)
 
     def read_locked(self) -> _ReadLockContext:
         """Return context manager for read locking."""

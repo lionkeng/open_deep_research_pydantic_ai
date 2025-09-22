@@ -818,7 +818,14 @@ def save_http_report(report_data: dict[str, Any], filename: str) -> None:
 
     # Safely extract and format as markdown
     title = str(report_data.get("title", "Research Report"))
-    generated_at = str(report_data.get("generated_at", "N/A"))
+    # Prefer top-level generated_at; otherwise use metadata.created_at
+    generated_at_val = report_data.get("generated_at")
+    if not generated_at_val:
+        metadata = report_data.get("metadata")
+        if isinstance(metadata, dict):
+            generated_at_val = metadata.get("created_at")
+    # Normalize to string
+    generated_at = str(generated_at_val) if generated_at_val is not None else "N/A"
     executive_summary = str(report_data.get("executive_summary", ""))
     introduction = str(report_data.get("introduction", ""))
     methodology = str(report_data.get("methodology", ""))
@@ -859,9 +866,12 @@ def save_http_report(report_data: dict[str, Any], filename: str) -> None:
         for rec in recommendations:
             content.append(f"- {str(rec)}\n")
 
-    citations_raw = report_data.get("citations")
-    if isinstance(citations_raw, list) and citations_raw:
-        citations = cast(list[Any], citations_raw)
+    # Prefer references (ResearchReport model) but support legacy 'citations'
+    references_raw = report_data.get("references")
+    citations_raw = report_data.get("citations") if not references_raw else None
+    entries_raw = references_raw if isinstance(references_raw, list) else citations_raw
+    if isinstance(entries_raw, list) and entries_raw:
+        citations = cast(list[Any], entries_raw)
         content.append("\n## References\n")
         for citation in citations:
             content.append(f"- {str(citation)}\n")
