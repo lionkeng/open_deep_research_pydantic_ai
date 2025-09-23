@@ -25,6 +25,72 @@ except ImportError:
     has_interactive = False
 
 
+def _is_other_option(choice: str) -> bool:
+    choice_lower = choice.lower()
+    return any(
+        phrase in choice_lower
+        for phrase in [
+            "other (please specify",
+            "other (specify",
+            "other - please specify",
+            "other (please describe",
+            "other:",
+            "something else",
+            "none of the above (please specify",
+        ]
+    )
+
+
+def _requires_specify_option(choice: str) -> bool:
+    choice_lower = choice.lower()
+    if "(" in choice_lower and ")" in choice_lower:
+        try:
+            hint = choice_lower[choice_lower.index("(") + 1 : choice_lower.rindex(")")]
+        except ValueError:
+            hint = choice_lower
+    else:
+        hint = choice_lower
+    keywords = [
+        "please specify",
+        "specify",
+        "describe",
+        "enter",
+        "provide",
+        "input",
+        "details",
+        "detail",
+        "name",
+    ]
+    return any(k in hint for k in keywords)
+
+
+def _base_label(choice: str) -> str:
+    label = choice.strip()
+    if "(" in label and ")" in label:
+        try:
+            start = label.index("(")
+            end = label.rindex(")")
+            hint = label[start:end].lower()
+            if any(
+                k in hint
+                for k in [
+                    "please specify",
+                    "specify",
+                    "describe",
+                    "enter",
+                    "provide",
+                    "input",
+                    "details",
+                    "detail",
+                    "name",
+                ]
+            ):
+                return (label[:start] + label[end + 1 :]).strip()
+        except ValueError:
+            return label
+    return label
+
+
 def display_clarification_request(
     request: ClarificationRequest, original_query: str, console: Console | None = None
 ) -> None:
@@ -216,7 +282,39 @@ def ask_choice_question(question: ClarificationQuestion, console: Console) -> st
 
     if choice_num == 0:
         return None
-    return question.choices[int(choice_num) - 1]
+    selected = question.choices[int(choice_num) - 1]
+
+    # Handle follow-up input for 'Other' and '(please specify)' options
+    if _is_other_option(selected):
+        while True:
+            try:
+                details = Prompt.ask("Please specify")
+            except (KeyboardInterrupt, EOFError):
+                raise KeyboardInterrupt("User cancelled during specify input") from None
+            details = details.strip()
+            if details:
+                return f"Other: {details}"
+            if question.is_required:
+                console.print("[red]This question requires a specific answer[/red]")
+                continue
+            return selected  # Optional with no details
+
+    if _requires_specify_option(selected):
+        base = _base_label(selected)
+        while True:
+            try:
+                details = Prompt.ask("Please specify details")
+            except (KeyboardInterrupt, EOFError):
+                raise KeyboardInterrupt("User cancelled during specify input") from None
+            details = details.strip()
+            if details:
+                return f"{base}: {details}"
+            if question.is_required:
+                console.print("[red]Details are required for this selection[/red]")
+                continue
+            return selected
+
+    return selected
 
 
 def ask_multi_choice_question(question: ClarificationQuestion, console: Console) -> str | None:
@@ -290,9 +388,45 @@ def ask_multi_choice_question(question: ClarificationQuestion, console: Console)
             console.print("[red]Invalid selection number(s) - out of range[/red]")
             return ask_multi_choice_question(question, console)  # Retry
 
-        selected_choices = [question.choices[s - 1] for s in selections]
+        processed: list[str] = []
+        for s in selections:
+            choice = question.choices[s - 1]
+            if _is_other_option(choice):
+                while True:
+                    try:
+                        details = Prompt.ask(f"Specify for '{choice}'")
+                    except (KeyboardInterrupt, EOFError):
+                        raise KeyboardInterrupt("User cancelled during specify input") from None
+                    details = details.strip()
+                    if details:
+                        processed.append(f"Other: {details}")
+                        break
+                    if question.is_required:
+                        console.print("[red]Details are required for this selection[/red]")
+                        continue
+                    processed.append(choice)
+                    break
+            elif _requires_specify_option(choice):
+                base = _base_label(choice)
+                while True:
+                    try:
+                        details = Prompt.ask(f"Specify for '{base}'")
+                    except (KeyboardInterrupt, EOFError):
+                        raise KeyboardInterrupt("User cancelled during specify input") from None
+                    details = details.strip()
+                    if details:
+                        processed.append(f"{base}: {details}")
+                        break
+                    if question.is_required:
+                        console.print("[red]Details are required for this selection[/red]")
+                        continue
+                    processed.append(choice)
+                    break
+            else:
+                processed.append(choice)
+
         # Use pipe separator to avoid conflicts with commas in choice text
-        return " | ".join(selected_choices)
+        return " | ".join(processed)
     except ValueError:
         console.print("[red]Invalid input format[/red]")
         return ask_multi_choice_question(question, console)  # Retry

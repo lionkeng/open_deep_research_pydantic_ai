@@ -213,23 +213,122 @@ class ClarificationResponse(BaseModel):
             # Validate choice answers
             question = request.get_question_by_id(answer.question_id)
             if question and not answer.skipped and answer.answer:
+                # Helper detectors for augmented answers
+                def _is_other_choice_text(text: str) -> bool:
+                    tl = text.lower()
+                    return any(
+                        phrase in tl
+                        for phrase in [
+                            "other (please specify",
+                            "other (specify",
+                            "other - please specify",
+                            "other (please describe",
+                            "other:",
+                            "something else",
+                            "none of the above (please specify",
+                        ]
+                    )
+
+                def _requires_specify(choice_text: str) -> bool:
+                    tl = choice_text.lower()
+                    # Prefer hint inside parentheses when present
+                    if "(" in tl and ")" in tl:
+                        try:
+                            tl = tl[tl.index("(") + 1 : tl.rindex(")")]
+                        except ValueError:
+                            pass
+                    keywords = [
+                        "please specify",
+                        "specify",
+                        "describe",
+                        "enter",
+                        "provide",
+                        "input",
+                        "details",
+                        "detail",
+                        "name",
+                    ]
+                    return any(k in tl for k in keywords)
+
+                def _base_label(choice_text: str) -> str:
+                    label = choice_text.strip()
+                    if "(" in label and ")" in label:
+                        try:
+                            start = label.index("(")
+                            end = label.rindex(")")
+                            if "please" in label[start:end].lower():
+                                return (label[:start] + label[end + 1 :]).strip()
+                        except ValueError:
+                            return label
+                    return label
+
                 if question.question_type == "choice" and question.choices:
-                    if answer.answer not in question.choices:
+                    # If the bare choice requests details, disallow returning it unchanged
+                    if answer.answer in question.choices and _requires_specify(answer.answer):
                         errors.append(
-                            f"Invalid choice '{answer.answer}' for question '{question.id}'. "
-                            f"Valid choices: {', '.join(question.choices)}"
+                            "Missing details for selection "
+                            f"'{answer.answer}' in question '{question.id}'."
                         )
+                    elif answer.answer not in question.choices:
+                        # Accept augmented answers for 'Other' and '(please specify)' choices
+                        accepted = False
+                        for ch in question.choices:
+                            if _is_other_choice_text(ch) and answer.answer.lower().startswith(
+                                "other:"
+                            ):
+                                # Must contain non-empty detail after 'Other:'
+                                if (
+                                    len(answer.answer.split(":", 1)) == 2
+                                    and answer.answer.split(":", 1)[1].strip()
+                                ):
+                                    accepted = True
+                                    break
+                            if _requires_specify(ch):
+                                base = _base_label(ch)
+                                if (
+                                    answer.answer.startswith(f"{base}:")
+                                    and len(answer.answer.split(":", 1)) == 2
+                                ):
+                                    if answer.answer.split(":", 1)[1].strip():
+                                        accepted = True
+                                        break
+                        if not accepted:
+                            errors.append(
+                                f"Invalid choice '{answer.answer}' for question '{question.id}'. "
+                                f"Valid choices: {', '.join(question.choices)}"
+                            )
                 elif question.question_type == "multi_choice" and question.choices:
                     # For multi-choice, answer uses pipe separator to avoid conflicts with commas
-                    # Use set for O(1) lookups instead of O(n) list membership checks
-                    choice_set = set(question.choices)
                     # Support both comma (legacy) and pipe (new) separators for compatibility
                     if " | " in answer.answer:
                         selected_choices = [c.strip() for c in answer.answer.split(" | ")]
                     else:
-                        # Fallback to comma for backward compatibility
                         selected_choices = [c.strip() for c in answer.answer.split(",")]
-                    invalid_choices = [c for c in selected_choices if c not in choice_set]
+
+                    valid_set = set(question.choices)
+                    invalid_choices: list[str] = []
+                    for sel in selected_choices:
+                        if sel in valid_set:
+                            # If this label requires details, bare selection is invalid
+                            if _requires_specify(sel):
+                                invalid_choices.append(sel)
+                            continue
+                        # Accept augmented answers for 'Other' and '(please specify)'
+                        accepted = False
+                        for ch in question.choices:
+                            if _is_other_choice_text(ch) and sel.lower().startswith("other:"):
+                                if len(sel.split(":", 1)) == 2 and sel.split(":", 1)[1].strip():
+                                    accepted = True
+                                    break
+                            if _requires_specify(ch):
+                                base = _base_label(ch)
+                                if sel.startswith(f"{base}:") and len(sel.split(":", 1)) == 2:
+                                    if sel.split(":", 1)[1].strip():
+                                        accepted = True
+                                        break
+                        if not accepted:
+                            invalid_choices.append(sel)
+
                     if invalid_choices:
                         errors.append(
                             f"Invalid choices {invalid_choices} for question '{question.id}'. "

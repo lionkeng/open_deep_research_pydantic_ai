@@ -90,7 +90,7 @@ class InMemorySourceRepository(AbstractSourceRepository):
             self._sources.append(source_with_id)
             identity = SourceIdentity(source_id=source_id, canonical_key=canonical_key)
             self._key_index[canonical_key] = identity
-            logfire.debug("Registered new source", source_id=source_id, url=source_with_id.url)
+            logfire.trace("Registered new source", source_id=source_id, url=source_with_id.url)
             return identity
 
     async def get(self, source_id: str) -> ResearchSource | None:

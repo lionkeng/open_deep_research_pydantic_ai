@@ -10,13 +10,13 @@ from interfaces.cli_multi_clarification import (
     ask_text_question,
     handle_multi_clarification_cli,
 )
-from models.metadata import ResearchMetadata
 from models.clarification import (
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
 )
+from models.metadata import ResearchMetadata
 from utils.serialization import (
     deserialize_clarification_request,
     deserialize_clarification_response,
@@ -208,6 +208,37 @@ class TestMultiClarificationIntegration:
 
     @patch("interfaces.cli_multi_clarification.has_interactive", False)
     @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
+    @patch("rich.prompt.IntPrompt.ask")
+    @patch("rich.prompt.Prompt.ask")
+    def test_cli_choice_question_with_specify(self, mock_prompt, mock_int_prompt, mock_isatty):
+        """Test CLI handling of '(please specify)' choice with follow-up input."""
+        mock_isatty.return_value = True
+        # Select the first option
+        mock_int_prompt.return_value = 1
+        # Then provide details
+        mock_prompt.return_value = "Seattle, WA"
+
+        question = ClarificationQuestion(
+            question=(
+                "What geographic market(s) should the AEO-focused digital marketing "
+                "strategy target?"
+            ),
+            is_required=True,
+            question_type="choice",
+            choices=[
+                "Single city / metro area (please specify)",
+                "Single state / province (please specify)",
+                "National (country) level",
+            ],
+        )
+
+        console = MagicMock()
+        answer = ask_choice_question(question, console)
+
+        assert answer == "Single city / metro area: Seattle, WA"
+
+    @patch("interfaces.cli_multi_clarification.has_interactive", False)
+    @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
     @patch("rich.prompt.Prompt.ask")
     def test_cli_multi_choice_question(self, mock_prompt, mock_isatty):
         """Test CLI handling of multi-choice questions."""
@@ -226,6 +257,32 @@ class TestMultiClarificationIntegration:
 
         assert answer == "Feature A | Feature C"
         mock_prompt.assert_called_once()
+
+    @patch("interfaces.cli_multi_clarification.has_interactive", False)
+    @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
+    @patch("rich.prompt.Prompt.ask")
+    def test_cli_multi_choice_with_mixed_specify(self, mock_prompt, mock_isatty):
+        """Test multi-choice where one selection requires specification."""
+        mock_isatty.return_value = True
+        # User selects 1 and 2
+        mock_prompt.side_effect = ["1,2", "Germany"]
+
+        question = ClarificationQuestion(
+            question="Target regions",
+            is_required=True,
+            question_type="multi_choice",
+            choices=[
+                "National (country) level",
+                "Multiple countries (please specify)",
+                "Other (please specify)",
+            ],
+        )
+
+        console = MagicMock()
+        answer = ask_multi_choice_question(question, console)
+        assert answer == "National (country) level | Multiple countries: Germany"
+        # Two prompts: one for selections, one for details
+        assert mock_prompt.call_count == 2
 
     @pytest.mark.asyncio
     @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
@@ -307,3 +364,53 @@ class TestMultiClarificationIntegration:
         errors = invalid_choice_response.validate_against_request(sample_request)
         assert len(errors) > 0
         assert "Invalid choice" in errors[0]
+
+    def test_validation_accepts_augmented_specify_answers(self):
+        """Validation should accept augmented answers for 'Other' and '(please specify)' choices."""
+        req = ClarificationRequest(
+            questions=[
+                ClarificationQuestion(
+                    question="Market targeting",
+                    is_required=True,
+                    question_type="choice",
+                    choices=[
+                        "Single city / metro area (please specify)",
+                        "National (country) level",
+                        "Other (please specify)",
+                    ],
+                ),
+                ClarificationQuestion(
+                    question="Regions",
+                    is_required=True,
+                    question_type="multi_choice",
+                    choices=[
+                        "Multiple countries (please specify)",
+                        "Single state / province (please specify)",
+                        "Other (please specify)",
+                    ],
+                ),
+            ]
+        )
+
+        resp = ClarificationResponse(
+            request_id=req.id,
+            answers=[
+                ClarificationAnswer(
+                    question_id=req.questions[0].id,
+                    answer="Single city / metro area: Paris",
+                    skipped=False,
+                ),
+                ClarificationAnswer(
+                    question_id=req.questions[1].id,
+                    answer=(
+                        "Multiple countries: Germany | "
+                        "Single state / province: Bavaria | "
+                        "Other: DACH"
+                    ),
+                    skipped=False,
+                ),
+            ],
+        )
+
+        errors = resp.validate_against_request(req)
+        assert errors == []
