@@ -1,5 +1,7 @@
 """Synthesis Tools Service for advanced information processing and analysis."""
 
+from __future__ import annotations
+
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,6 +10,18 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+# Optional embedding service for semantic similarity
+try:  # Local import guard to avoid hard dependency
+    from services.embeddings import (
+        EmbeddingService,
+        cluster_by_threshold,
+        pairwise_cosine_matrix,
+    )
+except Exception:  # pragma: no cover - embedding layer is optional
+    EmbeddingService = None  # type: ignore[assignment]
+    cluster_by_threshold = None  # type: ignore[assignment]
+    pairwise_cosine_matrix = None  # type: ignore[assignment]
 
 # Local model definitions until integrated with main models
 
@@ -152,6 +166,10 @@ class SynthesisTools:
         self,
         hierarchy_factors: HierarchyFactors | None = None,
         contradiction_config: ContradictionConfig | None = None,
+        *,
+        embedding_service: EmbeddingService | None = None,
+        enable_embedding_similarity: bool = False,
+        similarity_threshold: float = 0.55,
     ):
         """
         Initialize SynthesisTools.
@@ -162,6 +180,11 @@ class SynthesisTools:
         """
         self.hierarchy_factors = hierarchy_factors or HierarchyFactors()
         self.contradiction_config = contradiction_config or ContradictionConfig()
+
+        # Embedding-based similarity (optional)
+        self.embedding_service: EmbeddingService | None = embedding_service
+        self.enable_embedding_similarity: bool = enable_embedding_similarity
+        self.similarity_threshold: float = similarity_threshold
 
         # Cache for computed similarities
         self._similarity_cache: dict[tuple[str, str], float] = {}
@@ -583,7 +606,7 @@ class SynthesisTools:
                             if len(sentence.strip()) > 20:
                                 all_claims.append((sentence.strip(), source))
 
-        # Group similar claims
+        # Group similar claims (semantic if enabled)
         claim_groups = self._group_similar_claims(all_claims)
 
         # Identify convergence points
@@ -609,33 +632,92 @@ class SynthesisTools:
         return convergence_points
 
     def _group_similar_claims(
-        self, claims: list[tuple[str, str]], threshold: float = 0.5
+        self, claims: list[tuple[str, str]], threshold: float | None = None
     ) -> list[list[tuple[str, str]]]:
-        """Group similar claims together."""
-        groups = []
-        used = set()
+        """Group similar claims, optionally using embeddings.
 
+        When embedding similarity is enabled and an EmbeddingService is available,
+        we compute a pairwise cosine matrix and perform threshold-based clustering.
+        Otherwise, fall back to token-intersection similarity.
+        """
+        if not claims:
+            return []
+
+        # Decide threshold
+        th = self.similarity_threshold if threshold is None else threshold
+
+        # Semantic path
+        if (
+            self.enable_embedding_similarity
+            and self.embedding_service is not None
+            and pairwise_cosine_matrix is not None
+            and cluster_by_threshold is not None
+        ):
+            texts = [c for c, _ in claims]
+            # Attempt to embed; if backend not configured, fall back
+            vectors = None
+            try:
+                vectors = (
+                    asyncio_run_if_needed(self.embedding_service.embed_batch(texts))
+                    if hasattr(self.embedding_service, "embed_batch")
+                    else None
+                )
+            except Exception:
+                vectors = None
+
+            if vectors:
+                sim = pairwise_cosine_matrix(vectors)
+                indices = list(range(len(claims)))
+                clusters = cluster_by_threshold(indices, sim, th)
+                groups: list[list[tuple[str, str]]] = []
+                for cluster in clusters:
+                    if len(cluster) <= 1:
+                        continue
+                    groups.append([claims[i] for i in cluster])
+                if groups:
+                    return groups
+
+        # Fallback: token-based grouping
+        groups: list[list[tuple[str, str]]] = []
+        used: set[int] = set()
         for i, (claim1, source1) in enumerate(claims):
             if i in used:
                 continue
-
             group = [(claim1, source1)]
             used.add(i)
-
             for j, (claim2, source2) in enumerate(claims[i + 1 :], i + 1):
                 if j in used:
                     continue
-
                 similarity = self._calculate_similarity(claim1, claim2)
-                # Lower threshold for better convergence detection
-                if similarity >= threshold:
+                if similarity >= (th if th is not None else 0.5):
                     group.append((claim2, source2))
                     used.add(j)
-
             if len(group) > 1:
                 groups.append(group)
-
         return groups
+
+
+def asyncio_run_if_needed(awaitable: Any) -> Any:
+    """Run an awaitable in a best-effort manner from sync context.
+
+    SynthesisTools methods are synchronous; embedding backends are async. To keep
+    interface changes minimal, we opportunistically run them if there is no
+    running loop, otherwise we give up and return None to trigger fallback.
+    """
+    try:
+        import asyncio
+
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            # In async context without awaiting support here → fallback
+            return None
+        return asyncio.run(awaitable)
+    except Exception:
+        return None
 
     def extract_themes(
         self, search_results: list[SearchResult], min_frequency: int = 2

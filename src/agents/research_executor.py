@@ -105,7 +105,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
                 ## Dynamic Research Context
                 - Stage: {stage}
                 - Query: {query}
-                - Search Queries: {len(getattr(search_queries, 'queries', []) or [])}
+                - Search Queries: {len(getattr(search_queries, "queries", []) or [])}
                 - Search Results: {len(search_results)}
 
                 ### Search Queries Overview
@@ -354,6 +354,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             "original_query": deps.research_state.user_query,
             "search_results": getattr(deps, "search_results", []) or [],
             "source_repository": getattr(deps, "source_repository", None),
+            "embedding_service": getattr(deps, "embedding_service", None),
         }
 
         for attr in (

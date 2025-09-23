@@ -5,17 +5,16 @@ from collections import OrderedDict
 from typing import Any
 
 import logfire
+from pydantic import BaseModel
+from pydantic import Field as PydField
+from pydantic_ai import Agent as PydanticAgent
 from pydantic_ai import RunContext
 
 from models.report_generator import ResearchReport
 from models.research_executor import ResearchResults, ResearchSource
 from services.source_repository import summarize_sources_for_prompt
 
-from .base import (
-    AgentConfiguration,
-    BaseResearchAgent,
-    ResearchDependencies,
-)
+from .base import AgentConfiguration, BaseResearchAgent, ResearchDependencies
 
 # Global system prompt template for report generation
 MINIMUM_CITATIONS = 3
@@ -554,10 +553,19 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         message_history: list[Any] | None = None,
         stream: bool = False,
     ) -> ResearchReport:
-        """Run the report generator and enforce citation requirements."""
+        """Run the report generator with optional guarded clean-merge step."""
 
+        # 1) Produce the initial report with raw [Sx] markers
         report = await super().run(deps=deps, message_history=message_history, stream=stream)
+
         actual_deps = deps or self.dependencies
+        if actual_deps and getattr(actual_deps, "enable_llm_clean_merge", False):
+            try:
+                report = await self._guardrailed_clean_merge(actual_deps, report)
+            except Exception as exc:  # pragma: no cover - safety fallback
+                logfire.warning("Clean-merge failed; keeping original", error=str(exc))
+
+        # 2) Convert [Sx] markers to footnotes and audit
         if actual_deps:
             report = self._apply_citation_postprocessing(report, actual_deps)
         return report
@@ -777,6 +785,78 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
             "contiguous": contiguous,
             "orphaned_sources": orphaned_sources,
         }
+
+    @staticmethod
+    def _extract_markers(text: str | None) -> set[str]:
+        if not text:
+            return set()
+        pattern = re.compile(r"\[S(\d+)\]")
+        return {f"S{m.group(1)}" for m in pattern.finditer(text)}
+
+    @staticmethod
+    def _markers_equal(a: str | None, b: str | None) -> bool:
+        return ReportGeneratorAgent._extract_markers(a) == ReportGeneratorAgent._extract_markers(b)
+
+    async def _guardrailed_clean_merge(
+        self, deps: ResearchDependencies, report: ResearchReport
+    ) -> ResearchReport:
+        """Run an optional LLM rewrite to improve clarity while preserving [Sx] markers.
+
+        Only a subset of fields are rewritten, and the output is accepted
+        only if the citation marker sets are exactly equal.
+        """
+
+        class CleanMergeRequestModel(ReportGeneratorAgent._get_output_type(self)):  # type: ignore[misc]
+            # Inherit structure for type clarity, but we will only request specific fields
+            pass
+
+        class CleanMergeOutput(BaseModel):
+            executive_summary: str = PydField(
+                description="Improved executive summary preserving [Sx] markers"
+            )
+
+        # Build a small agent for the clean-merge
+        model = self.model
+        clean_agent: PydanticAgent[ResearchDependencies, CleanMergeOutput] = PydanticAgent(
+            model=model,
+            deps_type=type(deps),
+            output_type=CleanMergeOutput,
+            system_prompt=(
+                "You are a senior editor. Rewrite text for clarity and flow while strictly "
+                "preserving all [Sx] citation markers verbatim. "
+                "Do not add, remove, or renumber markers. "
+                "Return only JSON for the requested fields."
+            ),
+        )
+
+        # Prepare input focusing on the executive summary
+        input_summary = report.executive_summary or ""
+        if not input_summary.strip():
+            return report
+
+        prompt = (
+            "Improve the executive_summary. Keep the exact [Sx] markers present in the text.\n\n"
+            f"executive_summary:\n{input_summary}\n"
+        )
+
+        try:
+            result = await clean_agent.run(
+                deps=deps, message_history=[{"role": "user", "content": prompt}]
+            )
+            new_summary = result.output.executive_summary
+            # Guardrail: ensure marker sets identical
+            if self._markers_equal(input_summary, new_summary):
+                report.executive_summary = new_summary
+            else:
+                logfire.warning(
+                    "Clean-merge rejected due to marker mismatch",
+                    before=sorted(self._extract_markers(input_summary)),
+                    after=sorted(self._extract_markers(new_summary)),
+                )
+        except Exception as exc:  # pragma: no cover - external call
+            logfire.warning("Clean-merge LLM call failed; using original", error=str(exc))
+
+        return report
 
 
 # Lazy initialization of module-level instance

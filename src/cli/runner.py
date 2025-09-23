@@ -7,12 +7,14 @@ import os
 import sys
 from typing import Any
 
+import logfire
 from pydantic import SecretStr
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
 from core.bootstrap import BootstrapError, CLIBootstrap
+from core.config import config as global_config
 from core.events import (
     ErrorEvent,
     ResearchCompletedEvent,
@@ -65,6 +67,13 @@ def save_report(state: Any, filename: str) -> None:
 
 
 async def run_direct(query: str, api_keys: APIKeys | None) -> None:
+    # Log synthesis flags for direct mode startup
+    logfire.info(
+        "Direct mode start",
+        embedding_similarity=global_config.enable_embedding_similarity,
+        similarity_threshold=global_config.embedding_similarity_threshold,
+        llm_clean_merge=global_config.enable_llm_clean_merge,
+    )
     handler = CLIStreamHandler(query)
     await research_event_bus.subscribe(StreamingUpdateEvent, handler.handle_streaming_update)
     await research_event_bus.subscribe(StageStartedEvent, handler.handle_stage_started)

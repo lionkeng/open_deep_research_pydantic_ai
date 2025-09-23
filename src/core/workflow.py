@@ -10,6 +10,7 @@ import logfire
 from agents.base import ResearchDependencies
 from agents.factory import AgentFactory, AgentType
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+from core.config import config as global_config
 from core.events import (
     emit_error,
     emit_research_started,
@@ -48,6 +49,12 @@ from services.search_orchestrator import (
     SearchResult as OrchestratorResult,
 )
 from services.source_repository import InMemorySourceRepository
+
+try:  # optional embeddings
+    from services.embeddings import EmbeddingService, OpenAIEmbeddingBackend
+except Exception:  # pragma: no cover - optional
+    EmbeddingService = None  # type: ignore[assignment]
+    OpenAIEmbeddingBackend = None  # type: ignore[assignment]
 
 
 class ResearchWorkflow:
@@ -176,6 +183,45 @@ class ResearchWorkflow:
             },
         }
         return fallbacks.get(agent_type, {"error": "No fallback available"})
+
+    def _configure_synthesis_deps(self, deps: ResearchDependencies) -> None:
+        """Apply synthesis-related feature flags and services just-in-time.
+
+        Ensures consistent behavior across HTTP and direct modes without
+        re-reading environment variables per run. Values are sourced from
+        the global config singleton.
+        """
+        # Apply feature flags
+        deps.enable_embedding_similarity = global_config.enable_embedding_similarity
+        deps.enable_llm_clean_merge = global_config.enable_llm_clean_merge
+        deps.similarity_threshold = global_config.embedding_similarity_threshold
+
+        # Attach embedding service if enabled and not already present
+        if (
+            deps.enable_embedding_similarity
+            and getattr(deps, "embedding_service", None) is None
+            and EmbeddingService is not None
+            and OpenAIEmbeddingBackend is not None
+        ):
+            openai_key = global_config.openai_api_key
+            if openai_key:
+                try:
+                    deps.embedding_service = EmbeddingService(
+                        backend=OpenAIEmbeddingBackend(api_key=openai_key),
+                    )
+                except Exception:
+                    deps.embedding_service = None
+
+        # Observability
+        logfire.info(
+            "Synthesis feature flags",
+            embedding_similarity=deps.enable_embedding_similarity,
+            similarity_threshold=deps.similarity_threshold,
+            llm_clean_merge=deps.enable_llm_clean_merge,
+            embedding_backend=(
+                "openai" if getattr(deps, "embedding_service", None) else "disabled"
+            ),
+        )
 
     async def _run_agent_with_circuit_breaker(
         self,
@@ -433,20 +479,29 @@ class ResearchWorkflow:
             | None
         ) = None,
     ) -> ResearchState:
-        """Execute the complete research workflow.
+        """Execute the complete research workflow end‑to‑end.
 
         Pipeline: CLARIFICATION → QUERY_TRANSFORMATION → RESEARCH_EXECUTION →
-              REPORT_GENERATION
+        REPORT_GENERATION. This method creates an async HTTP client and delegates
+        execution to `_run_with_http_client` so that the same logic works for
+        both direct mode and HTTP mode.
+
+        Notes:
+        - An `httpx.AsyncClient` is created even in direct mode so downstream
+          services (e.g., source validation) can reuse a shared client.
+        - Synthesis feature flags and EmbeddingService are configured just in
+          time at execution/report stages via `_configure_synthesis_deps`.
 
         Args:
-            user_query: The user's research query
-            api_keys: API keys for various services
-            conversation_history: Previous conversation messages
-            request_id: Unique request identifier
-            stream_callback: Optional callback for streaming updates
+            user_query: The user's research query.
+            api_keys: API keys for providers; falls back to env‑derived defaults.
+            conversation_history: Optional prior messages to seed context.
+            request_id: Optional request identifier for tracing.
+            stream_callback: Optional callback or truthy flag to emit streaming updates.
+            clarification_callback: Optional handler to collect clarification answers.
 
         Returns:
-            Final research state with results
+            Final `ResearchState` containing results or error details.
         """
         self._ensure_initialized()
 
@@ -467,93 +522,119 @@ class ResearchWorkflow:
         # Emit start event
         await emit_research_started(research_state.request_id, user_query)
 
-        # Create HTTP client
+        # Create HTTP client and delegate to helper
         async with httpx.AsyncClient() as http_client:
-            # Create dependencies
-            deps = ResearchDependencies(
+            return await self._run_with_http_client(
                 http_client=http_client,
-                api_keys=api_keys or APIKeys(),
                 research_state=research_state,
+                api_keys=api_keys,
+                stream_callback=stream_callback,
+                clarification_callback=clarification_callback,
             )
-            if clarification_callback is None:
 
-                async def default_cli_callback(
-                    request: ClarificationRequest, state: ResearchState
-                ) -> ClarificationResponse | None:
-                    return await handle_clarification_with_review(
-                        request=request,
-                        original_query=state.user_query,
-                    )
+    async def _run_with_http_client(
+        self,
+        *,
+        http_client: httpx.AsyncClient,
+        research_state: ResearchState,
+        api_keys: APIKeys | None,
+        stream_callback: Any | None,
+        clarification_callback: (
+            Callable[[ClarificationRequest, ResearchState], Awaitable[ClarificationResponse | None]]
+            | None
+        ),
+    ) -> ResearchState:
+        """Run the workflow with an existing HTTP client (shared logic for direct/HTTP modes)."""
 
-                deps.clarification_callback = default_cli_callback
-            else:
-                deps.clarification_callback = clarification_callback
-            deps.source_repository = InMemorySourceRepository()
+        # Create dependencies
+        deps = ResearchDependencies(
+            http_client=http_client,
+            api_keys=api_keys or APIKeys(),
+            research_state=research_state,
+        )
 
-            try:
-                # Execute two-phase clarification (includes query transformation)
-                ready_to_continue = await self._execute_two_phase_clarification(deps, user_query)
-                if not ready_to_continue:
-                    return research_state
+        # Clarification callback resolution
+        if clarification_callback is None:
 
-                research_state.advance_stage()  # Move to RESEARCH_EXECUTION
-
-                # Execute remaining stages with concurrent processing where possible
-                await self._execute_research_stages(deps, stream_callback)
-
-                # Mark as complete
-                research_state.current_stage = ResearchStage.COMPLETED
-                research_state.completed_at = datetime.now()
-
-                duration = (datetime.now() - research_state.started_at).total_seconds()
-
-                logfire.info(
-                    "Research workflow completed successfully",
-                    request_id=research_state.request_id,
-                    duration=duration,
+            async def default_cli_callback(
+                request: ClarificationRequest, state: ResearchState
+            ) -> ClarificationResponse | None:
+                return await handle_clarification_with_review(
+                    request=request,
+                    original_query=state.user_query,
                 )
 
-                # Emit research completed event for CLI and other consumers
-                from core.events import ResearchCompletedEvent, research_event_bus
+            deps.clarification_callback = default_cli_callback
+        else:
+            deps.clarification_callback = clarification_callback
+        deps.source_repository = InMemorySourceRepository()
 
-                await research_event_bus.emit(
-                    ResearchCompletedEvent(
-                        _request_id=research_state.request_id,
-                        report=research_state.final_report,
-                        success=True,
-                        duration_seconds=duration,
-                        error_message=None,
-                    )
-                )
-
+        try:
+            # Execute two-phase clarification (includes query transformation)
+            ready_to_continue = await self._execute_two_phase_clarification(
+                deps, research_state.user_query
+            )
+            if not ready_to_continue:
                 return research_state
 
-            except Exception as e:
-                logfire.error(f"Research workflow failed: {e}", exc_info=True)
-                research_state.set_error(str(e))
-                await emit_error(
-                    research_state.request_id,
-                    research_state.current_stage,
-                    "WorkflowError",
-                    str(e),
-                    recoverable=False,
+            research_state.advance_stage()  # Move to RESEARCH_EXECUTION
+
+            # Execute remaining stages with concurrent processing where possible
+            await self._execute_research_stages(deps, stream_callback)
+
+            # Mark as complete
+            research_state.current_stage = ResearchStage.COMPLETED
+            research_state.completed_at = datetime.now()
+
+            duration = (datetime.now() - research_state.started_at).total_seconds()
+
+            logfire.info(
+                "Research workflow completed successfully",
+                request_id=research_state.request_id,
+                duration=duration,
+            )
+
+            # Emit research completed event for CLI and other consumers
+            from core.events import ResearchCompletedEvent, research_event_bus
+
+            await research_event_bus.emit(
+                ResearchCompletedEvent(
+                    _request_id=research_state.request_id,
+                    report=research_state.final_report,
+                    success=True,
+                    duration_seconds=duration,
+                    error_message=None,
                 )
+            )
 
-                # Emit research completed event with failure status
-                duration = (datetime.now() - research_state.started_at).total_seconds()
-                from core.events import ResearchCompletedEvent, research_event_bus
+            return research_state
 
-                await research_event_bus.emit(
-                    ResearchCompletedEvent(
-                        _request_id=research_state.request_id,
-                        report=research_state.final_report,
-                        success=False,
-                        duration_seconds=duration,
-                        error_message=str(e),
-                    )
+        except Exception as e:
+            logfire.error(f"Research workflow failed: {e}", exc_info=True)
+            research_state.set_error(str(e))
+            await emit_error(
+                research_state.request_id,
+                research_state.current_stage,
+                "WorkflowError",
+                str(e),
+                recoverable=False,
+            )
+
+            # Emit research completed event with failure status
+            duration = (datetime.now() - research_state.started_at).total_seconds()
+            from core.events import ResearchCompletedEvent, research_event_bus
+
+            await research_event_bus.emit(
+                ResearchCompletedEvent(
+                    _request_id=research_state.request_id,
+                    report=research_state.final_report,
+                    success=False,
+                    duration_seconds=duration,
+                    error_message=str(e),
                 )
+            )
 
-                return research_state
+            return research_state
 
     async def _execute_research_stages(
         self, deps: ResearchDependencies, stream_callback: Any | None = None
@@ -561,6 +642,9 @@ class ResearchWorkflow:
         """Execute the main research stages after clarification and transformation."""
 
         research_state = deps.research_state
+
+        # Configure synthesis features just-in-time for execution/report stages
+        self._configure_synthesis_deps(deps)
 
         # Stage 1: Research Execution
         await emit_stage_started(research_state.request_id, ResearchStage.RESEARCH_EXECUTION)
@@ -826,6 +910,7 @@ class ResearchWorkflow:
                     ResearchStage.REPORT_GENERATION,
                 ]:
                     # Execute remaining stages
+                    self._configure_synthesis_deps(deps)
                     await self._execute_research_stages(deps, stream_callback)
 
                     # Mark as complete

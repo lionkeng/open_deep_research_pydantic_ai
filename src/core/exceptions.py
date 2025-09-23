@@ -143,8 +143,7 @@ class ClarificationTimeoutError(ClarificationError):
     def __init__(self, session_id: str, timeout_seconds: int) -> None:
         super().__init__(
             message=(
-                "Clarification timed out after"
-                f" {timeout_seconds} seconds for session {session_id}"
+                f"Clarification timed out after {timeout_seconds} seconds for session {session_id}"
             ),
             error_code="CLARIFICATION_TIMEOUT",
             status_code=408,

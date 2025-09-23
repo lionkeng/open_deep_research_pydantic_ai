@@ -46,6 +46,7 @@ class ResearchExecutorDependencies:
     parallel_executor: ParallelExecutor | None = None
     metrics_collector: MetricsCollector | None = None
     optimization_manager: OptimizationManager | None = None
+    embedding_service: Any | None = None  # Optional semantic helper
 
     # Research context
     original_query: str = ""
@@ -60,7 +61,7 @@ async def extract_hierarchical_findings(
 ) -> list[HierarchicalFinding]:
     """Extract and classify findings hierarchically from source content."""
 
-    logfire.info("Extracting hierarchical findings from source content")
+    logfire.trace("Extracting hierarchical findings from source content")
 
     try:
         cache_content_key = _generate_cache_key("extract_findings", source_content, source_metadata)
@@ -157,13 +158,13 @@ async def extract_hierarchical_findings(
                     finding.source_ids.insert(0, source_id)
 
         if deps.cache_manager:
-            deps.cache_manager.set(
+            _ = deps.cache_manager.set(
                 "extract_findings",
                 cache_content_key,
                 hierarchical_findings,
             )
 
-        logfire.info("Extracted hierarchical findings", count=len(hierarchical_findings))
+        logfire.trace("Extracted hierarchical findings", count=len(hierarchical_findings))
         return hierarchical_findings
 
     except Exception as exc:  # pragma: no cover - when logging fallback

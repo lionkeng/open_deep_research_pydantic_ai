@@ -22,6 +22,27 @@ def _env_secret(name: str) -> SecretStr | None:
     return SecretStr(v)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Parse a boolean flag from environment variables.
+
+    Accepts: "1", "true", "TRUE", "True" as True.
+    """
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip() in {"1", "true", "TRUE", "True"}
+
+
+def _env_float_default(name: str, default: float) -> float:
+    v = os.getenv(name)
+    if v is None or not v.strip():
+        return default
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
 class APIConfig(BaseModel):
     """API configuration with validation."""
 
@@ -42,6 +63,22 @@ class APIConfig(BaseModel):
     )
 
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum retries for LLM calls")
+
+    # Synthesis feature flags (read once at startup)
+    enable_embedding_similarity: bool = Field(
+        default_factory=lambda: _env_flag("ENABLE_EMBEDDING_SIMILARITY", False),
+        description="Enable embedding-based semantic similarity during synthesis",
+    )
+    embedding_similarity_threshold: float = Field(
+        default_factory=lambda: _env_float_default("EMBEDDING_SIMILARITY_THRESHOLD", 0.55),
+        ge=0.0,
+        le=1.0,
+        description="Cosine similarity threshold for grouping when embeddings are enabled",
+    )
+    enable_llm_clean_merge: bool = Field(
+        default_factory=lambda: _env_flag("ENABLE_LLM_CLEAN_MERGE", False),
+        description="Enable guardrailed LLM clean-merge for report text",
+    )
 
     # Backward compatibility properties
     @property

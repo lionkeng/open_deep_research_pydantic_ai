@@ -36,7 +36,7 @@ class SourceValidationPipeline:
             stored = await self.repository.get(identity.source_id)
             return stored if stored is not None else ResearchSource(**validated_payload)
         except Exception as exc:  # pragma: no cover - defensive guard
-            LOGGER.warning(
+            LOGGER.trace(
                 "Source validation failed; registering degraded source",
                 error=str(exc),
                 source_title=raw_source.get("title"),

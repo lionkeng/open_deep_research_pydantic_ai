@@ -16,6 +16,7 @@ from api.core.session.models import ClarificationExchange, SessionMetadata
 from api.error_handlers import install_error_handlers
 from api.sse_handler import create_sse_response
 from api.task_manager import task_manager
+from core.config import config as global_config
 from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.exceptions import OpenDeepResearchError
@@ -33,7 +34,12 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     """Manage application lifespan - startup and shutdown."""
     # Startup logic
     configure_logging(enable_console=True)  # Enable console logging for FastAPI server
-    logfire.info("Deep Research API started")
+    logfire.info(
+        "Deep Research API started",
+        embedding_similarity=global_config.enable_embedding_similarity,
+        similarity_threshold=global_config.embedding_similarity_threshold,
+        llm_clean_merge=global_config.enable_llm_clean_merge,
+    )
     await session_manager.start()
 
     try:
