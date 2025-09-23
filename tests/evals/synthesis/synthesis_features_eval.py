@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from open_deep_research_pydantic_ai import ResearchWorkflow
+from src import ResearchWorkflow
 
 from .judge import get_judge_agent
 
@@ -27,8 +27,8 @@ def _ensure_dirs() -> None:
     (BASE_OUT).mkdir(parents=True, exist_ok=True)
 
 
-async def run_condition(query: str, enabled: bool) -> Any:
-    """Execute workflow under a specific feature flag condition and return final report."""
+async def run_condition(query: str, enabled: bool) -> tuple[Any, dict[str, float]]:
+    """Execute workflow and return (final report, quality metrics)."""
 
     os.environ["ENABLE_EMBEDDING_SIMILARITY"] = "1" if enabled else "0"
     os.environ["ENABLE_LLM_CLEAN_MERGE"] = "1" if enabled else "0"
@@ -36,7 +36,16 @@ async def run_condition(query: str, enabled: bool) -> Any:
         os.environ["EMBEDDING_SIMILARITY_THRESHOLD"] = "0.55"
 
     state = await ResearchWorkflow().run(user_query=query)
-    return state.final_report
+    metrics: dict[str, float] = {}
+    try:
+        rr = getattr(state, "research_results", None)
+        if rr and getattr(rr, "synthesis_metadata", None):
+            qm = rr.synthesis_metadata.quality_metrics  # type: ignore[attr-defined]
+            if isinstance(qm, dict):
+                metrics = {k: float(v) for k, v in qm.items() if isinstance(v, (int, float))}
+    except Exception:
+        metrics = {}
+    return state.final_report, metrics
 
 
 def _extract_for_judging(report: Any) -> dict[str, Any]:
@@ -89,21 +98,28 @@ async def main(
             if not query:
                 continue
 
-            control = await run_condition(query, enabled=False)
-            treatment = await run_condition(query, enabled=True)
+            control_report, control_metrics = await run_condition(query, enabled=False)
+            treatment_report, treatment_metrics = await run_condition(query, enabled=True)
 
             # Persist per-topic reports
             (BASE_OUT / f"{topic_id}_control.json").write_text(
-                control.model_dump_json(indent=2) if control else "{}",
+                control_report.model_dump_json(indent=2) if control_report else "{}",
                 encoding="utf-8",
             )
             (BASE_OUT / f"{topic_id}_treatment.json").write_text(
-                treatment.model_dump_json(indent=2) if treatment else "{}",
+                treatment_report.model_dump_json(indent=2) if treatment_report else "{}",
                 encoding="utf-8",
+            )
+            # Persist per-topic metrics
+            (BASE_OUT / f"{topic_id}_control_metrics.json").write_text(
+                json.dumps(control_metrics, indent=2), encoding="utf-8"
+            )
+            (BASE_OUT / f"{topic_id}_treatment_metrics.json").write_text(
+                json.dumps(treatment_metrics, indent=2), encoding="utf-8"
             )
 
             # Judge
-            j = await judge_pair(topic_id, query, control, treatment)
+            j = await judge_pair(topic_id, query, control_report, treatment_report)
             rec = {"id": topic_id, "query": query, "judgment": j.model_dump()}
             judgments_out.append(json.dumps(rec))
 

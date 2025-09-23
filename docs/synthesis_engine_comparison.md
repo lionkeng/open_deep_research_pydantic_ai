@@ -10,7 +10,7 @@ The comparison is grounded in the code of both implementations.
 
 - Pydantic‑AI
   - Deterministic, typed pipeline in a single pass within `ResearchExecutorAgent`.
-  - Uses deterministic utilities (no classical ML) to extract findings, cluster themes, detect contradictions, find patterns, generate an executive summary, assess quality, and assemble typed outputs.
+  - Primarily deterministic utilities (no classical ML), now with optional embedding‑assisted similarity for convergence and contradiction gating. Pipeline extracts findings, clusters themes, detects contradictions, finds patterns, generates an executive summary, assesses quality, and assembles typed outputs.
   - References: `src/agents/research_executor.py`, `src/services/synthesis_tools.py`.
 
 - LangChain Open Deep Research
@@ -29,12 +29,13 @@ The comparison is grounded in the code of both implementations.
 
 ## What the “Engine” Does
 
-- Pydantic‑AI (deterministic utilities)
+- Pydantic‑AI (deterministic utilities + optional embeddings)
   - Similarity (token/Jaccard) with boosts for phrase/term matches: `src/services/synthesis_tools.py`.
+  - Embedding‑assisted similarity for convergence via cosine + threshold clustering when enabled; caller precomputes vectors and passes them in for determinism and efficiency.
   - Specificity/recency heuristics (regex for numbers, dates, percentages, proper nouns; exponential time decay): `src/services/synthesis_tools.py`.
-  - Pattern detection (temporal/causal/correlative) and contradiction checks (temporal/quantitative/negation): `src/services/synthesis_tools.py`.
+  - Pattern detection (temporal/causal/correlative) and contradiction checks (temporal/quantitative/negation). Contradiction detection can use precomputed vectors for topic‑gated pairing.
   - Assembles typed `ResearchResults` with sources, findings, clusters, patterns, contradictions, summary, quality metrics: `src/agents/research_executor.py`.
-  - No classical ML models or training; comments mention embeddings as future enhancement.
+  - No classical ML models or training; embeddings are used only for vector similarity, not fine‑tuned models.
 
 - LangChain (LLM prompts + tool loops)
   - “Compression” prompt turns researcher tool outputs and AI messages into cleaned, comprehensive notes with citations (LLM‑driven): `prompts.py` (compress prompts), `deep_researcher.py` (compress node).
@@ -48,6 +49,7 @@ The comparison is grounded in the code of both implementations.
   - Strong typing: `ResearchResults` and `ResearchReport` enforce structure and invariants.
   - Robust citations: `[Sx]` markers → numbered footnotes + `metadata.source_summary`; explicit source usage tracking.
   - Transparent provenance: degraded source registration path and in‑memory repository make data lineage explicit.
+  - Improved semantic grouping when embeddings are enabled, while keeping deterministic ordering by precomputing vectors and aligning them with sampled claims.
 
 - LangChain
   - Semantic coverage: LLM “compression” and final report prompts can capture nuance and produce fluent, cohesive prose.
@@ -80,6 +82,7 @@ The comparison is grounded in the code of both implementations.
 
 - Pydantic‑AI
   - Lower latency/cost after search; synthesis is CPU‑bound heuristics.
+  - Embedding usage is bounded and efficient: vectors precomputed once where needed; heavy vector operations offloaded to background threads; convergence uses caps/sampling to avoid O(n^2) blowups.
 
 - LangChain
   - More LLM tokens (supervisor + researchers + compression + final report), leading to higher latency/cost; retries for token limits add overhead.
@@ -89,6 +92,8 @@ The comparison is grounded in the code of both implementations.
 - Pydantic‑AI
   - Clean eventing and typed artifacts for CI/deployment dashboards.
   - Circuit‑breaker wrappers and fallback logic around agents.
+  - Async‑only convergence API with precomputed vectors; CPU‑heavy work offloaded with `asyncio.to_thread` to keep the event loop responsive.
+  - HTTP/SSE resilience: server heartbeats every ~15s; client retries on SSE read timeouts with a helpful message; direct mode is in‑process and doesn’t require heartbeats.
 
 - LangChain
   - Flexible control flow observable in LangGraph Studio.
@@ -107,6 +112,7 @@ The comparison is grounded in the code of both implementations.
 ## Practical Hybrid Options
 
 - Add embedding‑based similarity to improve theme/pattern grouping in the deterministic pipeline.
+  - Implemented: convergence and contradiction gating use embedding vectors when enabled, with precompute alignment and bounded runtime.
 - Keep typed/cited backbone but add an optional, guardrailed LLM “clean‑merge” step to improve narrative flow.
 - Retain deterministic post‑processing for citations even if an LLM writes spans (e.g., require emitting `[Sx]` markers and map them to footnotes programmatically).
 

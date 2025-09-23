@@ -115,7 +115,7 @@ class HTTPResearchClient:
             logfire.error(f"Error processing SSE event: {e}")
 
     async def stream_events_with_retry(
-        self, request_id: str, handler: CLIStreamHandler, max_retries: int = 3
+        self, request_id: str, handler: CLIStreamHandler, max_retries: int = 5
     ) -> None:
         retry_count = 0
         while retry_count < max_retries:
@@ -123,6 +123,7 @@ class HTTPResearchClient:
                 await self.stream_events(request_id, handler)
                 break
             except Exception as e:
+                # Connection-level errors: retry with a friendly message
                 if isinstance(e, httpx.ConnectError):
                     retry_count += 1
                     if retry_count >= max_retries:
@@ -131,6 +132,18 @@ class HTTPResearchClient:
 
                     Console().print(
                         "[yellow]Connection failed, retrying "
+                        + f"{retry_count}/{max_retries}...[/yellow]"
+                    )
+                # Read timeout on SSE: the server sent no events for a while.
+                # Treat as transient; reconnect and continue streaming.
+                elif isinstance(e, httpx.ReadTimeout):
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        raise
+                    from rich.console import Console
+
+                    Console().print(
+                        "[yellow]SSE timed out waiting for events; reconnecting "
                         + f"{retry_count}/{max_retries}...[/yellow]"
                     )
                 else:

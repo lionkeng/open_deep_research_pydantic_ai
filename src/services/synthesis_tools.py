@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
+from time import perf_counter
 from typing import Any
 
+import logfire
 from pydantic import BaseModel, Field
 
 # Optional embedding service for semantic similarity
@@ -170,6 +173,9 @@ class SynthesisTools:
         embedding_service: EmbeddingService | None = None,
         enable_embedding_similarity: bool = False,
         similarity_threshold: float = 0.55,
+        convergence_max_claims: int | None = None,
+        convergence_per_source_cap: int | None = None,
+        convergence_sampling_strategy: str | None = None,
     ):
         """
         Initialize SynthesisTools.
@@ -185,6 +191,30 @@ class SynthesisTools:
         self.embedding_service: EmbeddingService | None = embedding_service
         self.enable_embedding_similarity: bool = enable_embedding_similarity
         self.similarity_threshold: float = similarity_threshold
+
+        # Convergence caps/sampling (defaults from global config if available)
+        try:
+            from core.config import config as _global_config
+
+            default_max = _global_config.convergence_max_claims
+            default_per_src = _global_config.convergence_per_source_cap
+            default_strategy = _global_config.convergence_sampling_strategy
+        except Exception:  # pragma: no cover - config import fallback
+            default_max = 300
+            default_per_src = 0
+            default_strategy = "longest"
+
+        self.convergence_max_claims: int = (
+            convergence_max_claims if convergence_max_claims is not None else int(default_max)
+        )
+        self.convergence_per_source_cap: int = (
+            convergence_per_source_cap
+            if convergence_per_source_cap is not None
+            else int(default_per_src)
+        )
+        self.convergence_sampling_strategy: str = (
+            convergence_sampling_strategy or str(default_strategy)
+        ).lower()
 
         # Cache for computed similarities
         self._similarity_cache: dict[tuple[str, str], float] = {}
@@ -584,100 +614,135 @@ class SynthesisTools:
 
         return 0.0
 
-    def analyze_convergence(
-        self, search_results: list[SearchResult], min_sources: int = 2
+    async def analyze_convergence(
+        self,
+        search_results: list[SearchResult],
+        min_sources: int = 2,
+        precomputed_vectors: list[list[float]] | None = None,
     ) -> list[ConvergencePoint]:
-        """
-        Analyze convergence of information across sources.
+        """Async variant that uses embeddings when enabled.
 
-        Identifies claims supported by multiple independent sources.
+        Falls back to token similarity when embeddings are unavailable.
         """
-        convergence_points = []
-
         # Extract all claims with sources
-        all_claims = []
-        for result in search_results:
-            source = result.query
-            if hasattr(result, "results"):
-                for item in result.results:
-                    if hasattr(item, "content"):
-                        sentences = re.split(r"[.!?]+", item.content)
-                        for sentence in sentences:
-                            if len(sentence.strip()) > 20:
-                                all_claims.append((sentence.strip(), source))
+        t_extract = perf_counter()
+        all_claims: list[tuple[str, str]] = self.extract_claims_for_convergence(search_results)
+        logfire.info(
+            "Convergence claims extracted",
+            count=len(all_claims),
+            duration_ms=int((perf_counter() - t_extract) * 1000),
+        )
 
-        # Group similar claims (semantic if enabled)
-        claim_groups = self._group_similar_claims(all_claims)
-
-        # Identify convergence points
-        for group in claim_groups:
-            unique_sources = list({source for _, source in group})
-
-            if len(unique_sources) >= min_sources:
-                # Select representative claim (longest)
-                representative = max(group, key=lambda x: len(x[0]))[0]
-
-                convergence = ConvergencePoint(
-                    claim=representative,
-                    sources=unique_sources,
-                    support_count=len(unique_sources),
-                    confidence=min(1.0, len(unique_sources) / 5),  # Max confidence at 5 sources
-                    evidence=[claim for claim, _ in group],
-                )
-                convergence_points.append(convergence)
-
-        # Sort by support count
-        convergence_points.sort(key=lambda x: x.support_count, reverse=True)
-
-        return convergence_points
-
-    def _group_similar_claims(
-        self, claims: list[tuple[str, str]], threshold: float | None = None
-    ) -> list[list[tuple[str, str]]]:
-        """Group similar claims, optionally using embeddings.
-
-        When embedding similarity is enabled and an EmbeddingService is available,
-        we compute a pairwise cosine matrix and perform threshold-based clustering.
-        Otherwise, fall back to token-intersection similarity.
-        """
-        if not claims:
+        if not all_claims:
             return []
 
-        # Decide threshold
-        th = self.similarity_threshold if threshold is None else threshold
-
-        # Semantic path
-        if (
+        # Embedding path
+        use_embeddings = (
             self.enable_embedding_similarity
             and self.embedding_service is not None
             and pairwise_cosine_matrix is not None
             and cluster_by_threshold is not None
-        ):
-            texts = [c for c, _ in claims]
-            # Attempt to embed; if backend not configured, fall back
-            vectors = None
+        )
+
+        claim_groups: list[list[tuple[str, str]]] = []
+        t_group = perf_counter()
+        grouping_method = "token"
+        if use_embeddings:
             try:
-                vectors = (
-                    asyncio_run_if_needed(self.embedding_service.embed_batch(texts))
-                    if hasattr(self.embedding_service, "embed_batch")
-                    else None
+                claim_groups = await self._group_similar_claims_semantic(
+                    all_claims, self.similarity_threshold, precomputed_vectors
                 )
+                grouping_method = "semantic"
             except Exception:
-                vectors = None
+                claim_groups = []
 
-            if vectors:
-                sim = pairwise_cosine_matrix(vectors)
-                indices = list(range(len(claims)))
-                clusters = cluster_by_threshold(indices, sim, th)
-                groups: list[list[tuple[str, str]]] = []
-                for cluster in clusters:
-                    if len(cluster) <= 1:
-                        continue
-                    groups.append([claims[i] for i in cluster])
-                if groups:
-                    return groups
+        if not claim_groups:
+            # Fallback to token similarity (offload to avoid blocking loop)
+            import asyncio as _asyncio
 
-        # Fallback: token-based grouping
+            claim_groups = await _asyncio.to_thread(
+                self._group_similar_claims, all_claims, self.similarity_threshold
+            )
+            grouping_method = "token"
+
+        logfire.info(
+            "Convergence grouping completed",
+            method=grouping_method,
+            groups=len(claim_groups),
+            duration_ms=int((perf_counter() - t_group) * 1000),
+        )
+
+        # Identify convergence points (offload modest processing to keep loop responsive)
+        import asyncio as _asyncio
+
+        def _build_convergence(groups: list[list[tuple[str, str]]]) -> list[ConvergencePoint]:
+            points: list[ConvergencePoint] = []
+            for group in groups:
+                unique_sources = list({source for _, source in group})
+                if len(unique_sources) >= min_sources:
+                    representative = max(group, key=lambda x: len(x[0]))[0]
+                    points.append(
+                        ConvergencePoint(
+                            claim=representative,
+                            sources=unique_sources,
+                            support_count=len(unique_sources),
+                            confidence=min(1.0, len(unique_sources) / 5),
+                            evidence=[claim for claim, _ in group],
+                        )
+                    )
+            points.sort(key=lambda x: x.support_count, reverse=True)
+            return points
+
+        t_points = perf_counter()
+        convergence_points = await _asyncio.to_thread(_build_convergence, claim_groups)
+        logfire.info(
+            "Convergence points built",
+            points=len(convergence_points),
+            duration_ms=int((perf_counter() - t_points) * 1000),
+        )
+        return convergence_points
+
+    def _group_similar_claims_from_vectors(
+        self,
+        claims: list[tuple[str, str]],
+        vectors: list[list[float]],
+        threshold: float,
+    ) -> list[list[tuple[str, str]]]:
+        """Group claims by cosine similarity using precomputed vectors."""
+        if not vectors or len(vectors) != len(claims):
+            return []
+        if pairwise_cosine_matrix is None or cluster_by_threshold is None:
+            return []
+        sim = pairwise_cosine_matrix(vectors)
+        indices = list(range(len(claims)))
+        clusters = cluster_by_threshold(indices, sim, threshold)
+        groups: list[list[tuple[str, str]]] = []
+        for cluster in clusters:
+            if len(cluster) <= 1:
+                continue
+            groups.append([claims[i] for i in cluster])
+        if groups:
+            logfire.info(
+                "Embedding grouping applied",
+                threshold=threshold,
+                clusters=len(groups),
+                avg_size=(sum(len(g) for g in groups) / len(groups)) if groups else 0.0,
+            )
+        return groups
+
+    def _group_similar_claims(
+        self, claims: list[tuple[str, str]], threshold: float | None = None
+    ) -> list[list[tuple[str, str]]]:
+        """Group similar claims using token overlap only (sync-safe).
+
+        Embedding-based grouping must be done via async paths with precomputed vectors.
+        """
+        if not claims:
+            return []
+
+        th = self.similarity_threshold if threshold is None else threshold
+
+        # Token-based grouping
         groups: list[list[tuple[str, str]]] = []
         used: set[int] = set()
         for i, (claim1, source1) in enumerate(claims):
@@ -696,28 +761,151 @@ class SynthesisTools:
                 groups.append(group)
         return groups
 
+    async def _group_similar_claims_semantic(
+        self,
+        claims: list[tuple[str, str]],
+        threshold: float | None = None,
+        precomputed_vectors: list[list[float]] | None = None,
+    ) -> list[list[tuple[str, str]]]:
+        """Async grouping using embeddings when available.
 
-def asyncio_run_if_needed(awaitable: Any) -> Any:
-    """Run an awaitable in a best-effort manner from sync context.
+        - If precomputed_vectors provided and aligned, use them.
+        - Else, if embedding service available, embed asynchronously.
+        - Else, fall back to token-based grouping.
+        """
+        if not claims:
+            return []
+        th = self.similarity_threshold if threshold is None else threshold
+        if (
+            self.enable_embedding_similarity
+            and pairwise_cosine_matrix is not None
+            and cluster_by_threshold is not None
+        ):
+            if precomputed_vectors and len(precomputed_vectors) == len(claims):
+                import asyncio as _asyncio
 
-    SynthesisTools methods are synchronous; embedding backends are async. To keep
-    interface changes minimal, we opportunistically run them if there is no
-    running loop, otherwise we give up and return None to trigger fallback.
-    """
-    try:
-        import asyncio
+                return await _asyncio.to_thread(
+                    self._group_similar_claims_from_vectors, claims, precomputed_vectors, th
+                )
+            if self.embedding_service is not None:
+                texts = [c for c, _ in claims]
+                # Bound embedding latency; fallback if it times out
+                import asyncio as _asyncio
 
-        loop = None
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop and loop.is_running():
-            # In async context without awaiting support here → fallback
-            return None
-        return asyncio.run(awaitable)
-    except Exception:
-        return None
+                try:
+                    t_embed = perf_counter()
+                    vectors = await _asyncio.wait_for(
+                        self.embedding_service.embed_batch(texts),
+                        timeout=20.0,  # type: ignore[union-attr]
+                    )
+                    logfire.info(
+                        "Convergence embeddings computed",
+                        count=len(texts),
+                        duration_ms=int((perf_counter() - t_embed) * 1000),
+                    )
+                except Exception:
+                    vectors = []
+                if vectors:
+                    return await _asyncio.to_thread(
+                        self._group_similar_claims_from_vectors, claims, vectors, th
+                    )
+                    # Note: duration will be logged by caller when grouping completes
+        # Fallback
+        import asyncio as _asyncio
+
+        return await _asyncio.to_thread(self._group_similar_claims, claims, th)
+
+    def extract_claims_for_convergence(
+        self, search_results: list[SearchResult]
+    ) -> list[tuple[str, str]]:
+        """Extract (claim, source) pairs for convergence analysis.
+
+        This helper centralizes sentence splitting to keep ordering consistent
+        when callers precompute embeddings externally.
+        """
+        claims: list[tuple[str, str]] = []
+        for result in search_results:
+            source = result.query
+            if hasattr(result, "results"):
+                for item in result.results:
+                    if hasattr(item, "content"):
+                        sentences = re.split(r"[.!?]+", item.content)
+                        for sentence in sentences:
+                            if len(sentence.strip()) > 20:
+                                claims.append((sentence.strip(), source))
+        # Apply sampling/caps to avoid excessive work
+        if not claims:
+            return claims
+
+        original_count = len(claims)
+
+        # Per-source cap
+        if self.convergence_per_source_cap and self.convergence_per_source_cap > 0:
+            by_source: dict[str, list[tuple[str, str]]] = defaultdict(list)
+            for c, s in claims:
+                by_source[s].append((c, s))
+            capped: list[tuple[str, str]] = []
+            for _s, lst in by_source.items():
+                capped.extend(
+                    self._sample_list(
+                        lst,
+                        self.convergence_per_source_cap,
+                        strategy=self.convergence_sampling_strategy,
+                    )
+                )
+            claims = capped
+
+        # Global cap
+        if self.convergence_max_claims and self.convergence_max_claims > 0:
+            if len(claims) > self.convergence_max_claims:
+                claims = self._sample_list(
+                    claims, self.convergence_max_claims, strategy=self.convergence_sampling_strategy
+                )
+
+        if len(claims) != original_count:
+            logfire.info(
+                "Convergence sampling applied",
+                before=original_count,
+                after=len(claims),
+                per_source_cap=self.convergence_per_source_cap,
+                max_claims=self.convergence_max_claims,
+                strategy=self.convergence_sampling_strategy,
+            )
+        return claims
+
+    def _sample_list(
+        self,
+        items: list[tuple[str, str]],
+        k: int,
+        *,
+        strategy: str = "longest",
+    ) -> list[tuple[str, str]]:
+        """Deterministically sample items to length k based on strategy.
+
+        - longest: pick top-k by text length
+        - first: keep first-k
+        - random: deterministic pseudo-random by hashing text+source
+        """
+        if k <= 0 or len(items) <= k:
+            return list(items)
+
+        if strategy == "first":
+            return items[:k]
+        if strategy == "longest":
+            return sorted(items, key=lambda t: len(t[0]), reverse=True)[:k]
+        if strategy == "random":
+            # Deterministic by hashing the text+source
+            def key_fn(tup: tuple[str, str]) -> int:
+                h = hashlib.md5(f"{tup[0]}|{tup[1]}".encode()).hexdigest()
+                return int(h[:8], 16)
+
+            return sorted(items, key=key_fn)[:k]
+        # Fallback: first
+        return items[:k]
+
+    # Note: Convergence with precomputed vectors is handled by
+    # analyze_convergence(..., precomputed_vectors=...), so a separate
+    # analyze_convergence_with_vectors method is unnecessary.
 
     def extract_themes(
         self, search_results: list[SearchResult], min_frequency: int = 2

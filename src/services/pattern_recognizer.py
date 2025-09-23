@@ -240,7 +240,15 @@ class PatternRecognizer:
             if len(importances) > 2:
                 # Simple trend detection using linear correlation
                 indices = np.arange(len(importances))
-                correlation = np.corrcoef(indices, importances)[0, 1]
+                # Guard against zero-variance importances which yields NaN/RuntimeWarning
+                if float(np.std(importances)) < 1e-12:
+                    correlation = 0.0
+                else:
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        corr_mat = np.corrcoef(indices, importances)
+                        correlation = float(corr_mat[0, 1]) if corr_mat.size >= 4 else 0.0
+                        if np.isnan(correlation):
+                            correlation = 0.0
 
                 if abs(correlation) > 0.5:
                     trend_type = "increasing" if correlation > 0 else "decreasing"

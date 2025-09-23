@@ -195,6 +195,30 @@ async def identify_theme_clusters(
 
         clusters = deps.synthesis_engine.cluster_findings(findings)
 
+        # If embeddings are available, attempt embedding-aware clustering
+        try:
+            if getattr(deps, "embedding_service", None) is not None and hasattr(
+                deps.synthesis_engine, "cluster_findings_from_vectors"
+            ):
+                texts = []
+                for f in findings:
+                    parts = [f.finding]
+                    if f.category:
+                        parts.append(f"Category: {f.category}")
+                    if f.supporting_evidence:
+                        parts.extend(f.supporting_evidence[:2])
+                    texts.append(" ".join(parts))
+                vectors = await deps.embedding_service.embed_batch(texts)  # type: ignore[union-attr]
+                if vectors:
+                    emb_clusters = deps.synthesis_engine.cluster_findings_from_vectors(
+                        findings, vectors
+                    )
+                    # Prefer embedding clustering if it yields at least as many clusters
+                    if emb_clusters:
+                        clusters = emb_clusters
+        except Exception as exc:  # pragma: no cover - safe fallback
+            logfire.warning("Embedding clustering failed; using TF-IDF", error=str(exc))
+
         theme_clusters: list[ThemeCluster] = []
         if clusters and isinstance(clusters[0], ThemeCluster):
             theme_clusters = clusters
@@ -265,7 +289,26 @@ async def detect_contradictions(
                 logfire.debug("Using cached contradiction analysis")
                 return cached_result
 
-        contradictions = deps.contradiction_detector.detect_contradictions(findings)
+        # Inject embedding service into detector if available for topic matching
+        try:
+            if getattr(deps, "embedding_service", None) is not None and hasattr(
+                deps.contradiction_detector, "detect_contradictions_with_vectors"
+            ):
+                # Precompute embeddings asynchronously and call the vector-aware method
+                vectors = await deps.embedding_service.embed_batch([f.finding for f in findings])  # type: ignore[union-attr]
+                # Align threshold with similarity threshold (slightly stricter)
+                if hasattr(deps.contradiction_detector, "topic_similarity_threshold"):
+                    deps.contradiction_detector.topic_similarity_threshold = max(  # type: ignore[attr-defined]
+                        0.0, min(1.0, getattr(deps, "similarity_threshold", 0.6))
+                    )
+                contradictions = deps.contradiction_detector.detect_contradictions_with_vectors(  # type: ignore[attr-defined]
+                    findings,
+                    vectors if vectors else [],
+                )
+            else:
+                contradictions = deps.contradiction_detector.detect_contradictions(findings)
+        except Exception:
+            contradictions = deps.contradiction_detector.detect_contradictions(findings)
 
         if deps.cache_manager:
             deps.cache_manager.set(
@@ -369,11 +412,18 @@ async def generate_executive_summary(
     logfire.info("Generating executive summary")
 
     try:
-        sorted_findings = sorted(
-            findings,
-            key=lambda finding: finding.importance_score,
-            reverse=True,
-        )
+        # Prefer selection_score (if provided) then fall back to importance_score
+        def _score(f: HierarchicalFinding) -> float:
+            try:
+                if isinstance(getattr(f, "metadata", None), dict):
+                    val = f.metadata.get("selection_score")
+                    if isinstance(val, (int | float)):
+                        return float(val)
+            except Exception:
+                pass
+            return float(getattr(f, "importance_score", 0.0))
+
+        sorted_findings = sorted(findings, key=_score, reverse=True)
         key_findings = [finding.finding for finding in sorted_findings[:5]]
 
         avg_confidence = (

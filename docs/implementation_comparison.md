@@ -43,6 +43,16 @@ This document summarizes concrete differences between the Pydantic‑AI‑based 
   - `ResearchExecutorAgent` runs a synthesis pipeline over search results, producing typed `ResearchResults` with findings, clusters, contradictions, patterns, and quality metrics (src/agents/research_executor.py).
   - Search execution is coordinated by `SearchOrchestrator` with caching and retry (src/services/search_orchestrator.py) and `WebSearchService` (src/services/search.py).
 
+  - Embedding‑aware synthesis (recent changes)
+    - Convergence analysis is async‑only and embedding‑aware via `analyze_convergence(..., precomputed_vectors=...)` (src/services/synthesis_tools.py). The caller (executor) now precomputes claim embeddings once and passes vectors in (src/agents/research_executor.py), mirroring how contradictions use vectors.
+    - The previous sync path and "run async if no loop" hack were removed; there is no `run_awaitable_if_no_loop` in the grouping path anymore.
+    - CPU‑heavy steps (pairwise cosine, threshold clustering, token fallback, convergence point construction) are offloaded with `asyncio.to_thread` to keep the event loop responsive during HTTP/SSE streaming.
+    - Deterministic capping/sampling bounds runtime without breaking alignment:
+      - Config knobs: `CONVERGENCE_MAX_CLAIMS`, `CONVERGENCE_PER_SOURCE_CAP`, and `CONVERGENCE_SAMPLING` (longest|first|random) in src/core/config.py.
+      - Claim extraction applies the same sampling before both precompute and analysis so embedding vectors align with the exact claims analyzed (src/services/synthesis_tools.py).
+    - Embedding calls are wrapped with `asyncio.wait_for` timeouts to fail fast and fall back safely when providers stall.
+    - Pattern analysis fix: temporal trend detection guards against zero‑variance inputs to avoid NumPy NaNs/warnings (src/services/pattern_recognizer.py).
+
 - LangChain
   - Research is organized under a supervisor node that plans and delegates work using tools (`ConductResearch`, `think_tool`) to researcher loops (open_deep_research/src/open_deep_research/deep_researcher.py; state definitions in open_deep_research/src/open_deep_research/state.py). Tool definitions and their exact implementations are connected via utilities and LangChain tool initialization.
 
@@ -61,6 +71,10 @@ This document summarizes concrete differences between the Pydantic‑AI‑based 
 
   - Emits events (`StageStartedEvent`, `StageCompletedEvent`, `StreamingUpdateEvent`, `ResearchCompletedEvent`) via an async event bus (src/core/events.py). HTTP SSE server (src/api/sse_handler.py) translates events to SSE messages consumed by the CLI HTTP client.
   - CLI direct mode subscribes to the event bus and renders Rich progress (src/cli/stream.py). HTTP mode uses SSE client streaming (src/cli/http_client.py).
+  - Robustness improvements (recent changes)
+    - Offloading CPU‑bound synthesis work prevents event‑loop starvation so SSE heartbeats and updates continue during long phases.
+    - Server heartbeats increased to ~15s via SSE handler timeout/ping settings (src/api/sse_handler.py).
+    - CLI HTTP client handles `httpx.ReadTimeout` gracefully by retrying and printing “SSE timed out waiting for events; reconnecting …” (src/cli/http_client.py). Direct mode is in‑process and doesn’t need heartbeats.
 
 - LangChain
   - Execution and UI are integrated with LangGraph Studio; orchestration is observed through the LangGraph dev server (open_deep_research/README.md). An explicit event bus or SSE adapter is not shown in the core graph implementation.

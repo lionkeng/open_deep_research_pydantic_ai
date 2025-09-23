@@ -560,6 +560,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
 
         actual_deps = deps or self.dependencies
         if actual_deps and getattr(actual_deps, "enable_llm_clean_merge", False):
+            logfire.info("Clean-merge enabled; invoking guardrailed pass")
             try:
                 report = await self._guardrailed_clean_merge(actual_deps, report)
             except Exception as exc:  # pragma: no cover - safety fallback
@@ -806,10 +807,6 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         only if the citation marker sets are exactly equal.
         """
 
-        class CleanMergeRequestModel(ReportGeneratorAgent._get_output_type(self)):  # type: ignore[misc]
-            # Inherit structure for type clarity, but we will only request specific fields
-            pass
-
         class CleanMergeOutput(BaseModel):
             executive_summary: str = PydField(
                 description="Improved executive summary preserving [Sx] markers"
@@ -840,6 +837,9 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         )
 
         try:
+            import time
+
+            t0 = time.perf_counter()
             result = await clean_agent.run(
                 deps=deps, message_history=[{"role": "user", "content": prompt}]
             )
@@ -847,6 +847,13 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
             # Guardrail: ensure marker sets identical
             if self._markers_equal(input_summary, new_summary):
                 report.executive_summary = new_summary
+                dt = time.perf_counter() - t0
+                logfire.info(
+                    "Clean-merge applied",
+                    seconds=round(dt, 4),
+                    summary_len_before=len(input_summary),
+                    summary_len_after=len(new_summary),
+                )
             else:
                 logfire.warning(
                     "Clean-merge rejected due to marker mismatch",

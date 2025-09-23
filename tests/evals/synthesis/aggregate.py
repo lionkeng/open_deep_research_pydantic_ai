@@ -6,7 +6,7 @@ Usage:
         [--bootstrap] [--csv]
 
 Outputs:
-    - summary.json (preference rate, tie rate, per-criterion deltas)
+    - summary.json (preference rate, tie rate, per-criterion deltas, optional metrics)
     - (optional) deltas.csv with per-criterion mean/std and CIs when bootstrapping
     - Prints a one-line headline to stdout
 """
@@ -137,8 +137,46 @@ def aggregate(
             summary["deltas"][c]["ci95_lo"] = lo
             summary["deltas"][c]["ci95_hi"] = hi
 
-    out_json = run_dir / "summary.json"
+    # Optionally aggregate metrics if present
+    metrics_summary: dict[str, dict[str, float]] = {}
+    try:
+        # Read per-topic metrics files and compute means per metric by condition
+        import glob
+
+        control_files = sorted(glob.glob(str(run_dir / "*_control_metrics.json")))  # type: ignore[arg-type]
+        treatment_files = sorted(glob.glob(str(run_dir / "*_treatment_metrics.json")))  # type: ignore[arg-type]
+
+        def _avg(files: list[str]) -> dict[str, float]:
+            acc: dict[str, list[float]] = {}
+            for fp in files:
+                try:
+                    data = json.loads(Path(fp).read_text(encoding="utf-8"))
+                    if isinstance(data, dict):
+                        for k, v in data.items():
+                            if isinstance(v, (int, float)):
+                                acc.setdefault(k, []).append(float(v))
+                except Exception:
+                    continue
+            return {k: (st.mean(vs) if vs else 0.0) for k, vs in acc.items()}
+
+        control_avg = _avg(control_files)
+        treatment_avg = _avg(treatment_files)
+        metrics_summary = {
+            "control": control_avg,
+            "treatment": treatment_avg,
+            "delta": {k: treatment_avg.get(k, 0.0) - control_avg.get(k, 0.0) for k in set(control_avg) | set(treatment_avg)},
+        }
+    except Exception:
+        metrics_summary = {}
+
+    out_json = run_dir / "summary.json"  # type: ignore[arg-type]
     out_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    if metrics_summary:
+        (run_dir / "metrics_summary.json").write_text(  # type: ignore[arg-type]
+            json.dumps(metrics_summary, indent=2),
+            encoding="utf-8",
+        )
 
     if csv:
         lines = ["criterion,mean,std"]
@@ -153,10 +191,24 @@ def aggregate(
     rf = summary["deltas"]["readability_flow"]["mean"]
     tc = summary["deltas"]["thematic_clarity"]["mean"]
     ei = summary["deltas"]["evidence_integration"]["mean"]
-    print(
+    line = (
         f"Treatment preferred: {pref if pref is not None else 'n/a'}; "
         f"ties={tie:.2f}; RF {rf:+.2f}, TC {tc:+.2f}, EI {ei:+.2f}"
     )
+    if metrics_summary and metrics_summary.get("delta"):
+        # Show a couple of key metrics if present
+        delta = metrics_summary["delta"]
+        d_merge = delta.get("dedup_merge_ratio")
+        d_coh = delta.get("avg_cluster_coherence")
+        if d_merge is not None or d_coh is not None:
+            line += "; "
+            parts = []
+            if d_merge is not None:
+                parts.append(f"Δmerge {d_merge:+.3f}")
+            if d_coh is not None:
+                parts.append(f"Δcoh {d_coh:+.3f}")
+            line += " ".join(parts)
+    print(line)
 
     return out_json
 

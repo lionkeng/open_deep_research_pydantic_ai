@@ -80,6 +80,35 @@ class APIConfig(BaseModel):
         description="Enable guardrailed LLM clean-merge for report text",
     )
 
+    # Dedup configuration (Phase 1 safety knobs)
+    dedup_similarity_threshold: float = Field(
+        default_factory=lambda: _env_float_default("DEDUP_SIMILARITY_THRESHOLD", 0.7),
+        ge=0.0,
+        le=1.0,
+        description="Cosine threshold used specifically for dedup merge",
+    )
+    dedup_max_findings: int = Field(
+        default=int(os.getenv("DEDUP_MAX_FINDINGS", "200")),
+        ge=0,
+        description="Simple cap for number of findings considered in dedup (0 = no cap)",
+    )
+
+    # Convergence analysis caps/sampling
+    convergence_max_claims: int = Field(
+        default=int(os.getenv("CONVERGENCE_MAX_CLAIMS", "100")),
+        ge=0,
+        description="Global cap on number of claims considered for convergence (0 = no cap)",
+    )
+    convergence_per_source_cap: int = Field(
+        default=int(os.getenv("CONVERGENCE_PER_SOURCE_CAP", "20")),
+        ge=0,
+        description="Per-source cap on number of claims considered (0 = no per-source cap)",
+    )
+    convergence_sampling_strategy: str = Field(
+        default=os.getenv("CONVERGENCE_SAMPLING", "longest"),
+        description="Sampling strategy when capping: longest|first|random (deterministic)",
+    )
+
     # Backward compatibility properties
     @property
     def openai_api_key(self) -> str | None:

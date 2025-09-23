@@ -1,9 +1,14 @@
-"""Contradiction detection service for research findings."""
+"""Contradiction detection service for research findings.
 
+Optional embedding-assisted topic matching improves robustness for paraphrases.
+"""
+
+import math
 import re
 from typing import Any
 
 from models.research_executor import Contradiction, ContradictionType, HierarchicalFinding
+from services.embeddings import EmbeddingService
 
 
 class ContradictionDetector:
@@ -14,8 +19,15 @@ class ContradictionDetector:
     2. Partial contradictions - conflicting implications
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        embedding_service: EmbeddingService | None = None,
+        topic_similarity_threshold: float = 0.65,
+    ):
         """Initialize the contradiction detector."""
+        self.embedding_service = embedding_service
+        self.topic_similarity_threshold = topic_similarity_threshold
         # Keywords indicating opposing concepts
         self.opposition_pairs = [
             ("increase", "decrease"),
@@ -52,13 +64,65 @@ class ContradictionDetector:
         """
         contradictions = []
 
+        # Note: async embedding should be handled by caller; this method
+        # remains synchronous for backwards compatibility.
+        vectors: list[list[float]] | None = None
+
         # Compare each pair of findings
         for i in range(len(findings)):
             for j in range(i + 1, len(findings)):
+                # Gate by embedding similarity if available
+                if vectors is not None:
+                    vi = vectors[i] if i < len(vectors) else []
+                    vj = vectors[j] if j < len(vectors) else []
+                    sim = 0.0
+                    if vi and vj:
+                        dot = sum(a * b for a, b in zip(vi, vj, strict=False))
+                        ni = math.sqrt(sum(a * a for a in vi))
+                        nj = math.sqrt(sum(b * b for b in vj))
+                        if ni and nj:
+                            sim = dot / (ni * nj)
+                    if sim < self.topic_similarity_threshold:
+                        continue
+
                 contradiction = self._check_contradiction_pair(findings[i], findings[j], i, j)
                 if contradiction:
                     contradictions.append(contradiction)
 
+        return contradictions
+
+    def detect_contradictions_with_vectors(
+        self, findings: list[HierarchicalFinding], vectors: list[list[float]]
+    ) -> list[Contradiction]:
+        """Detect contradictions using caller-provided embeddings for gating.
+
+        Args:
+            findings: Findings to analyze
+            vectors: Dense vectors (len must match findings)
+
+        Returns:
+            List of detected contradictions
+        """
+        contradictions: list[Contradiction] = []
+        if not findings or not vectors or len(vectors) != len(findings):
+            return self.detect_contradictions(findings)
+
+        for i in range(len(findings)):
+            for j in range(i + 1, len(findings)):
+                vi = vectors[i]
+                vj = vectors[j]
+                sim = 0.0
+                if vi and vj:
+                    dot = sum(a * b for a, b in zip(vi, vj, strict=False))
+                    ni = math.sqrt(sum(a * a for a in vi))
+                    nj = math.sqrt(sum(b * b for b in vj))
+                    if ni and nj:
+                        sim = dot / (ni * nj)
+                if sim < self.topic_similarity_threshold:
+                    continue
+                c = self._check_contradiction_pair(findings[i], findings[j], i, j)
+                if c:
+                    contradictions.append(c)
         return contradictions
 
     def _check_contradiction_pair(

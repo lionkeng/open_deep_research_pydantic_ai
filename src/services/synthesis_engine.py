@@ -142,6 +142,96 @@ class SynthesisEngine:
 
         return theme_clusters
 
+    def cluster_findings_from_vectors(
+        self, findings: list[HierarchicalFinding], vectors: list[list[float]]
+    ) -> list[ThemeCluster]:
+        """Cluster findings using precomputed dense vectors (e.g., embeddings).
+
+        Args:
+            findings: Findings to cluster
+            vectors: Dense vectors aligned with findings (len equal)
+
+        Returns:
+            List of theme clusters
+        """
+        import numpy as np
+        from sklearn.cluster import KMeans
+        from sklearn.metrics import silhouette_score
+
+        if len(findings) < self.min_cluster_size:
+            return [
+                ThemeCluster(
+                    theme_name="General Findings",
+                    description="Ungrouped research findings",
+                    findings=findings,
+                    coherence_score=1.0,
+                    importance_score=self._calculate_importance_score(findings),
+                )
+            ]
+
+        if not vectors or len(vectors) != len(findings):
+            # Fallback to standard path if vectors missing
+            return self.cluster_findings(findings)
+
+        X = np.array(vectors, dtype=float)
+
+        # Determine optimal number of clusters on dense vectors
+        n_samples = X.shape[0]
+        max_k = min(self.max_clusters, n_samples - 1) if n_samples > 2 else 2
+        best_k = 2
+        best_score = -1.0
+        for k in range(2, max_k + 1):
+            try:
+                kmeans = KMeans(n_clusters=k, random_state=self.random_state, n_init=5)
+                labels = kmeans.fit_predict(X)
+                score = silhouette_score(X, labels)
+                if score > best_score:
+                    best_score = score
+                    best_k = k
+            except Exception:
+                continue
+
+        kmeans = KMeans(n_clusters=best_k, random_state=self.random_state, n_init=10)
+        labels = kmeans.fit_predict(X)
+
+        # Group findings by cluster
+        clusters: dict[int, list[HierarchicalFinding]] = {}
+        for idx, label in enumerate(labels):
+            clusters.setdefault(label, []).append(findings[idx])
+
+        theme_clusters: list[ThemeCluster] = []
+        for label, cluster_findings in clusters.items():
+            theme_name = self._extract_theme_name(cluster_findings, label)
+
+            # Coherence: average pairwise cosine on cluster vectors
+            cluster_indices = [i for i, lab in enumerate(labels) if lab == label]
+            cluster_vecs = X[cluster_indices]
+            # compute limited pairwise similarities to avoid O(n^2) explosion
+            sims = []
+            for i in range(len(cluster_vecs)):
+                for j in range(i + 1, len(cluster_vecs)):
+                    v1 = cluster_vecs[i]
+                    v2 = cluster_vecs[j]
+                    n1 = np.linalg.norm(v1)
+                    n2 = np.linalg.norm(v2)
+                    if n1 > 0 and n2 > 0:
+                        sims.append(float(np.dot(v1, v2) / (n1 * n2)))
+            coherence = float((np.mean(sims) + 1) / 2) if sims else 0.5
+
+            importance = self._calculate_importance_score(cluster_findings)
+            theme_clusters.append(
+                ThemeCluster(
+                    theme_name=theme_name,
+                    description=self._generate_cluster_description(cluster_findings),
+                    findings=cluster_findings,
+                    coherence_score=coherence,
+                    importance_score=importance,
+                )
+            )
+
+        theme_clusters.sort(key=lambda x: x.importance_score, reverse=True)
+        return theme_clusters
+
     def _create_vectorizer(self, n_documents: int) -> TfidfVectorizer:
         """Create a TF-IDF vectorizer that adapts thresholds to corpus size."""
 

@@ -12,10 +12,13 @@ Design goals:
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Protocol
+
+import logfire
 
 Vector = list[float]
 
@@ -100,6 +103,7 @@ class EmbeddingService:
         if self.backend is None:
             return None
 
+        start = time.perf_counter()
         # Cache per text
         to_compute: list[tuple[int, str]] = []
         vectors: list[Vector] = [cast_empty()] * len(texts)
@@ -118,6 +122,16 @@ class EmbeddingService:
                 vectors[i] = vec
                 if self.cache_enabled:
                     self._cache[self._hash_text(original_text)] = vec
+
+        duration = time.perf_counter() - start
+        logfire.trace(
+            "Embedding batch",
+            backend=self.backend.__class__.__name__,
+            batch_size=len(texts),
+            computed=len(to_compute),
+            cache_hits=(len(texts) - len(to_compute)) if self.cache_enabled else 0,
+            seconds=round(duration, 4),
+        )
 
         return vectors
 
