@@ -209,6 +209,7 @@ if state.final_report:
 - Features
 
   - [ ] Generate charts and relevant graphics in the report
+  - [ ] Option to use other search engines, such as Brave Search
   - [ ] Configurable writing style
   - [ ] Durable execution with temporal.io
 
