@@ -1,6 +1,6 @@
 # Deep Research with Pydantic AI
 
-A comprehensive AI-powered deep research system built with Pydantic-AI using an event-driven architecture.
+A comprehensive AI-powered deep research system built with Pydantic-AI using an event-driven architecture. This is an AI-assisted project built with the help of claude-code and codex.
 
 ## Features
 
