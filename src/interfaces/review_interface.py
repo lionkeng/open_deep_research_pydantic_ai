@@ -126,21 +126,43 @@ class ReviewInterface:
         if answer is None or answer.skipped:
             return "[dim italic]Not answered[/dim italic]"
 
-        answer_text = answer.answer or ""
+        # Format based on question type using structured fields
+        if question.question_type == "text":
+            txt = answer.text or ""
+            if len(txt) > max_length:
+                return f"{txt[:max_length]}..."
+            return txt
 
-        # Handle different question types
+        def _lookup_label(choice_id: str) -> str:
+            for ch in question.choices or []:
+                if ch.id == choice_id:
+                    return ch.label
+            return choice_id
+
+        if question.question_type == "choice":
+            if answer.selection:
+                label = _lookup_label(answer.selection.id)
+                if answer.selection.details:
+                    return f"{label}: {answer.selection.details}"
+                return label
+            return "[dim italic]Not answered[/dim italic]"
+
         if question.question_type == "multi_choice":
-            # Format multi-choice as bullet list if long
-            choices = [c.strip() for c in answer_text.split(",")]
-            if len(choices) > 3:
-                return f"{', '.join(choices[:3])}, ... (+{len(choices) - 3} more)"
-            return answer_text
+            items: list[str] = []
+            if answer.selections:
+                for sel in answer.selections:
+                    label = _lookup_label(sel.id)
+                    if sel.details:
+                        items.append(f"{label}: {sel.details}")
+                    else:
+                        items.append(label)
+            if not items:
+                return "[dim italic]Not answered[/dim italic]"
+            if len(items) > 3:
+                return f"{', '.join(items[:3])}, ... (+{len(items) - 3} more)"
+            return ", ".join(items)
 
-        # Truncate long text answers
-        if len(answer_text) > max_length:
-            return f"{answer_text[:max_length]}..."
-
-        return answer_text
+        return ""
 
     def render_progress_bar(
         self, request: ClarificationRequest, response: ClarificationResponse
@@ -512,24 +534,24 @@ class ReviewInterface:
 
         # Get new answer based on question type
         if question.question_type == "choice":
-            answer_text = ask_choice_question(question, self.console)
+            selection = ask_choice_question(question, self.console)
+            if selection is not None:
+                return ClarificationAnswer(
+                    question_id=question.id, selection=selection, skipped=False
+                )
         elif question.question_type == "multi_choice":
-            answer_text = ask_multi_choice_question(question, self.console)
+            selections = ask_multi_choice_question(question, self.console)
+            if selections is not None:
+                return ClarificationAnswer(
+                    question_id=question.id, selections=selections, skipped=False
+                )
         else:
-            answer_text = ask_text_question(question, self.console)
+            text = ask_text_question(question, self.console)
+            if text is not None:
+                return ClarificationAnswer(question_id=question.id, text=text, skipped=False)
 
-        # Create new answer if changed
-        if answer_text is not None:
-            return ClarificationAnswer(
-                question_id=question.id,
-                answer=answer_text,
-                skipped=False,
-            )
         if not question.is_required:
-            return ClarificationAnswer(
-                question_id=question.id,
-                skipped=True,
-            )
+            return ClarificationAnswer(question_id=question.id, skipped=True)
 
         return current_answer
 

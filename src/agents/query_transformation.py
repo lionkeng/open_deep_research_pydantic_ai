@@ -322,7 +322,8 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
                 if q.context:
                     questions_text.append(f"   Context: {q.context}")
                 if q.choices:
-                    questions_text.append(f"   Options: {', '.join(q.choices)}")
+                    labels = ", ".join(ch.label for ch in q.choices)
+                    questions_text.append(f"   Options: {labels}")
             context["questions"] = "\n".join(questions_text)
         else:
             context["questions"] = default_context["questions"]
@@ -336,7 +337,31 @@ class QueryTransformationAgent(BaseResearchAgent[ResearchDependencies, Transform
                     if answer.skipped:
                         answers_text.append(f"Q: {q.question}\nA: [SKIPPED]")
                     else:
-                        answers_text.append(f"Q: {q.question}\nA: {answer.answer}")
+                        # Format structured answer
+                        if q.question_type == "text":
+                            ans_text = answer.text or ""
+                        elif q.question_type == "choice":
+                            if answer.selection:
+                                ch = next(
+                                    (c for c in (q.choices or []) if c.id == answer.selection.id),
+                                    None,
+                                )
+                                label = ch.label if ch else answer.selection.id
+                                ans_text = (
+                                    f"{label}: {answer.selection.details}"
+                                    if answer.selection.details
+                                    else label
+                                )
+                            else:
+                                ans_text = ""
+                        else:  # multi_choice
+                            parts: list[str] = []
+                            for sel in answer.selections or []:
+                                ch = next((c for c in (q.choices or []) if c.id == sel.id), None)
+                                label = ch.label if ch else sel.id
+                                parts.append(f"{label}: {sel.details}" if sel.details else label)
+                            ans_text = ", ".join(parts)
+                        answers_text.append(f"Q: {q.question}\nA: {ans_text}")
             if answers_text:
                 context["answers"] = "\n".join(answers_text)
             else:

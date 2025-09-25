@@ -12,6 +12,7 @@ from interfaces.cli_multi_clarification import (
 )
 from models.clarification import (
     ClarificationAnswer,
+    ClarificationChoice,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
@@ -39,14 +40,25 @@ class TestMultiClarificationIntegration:
                     question="What is your technical expertise level?",
                     is_required=True,
                     question_type="choice",
-                    choices=["Beginner", "Intermediate", "Advanced", "Expert"],
+                    choices=[
+                        ClarificationChoice(id="beginner", label="Beginner"),
+                        ClarificationChoice(id="intermediate", label="Intermediate"),
+                        ClarificationChoice(id="advanced", label="Advanced"),
+                        ClarificationChoice(id="expert", label="Expert"),
+                    ],
                     order=0,
                 ),
                 ClarificationQuestion(
                     question="Which aspects interest you most?",
                     is_required=False,
                     question_type="multi_choice",
-                    choices=["Performance", "Security", "Scalability", "Cost", "Ease of use"],
+                    choices=[
+                        ClarificationChoice(id="performance", label="Performance"),
+                        ClarificationChoice(id="security", label="Security"),
+                        ClarificationChoice(id="scalability", label="Scalability"),
+                        ClarificationChoice(id="cost", label="Cost"),
+                        ClarificationChoice(id="ease", label="Ease of use"),
+                    ],
                     order=1,
                 ),
                 ClarificationQuestion(
@@ -67,17 +79,17 @@ class TestMultiClarificationIntegration:
             answers=[
                 ClarificationAnswer(
                     question_id=sample_request.questions[0].id,
-                    answer="Intermediate",
+                    selection={"id": "intermediate"},
                     skipped=False,
                 ),
                 ClarificationAnswer(
                     question_id=sample_request.questions[1].id,
-                    answer="Performance, Scalability",
+                    selections=[{"id": "performance"}, {"id": "scalability"}],
                     skipped=False,
                 ),
                 ClarificationAnswer(
                     question_id=sample_request.questions[2].id,
-                    answer="Building a real-time data processing pipeline",
+                    text="Building a real-time data processing pipeline",
                     skipped=False,
                 ),
             ],
@@ -116,7 +128,7 @@ class TestMultiClarificationIntegration:
         response_display = format_response_for_display(sample_response, sample_request)
         assert "Clarification Responses:" in response_display
         assert "Intermediate" in response_display
-        assert "Performance, Scalability" in response_display
+        assert "Performance" in response_display and "Scalability" in response_display
 
     def test_metadata_helper_methods(self, sample_request, sample_response):
         """Test ResearchMetadata helper methods."""
@@ -135,29 +147,38 @@ class TestMultiClarificationIntegration:
         assert len(pending) == 2  # Two required questions
 
         # Add response for one question
+        # Only text helper is supported; choice/multi_choice require structured path
         metadata.add_clarification_response(
-            sample_request.questions[0].id,
-            "Intermediate"
+            sample_request.questions[2].id,
+            "Building a data pipeline",
         )
 
         # Should still have one pending
         pending = metadata.get_pending_questions()
+        # One required text answered; one required choice still pending
         assert len(pending) == 1
-        assert pending[0].id == sample_request.questions[2].id
+        assert pending[0].id == sample_request.questions[0].id
 
         # Add response for the other required question
-        metadata.add_clarification_response(
-            sample_request.questions[2].id,
-            "Building a data pipeline"
-        )
+        # Structured choice answer added directly into response
+        sel = {"id": "intermediate"}
+        if metadata.clarification.response is None:
+            metadata.clarification.response = ClarificationResponse(
+                request_id=sample_request.id,
+                answers=[ClarificationAnswer(question_id=sample_request.questions[0].id, selection=sel)],
+            )
+        else:
+            metadata.clarification.response.answers.append(
+                ClarificationAnswer(question_id=sample_request.questions[0].id, selection=sel)
+            )
+            metadata.clarification.response.model_post_init(None)
 
         # Debug - check what we have
         if metadata.clarification.response:
             print(f"Answers count: {len(metadata.clarification.response.answers)}")
             print(f"Question IDs in request: {[q.id for q in sample_request.questions]}")
             for answer in metadata.clarification.response.answers:
-                answer_text = answer.answer if not answer.skipped else '[skipped]'
-                print(f"  - Answer for question {answer.question_id}: {answer_text}")
+                print(f"  - Answer for question {answer.question_id}: [structured]")
             errors = metadata.clarification.response.validate_against_request(sample_request)
             if errors:
                 print(f"Validation errors: {errors}")
@@ -197,13 +218,17 @@ class TestMultiClarificationIntegration:
             question="Select level",
             is_required=True,
             question_type="choice",
-            choices=["Low", "Medium", "High"],
+            choices=[
+                ClarificationChoice(id="low", label="Low"),
+                ClarificationChoice(id="med", label="Medium"),
+                ClarificationChoice(id="high", label="High"),
+            ],
         )
 
         console = MagicMock()
         answer = ask_choice_question(question, console)
 
-        assert answer == "Medium"
+        assert answer is not None and answer.id == "med"
         mock_int_prompt.assert_called_once()
 
     @patch("interfaces.cli_multi_clarification.has_interactive", False)
@@ -226,16 +251,26 @@ class TestMultiClarificationIntegration:
             is_required=True,
             question_type="choice",
             choices=[
-                "Single city / metro area (please specify)",
-                "Single state / province (please specify)",
-                "National (country) level",
+                ClarificationChoice(
+                    id="city",
+                    label="Single city / metro area",
+                    requires_details=True,
+                    details_prompt="Enter city",
+                ),
+                ClarificationChoice(
+                    id="state",
+                    label="Single state / province",
+                    requires_details=True,
+                    details_prompt="Enter state",
+                ),
+                ClarificationChoice(id="national", label="National (country) level"),
             ],
         )
 
         console = MagicMock()
         answer = ask_choice_question(question, console)
 
-        assert answer == "Single city / metro area: Seattle, WA"
+        assert answer is not None and answer.id == "city" and answer.details == "Seattle, WA"
 
     @patch("interfaces.cli_multi_clarification.has_interactive", False)
     @patch("interfaces.cli_multi_clarification.sys.stdin.isatty")
@@ -249,13 +284,17 @@ class TestMultiClarificationIntegration:
             question="Select features",
             is_required=True,
             question_type="multi_choice",
-            choices=["Feature A", "Feature B", "Feature C"],
+            choices=[
+                ClarificationChoice(id="A", label="Feature A"),
+                ClarificationChoice(id="B", label="Feature B"),
+                ClarificationChoice(id="C", label="Feature C"),
+            ],
         )
 
         console = MagicMock()
         answer = ask_multi_choice_question(question, console)
 
-        assert answer == "Feature A | Feature C"
+        assert answer is not None and [sel.id for sel in answer] == ["A", "C"]
         mock_prompt.assert_called_once()
 
     @patch("interfaces.cli_multi_clarification.has_interactive", False)
@@ -272,15 +311,23 @@ class TestMultiClarificationIntegration:
             is_required=True,
             question_type="multi_choice",
             choices=[
-                "National (country) level",
-                "Multiple countries (please specify)",
-                "Other (please specify)",
+                ClarificationChoice(id="nat", label="National (country) level"),
+                ClarificationChoice(
+                    id="multi",
+                    label="Multiple countries",
+                    requires_details=True,
+                    details_prompt="Which countries?",
+                ),
+                ClarificationChoice(id="other", label="Other", is_other=True, details_prompt="Specify other"),
             ],
         )
 
         console = MagicMock()
         answer = ask_multi_choice_question(question, console)
-        assert answer == "National (country) level | Multiple countries: Germany"
+        assert answer is not None
+        # Expect selections for nat and multi with details
+        assert [sel.id for sel in answer] == ["nat", "multi"]
+        assert answer[1].details == "Germany"
         # Two prompts: one for selections, one for details
         assert mock_prompt.call_count == 2
 
@@ -299,8 +346,8 @@ class TestMultiClarificationIntegration:
     ):
         """Test complete CLI clarification flow."""
         mock_isatty.return_value = True
-        mock_choice.return_value = "Intermediate"
-        mock_multi_choice.return_value = "Performance, Security"
+        mock_choice.return_value = {"id": "intermediate"}
+        mock_multi_choice.return_value = [{"id": "performance"}, {"id": "security"}]
         mock_text.return_value = "Building APIs"
 
         console = MagicMock()
@@ -312,9 +359,9 @@ class TestMultiClarificationIntegration:
 
         assert response is not None
         assert len(response.answers) == 3
-        assert response.answers[0].answer == "Intermediate"
-        assert response.answers[1].answer == "Performance, Security"
-        assert response.answers[2].answer == "Building APIs"
+        assert response.answers[0].selection is not None and response.answers[0].selection.id == "intermediate"
+        assert response.answers[1].selections is not None and [sel.id for sel in response.answers[1].selections] == ["performance", "security"]
+        assert response.answers[2].text == "Building APIs"
 
     def test_response_validation(self, sample_request):
         """Test response validation against request."""
@@ -324,7 +371,7 @@ class TestMultiClarificationIntegration:
             answers=[
                 ClarificationAnswer(
                     question_id=sample_request.questions[0].id,
-                    answer="Intermediate",
+                    selection={"id": "intermediate"},
                     skipped=False,
                 ),
                 # Skipping optional question is OK
@@ -346,7 +393,7 @@ class TestMultiClarificationIntegration:
             answers=[
                 ClarificationAnswer(
                     question_id=sample_request.questions[0].id,
-                    answer="Invalid Level",  # Not in choices
+                    selection={"id": "invalid"},  # Not in choices
                     skipped=False,
                 ),
                 ClarificationAnswer(
@@ -355,7 +402,7 @@ class TestMultiClarificationIntegration:
                 ),
                 ClarificationAnswer(
                     question_id=sample_request.questions[2].id,
-                    answer="Some use case",
+                    text="Some use case",
                     skipped=False,
                 ),
             ],
@@ -365,8 +412,8 @@ class TestMultiClarificationIntegration:
         assert len(errors) > 0
         assert "Invalid choice" in errors[0]
 
-    def test_validation_accepts_augmented_specify_answers(self):
-        """Validation should accept augmented answers for 'Other' and '(please specify)' choices."""
+    def test_validation_accepts_details_required_structured_answers(self):
+        """Validation should accept structured selections when details are required."""
         req = ClarificationRequest(
             questions=[
                 ClarificationQuestion(
@@ -374,9 +421,11 @@ class TestMultiClarificationIntegration:
                     is_required=True,
                     question_type="choice",
                     choices=[
-                        "Single city / metro area (please specify)",
-                        "National (country) level",
-                        "Other (please specify)",
+                        ClarificationChoice(
+                            id="city", label="Single city / metro area", requires_details=True
+                        ),
+                        ClarificationChoice(id="national", label="National (country) level"),
+                        ClarificationChoice(id="other", label="Other", is_other=True),
                     ],
                 ),
                 ClarificationQuestion(
@@ -384,9 +433,13 @@ class TestMultiClarificationIntegration:
                     is_required=True,
                     question_type="multi_choice",
                     choices=[
-                        "Multiple countries (please specify)",
-                        "Single state / province (please specify)",
-                        "Other (please specify)",
+                        ClarificationChoice(
+                            id="multi", label="Multiple countries", requires_details=True
+                        ),
+                        ClarificationChoice(
+                            id="state", label="Single state / province", requires_details=True
+                        ),
+                        ClarificationChoice(id="other", label="Other", is_other=True),
                     ],
                 ),
             ]
@@ -397,17 +450,15 @@ class TestMultiClarificationIntegration:
             answers=[
                 ClarificationAnswer(
                     question_id=req.questions[0].id,
-                    answer="Single city / metro area: Paris",
-                    skipped=False,
+                    selection={"id": "city", "details": "Paris"},
                 ),
                 ClarificationAnswer(
                     question_id=req.questions[1].id,
-                    answer=(
-                        "Multiple countries: Germany | "
-                        "Single state / province: Bavaria | "
-                        "Other: DACH"
-                    ),
-                    skipped=False,
+                    selections=[
+                        {"id": "multi", "details": "Germany"},
+                        {"id": "state", "details": "Bavaria"},
+                        {"id": "other", "details": "DACH"},
+                    ],
                 ),
             ],
         )

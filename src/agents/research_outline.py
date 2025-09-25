@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
+from agents.headline_tokens import GENERIC_SECTION_STARTERS
 from models.metadata import ReportSectionPlan
 from models.research_executor import HierarchicalFinding, ThemeCluster
 
@@ -65,7 +66,15 @@ _STOP_WORDS = {
     "might",
     "must",
     "not",
+    "which",
 }
+
+
+_LEADING_HEADLINE_SKIP_TOKENS = {
+    "evidence",
+    "summary",
+    "key",
+} | GENERIC_SECTION_STARTERS
 
 
 def synthesize_headline(text: str, max_words: int = 8, max_len: int = 90) -> str:
@@ -83,6 +92,21 @@ def synthesize_headline(text: str, max_words: int = 8, max_len: int = 90) -> str
     sentence = sentences[0] if sentences else paragraph
     tokens = re.findall(r"[A-Za-z0-9'\-]+", sentence)
     words = [token for token in tokens if len(token) > 2 and token.lower() not in _STOP_WORDS]
+
+    while words and words[0].lower() in _LEADING_HEADLINE_SKIP_TOKENS:
+        words.pop(0)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for token in words:
+        lowered = token.lower()
+        if lowered in seen:
+            continue
+        deduped.append(token)
+        seen.add(lowered)
+
+    words = deduped
+
     selected = words[:max_words]
     base = " ".join(selected) if selected else sentence
     base = base.strip("-—–:;,. ")

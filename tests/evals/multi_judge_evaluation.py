@@ -587,7 +587,11 @@ async def run_advanced_evaluation_demo():
     evaluator = AdvancedMultiJudgeEvaluator()
 
     # Mock clarification output for demo
-    from models.clarification import ClarificationQuestion, ClarificationRequest
+    from models.clarification import (
+        ClarificationChoice,
+        ClarificationQuestion,
+        ClarificationRequest,
+    )
 
     mock_output = ClarifyWithUser(
         needs_clarification=True,
@@ -597,16 +601,20 @@ async def run_advanced_evaluation_demo():
                     question="What specific aspect of machine learning are you most interested in?",
                     question_type="choice",
                     choices=[
-                        "supervised learning",
-                        "unsupervised learning",
-                        "reinforcement learning",
+                        ClarificationChoice(id="sup", label="supervised learning"),
+                        ClarificationChoice(id="unsup", label="unsupervised learning"),
+                        ClarificationChoice(id="rl", label="reinforcement learning"),
                     ],
                     is_required=True,
                 ),
                 ClarificationQuestion(
                     question="What is your technical background level?",
                     question_type="choice",
-                    choices=["beginner", "intermediate", "advanced"],
+                    choices=[
+                        ClarificationChoice(id="beg", label="beginner"),
+                        ClarificationChoice(id="int", label="intermediate"),
+                        ClarificationChoice(id="adv", label="advanced"),
+                    ],
                     is_required=True,
                 ),
             ]

@@ -115,7 +115,13 @@ def format_clarification_for_display(request: Any) -> str:
         if question.choices:
             lines.append("   Options:")
             for choice in question.choices:
-                lines.append(f"   - {choice}")
+                flags = []
+                if choice.is_other:
+                    flags.append("other")
+                if choice.requires_details:
+                    flags.append("requires details")
+                flag_str = f" [{' & '.join(flags)}]" if flags else ""
+                lines.append(f"   - {choice.label}{flag_str} (id={choice.id})")
 
     return "\n".join(lines)
 
@@ -142,15 +148,42 @@ def format_response_for_display(response: Any, request: Any) -> str:
             else None
         )
 
+        def _fmt(q, a) -> str:
+            if a.skipped:
+                return "[Skipped]"
+            if q.question_type == "text":
+                return a.text or ""
+            if q.question_type == "choice":
+                if not a.selection:
+                    return ""
+                ch = next((c for c in (q.choices or []) if c.id == a.selection.id), None)
+                label = ch.label if ch else a.selection.id
+                return f"{label}: {a.selection.details}" if a.selection.details else label
+            if q.question_type == "multi_choice":
+                parts: list[str] = []
+                for sel in a.selections or []:
+                    ch = next((c for c in (q.choices or []) if c.id == sel.id), None)
+                    label = ch.label if ch else sel.id
+                    parts.append(f"{label}: {sel.details}" if sel.details else label)
+                return ", ".join(parts)
+            return ""
+
         if question:
-            if answer.skipped:
-                lines.append(f"- {question.question}: [Skipped]")
-            else:
-                lines.append(f"- {question.question}: {answer.answer}")
+            lines.append(f"- {question.question}: {_fmt(question, answer)}")
         else:
+            # Unknown question: best-effort formatting without label resolution
             if answer.skipped:
                 lines.append(f"- Question {answer.question_id}: [Skipped]")
+            elif answer.text is not None:
+                lines.append(f"- Question {answer.question_id}: {answer.text}")
+            elif answer.selection is not None:
+                sel = answer.selection
+                part = f"{sel.id}: {sel.details}" if sel.details else sel.id
+                lines.append(f"- Question {answer.question_id}: {part}")
+            elif answer.selections:
+                parts = [f"{s.id}: {s.details}" if s.details else s.id for s in answer.selections]
+                lines.append(f"- Question {answer.question_id}: {', '.join(parts)}")
             else:
-                lines.append(f"- Question {answer.question_id}: {answer.answer}")
+                lines.append(f"- Question {answer.question_id}: ")
 
     return "\n".join(lines)

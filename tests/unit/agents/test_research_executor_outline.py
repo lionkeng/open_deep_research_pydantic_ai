@@ -15,7 +15,22 @@ def test_synthesize_headline_removes_citations_and_limits_words() -> None:
 
     assert "[S1]" not in headline
     # Should capture salient terms and capitalize appropriately
-    assert headline == "Key Finding Solar Adoption Accelerates 2024"
+    assert headline == "Solar Adoption Accelerates 2024"
+
+
+def test_synthesize_headline_drops_generic_prefixes_and_duplicates() -> None:
+    """Noise like "finding source" should be stripped from synthesized titles."""
+
+    text = (
+        "Finding source biggest builders which commonly have in-house builder scale, "
+        "cost structure, and market behavior."
+    )
+
+    headline = synthesize_headline(text, max_words=10)
+
+    assert headline.startswith("Biggest Builders"), headline
+    assert "Finding" not in headline
+    assert "Source" not in headline
 
 
 def test_build_section_outline_trims_bullets_and_collects_sources() -> None:

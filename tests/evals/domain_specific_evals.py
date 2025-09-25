@@ -155,7 +155,7 @@ class BaseDomainEvaluator(ABC):
         quality_score = 0
         total_indicators = 0
 
-        for category, indicators in self.quality_indicators.items():
+        for _category, indicators in self.quality_indicators.items():
             category_matches = sum(1 for indicator in indicators if indicator in questions_text)
             if indicators:
                 quality_score += category_matches / len(indicators)
@@ -163,7 +163,9 @@ class BaseDomainEvaluator(ABC):
 
         return quality_score / total_indicators if total_indicators > 0 else 0.5
 
-    def _analyze_context_understanding(self, output: ClarifyWithUser, context: DomainContext) -> float:
+    def _analyze_context_understanding(
+        self, output: ClarifyWithUser, context: DomainContext
+    ) -> float:
         """Analyze how well the output understands the context."""
         # Basic implementation that can be overridden by subclasses
         if not output.request or not output.request.questions:
@@ -182,36 +184,6 @@ class BaseDomainEvaluator(ABC):
             reasoning_score = 0.5
 
         return (dimension_score + reasoning_score) / 2
-            questions_text = " ".join(q.question for q in output.request.questions).lower()
-            level_indicators = {
-                "beginner": ["basic", "simple", "introduction", "fundamentals", "overview"],
-                "intermediate": ["specific", "detailed", "particular", "aspects", "implementation"],
-                "advanced": ["complex", "advanced", "optimization", "architecture", "deep dive"],
-            }
-
-            if context.technical_level in level_indicators:
-                indicators = level_indicators[context.technical_level]
-                if any(indicator in questions_text for indicator in indicators):
-                    score += 0.2
-
-        # Check if industry context is considered
-        if context.industry:
-            questions_text = " ".join(q.question for q in output.request.questions).lower()
-            if context.industry.lower() in questions_text:
-                score += 0.2
-
-        # Check if specific requirements are addressed
-        if context.specific_requirements:
-            missing_dims = output.missing_dimensions or []
-            requirements_addressed = sum(
-                1
-                for req in context.specific_requirements
-                if any(req.lower() in dim.lower() for dim in missing_dims)
-            )
-            if context.specific_requirements:
-                score += 0.3 * (requirements_addressed / len(context.specific_requirements))
-
-        return min(score, 1.0)
 
     @abstractmethod
     def _calculate_domain_metrics(
@@ -271,10 +243,13 @@ class TechnicalDomainEvaluator(BaseDomainEvaluator):
         }
 
     def _create_domain_system_prompt(self) -> str:
-        return """You are a technical expert evaluating clarification questions for programming and software development queries.
+        return """You are a technical expert evaluating clarification questions for
+programming and software development queries.
 
-        Evaluate the technical accuracy, appropriate use of terminology, and relevance to software engineering practices.
-        Focus on whether the questions would help identify technical requirements, constraints, and implementation details.
+        Evaluate the technical accuracy, appropriate use of terminology, and relevance to
+software engineering practices.
+        Focus on whether the questions would help identify technical requirements,
+constraints, and implementation details.
 
         Return JSON with scores (0-10) and reasoning."""
 
@@ -762,7 +737,11 @@ class DomainDetector:
 async def demo_domain_specific_evaluation():
     """Demonstrate domain-specific evaluation capabilities."""
 
-    from models.clarification import ClarificationQuestion, ClarificationRequest
+    from models.clarification import (
+        ClarificationChoice,
+        ClarificationQuestion,
+        ClarificationRequest,
+    )
 
     # Technical query example
     technical_output = ClarifyWithUser(
@@ -772,7 +751,12 @@ async def demo_domain_specific_evaluation():
                 ClarificationQuestion(
                     question="What programming language are you planning to use for this implementation?",
                     question_type="choice",
-                    choices=["Python", "JavaScript", "Java", "C++"],
+                    choices=[
+                        ClarificationChoice(id="py", label="Python"),
+                        ClarificationChoice(id="js", label="JavaScript"),
+                        ClarificationChoice(id="java", label="Java"),
+                        ClarificationChoice(id="cpp", label="C++"),
+                    ],
                     is_required=True,
                 ),
                 ClarificationQuestion(

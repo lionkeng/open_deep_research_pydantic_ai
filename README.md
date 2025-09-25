@@ -200,10 +200,22 @@ if state.final_report:
 ## Key Differences from Original
 
 - **Framework**: Pydantic-AI instead of LangGraph
-- **Architecture**: Event-driven instead of graph-based state machines
 - **Communication**: Event Bus pattern for agent coordination
 - **Streaming**: Native SSE and CLI streaming support
 - **Type Safety**: Full Pydantic validation throughout
+
+## Todo Items
+
+- Features
+
+  - [ ] Generate charts and relevant graphics in the report
+  - [ ] Configurable writing style
+  - [ ] Durable execution with temporal.io
+
+- Enhancements
+  - [ ] Fix broken tests
+  - [ ] Fix Pyright warnings and errors
+  - [ ] Fix and improve agent evals
 
 ## Contributing
 

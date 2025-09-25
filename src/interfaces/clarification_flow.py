@@ -5,6 +5,8 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 
 from models.clarification import (
+    ClarificationAnswer,
+    ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
 )
@@ -166,16 +168,37 @@ def display_final_summary(
     summary.add_column("Your Answer", ratio=3)
     summary.add_column("Type", width=10)
 
+    def _format_answer(q: ClarificationQuestion, a: ClarificationAnswer | None) -> str:
+        if a is None or a.skipped:
+            return "[dim italic]Skipped[/dim italic]"
+        if q.question_type == "text":
+            txt = a.text or "—"
+            return txt if len(txt) <= 50 else txt[:47] + "..."
+
+        # Lookup helper
+        def label(cid: str) -> str:
+            for ch in q.choices or []:
+                if ch.id == cid:
+                    return ch.label
+            return cid
+
+        if q.question_type == "choice":
+            if a.selection:
+                lbl = label(a.selection.id)
+                return f"{lbl}: {a.selection.details}" if a.selection.details else lbl
+            return "[dim italic]Skipped[/dim italic]"
+        if q.question_type == "multi_choice":
+            items: list[str] = []
+            for sel in a.selections or []:
+                lbl = label(sel.id)
+                items.append(f"{lbl}: {sel.details}" if sel.details else lbl)
+            text = ", ".join(items) if items else "[dim italic]Skipped[/dim italic]"
+            return text if len(text) <= 50 else text[:47] + "..."
+        return ""
+
     for question in request.get_sorted_questions():
         answer = response.get_answer_for_question(question.id)
-
-        # Format answer for display
-        if answer and not answer.skipped:
-            answer_text = answer.answer or "—"
-            if len(answer_text) > 50:
-                answer_text = answer_text[:47] + "..."
-        else:
-            answer_text = "[dim italic]Skipped[/dim italic]"
+        answer_text = _format_answer(question, answer)
 
         # Determine type indicator
         type_text = "Required" if question.is_required else "Optional"

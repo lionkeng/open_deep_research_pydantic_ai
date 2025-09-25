@@ -5,6 +5,11 @@ from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
+from utils.clarification_utils import (
+    extract_base_label,
+    requires_specify_option,
+)
+
 # Initialize flags
 _has_termios = False
 _has_msvcrt = False
@@ -289,31 +294,8 @@ class InteractiveSelector:
         )
 
     def _requires_specify_option(self, choice: str) -> bool:
-        """Check if a choice requests a follow-up specification.
-
-        Matches variants like "(please specify)", "(specify)", "(enter …)",
-        "(provide …)", "(describe …)", etc. Case-insensitive.
-        """
-        choice_lower = choice.lower()
-        if "(" in choice_lower and ")" in choice_lower:
-            try:
-                hint = choice_lower[choice_lower.index("(") + 1 : choice_lower.rindex(")")]
-            except ValueError:
-                hint = choice_lower
-        else:
-            hint = choice_lower
-        keywords = [
-            "please specify",
-            "specify",
-            "describe",
-            "enter",
-            "provide",
-            "input",
-            "details",
-            "detail",
-            "name",
-        ]
-        return any(k in hint for k in keywords)
+        """Check if a choice requests a follow-up specification (delegates to utils)."""
+        return requires_specify_option(choice)
 
     def _handle_other_option(self, selected_choice: str, question: str) -> str:
         """Handle an 'Other' option by prompting for additional input.
@@ -360,31 +342,8 @@ class InteractiveSelector:
 
         from rich.prompt import Prompt
 
-        # Derive base label by stripping parenthetical hints
-        base_label = selected_choice.strip()
-        # Remove common trailing parentheticals like "(please specify)" or similar hints
-        if "(" in base_label and ")" in base_label:
-            try:
-                start = base_label.index("(")
-                end = base_label.rindex(")")
-                hint = base_label[start:end].lower()
-                if any(
-                    k in hint
-                    for k in [
-                        "please specify",
-                        "specify",
-                        "describe",
-                        "enter",
-                        "provide",
-                        "input",
-                        "details",
-                        "detail",
-                        "name",
-                    ]
-                ):
-                    base_label = (base_label[:start] + base_label[end + 1 :]).strip()
-            except ValueError:
-                pass
+        # Derive base label via shared utility
+        base_label = extract_base_label(selected_choice)
 
         while True:
             custom_input = Prompt.ask("Your details").strip()

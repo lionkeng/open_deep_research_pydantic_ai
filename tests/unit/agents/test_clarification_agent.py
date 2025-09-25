@@ -13,7 +13,7 @@ from pydantic import SecretStr
 from agents.base import AgentConfiguration, ResearchDependencies
 from agents.clarification import ClarificationAgent, ClarifyWithUser
 from models.api_models import APIKeys
-from models.clarification import ClarificationQuestion, ClarificationRequest
+from models.clarification import ClarificationChoice, ClarificationQuestion, ClarificationRequest
 from models.core import ResearchState
 
 
@@ -79,7 +79,9 @@ class TestClarificationAgent:
         from pydantic_ai.models.test import TestModel
         assert isinstance(agent.agent.model, TestModel)
 
-    async def test_needs_clarification_basic(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_needs_clarification_basic(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test basic case where clarification is needed."""
         # Arrange
         query = "Tell me about AI"
@@ -90,22 +92,34 @@ class TestClarificationAgent:
                     ClarificationQuestion(
                         question="What aspect of AI interests you most?",
                         question_type="choice",
-                        choices=["Machine Learning", "Natural Language Processing", "Computer Vision", "General Overview"],
+                        choices=[
+                            ClarificationChoice(id="ml", label="Machine Learning"),
+                            ClarificationChoice(id="nlp", label="Natural Language Processing"),
+                            ClarificationChoice(id="cv", label="Computer Vision"),
+                            ClarificationChoice(id="gen", label="General Overview"),
+                        ],
                         is_required=True,
-                        order=0
+                        order=0,
                     ),
                     ClarificationQuestion(
                         question="What is your technical background?",
                         question_type="choice",
-                        choices=["Non-technical", "Beginner", "Intermediate", "Expert"],
+                        choices=[
+                            ClarificationChoice(id="non", label="Non-technical"),
+                            ClarificationChoice(id="beg", label="Beginner"),
+                            ClarificationChoice(id="int", label="Intermediate"),
+                            ClarificationChoice(id="exp", label="Expert"),
+                        ],
                         is_required=True,
-                        order=1
+                        order=1,
                     )
                 ]
             ),
             reasoning="The query 'Tell me about AI' is too broad and lacks specific context",
             missing_dimensions=["SPECIFICITY & SCOPE", "AUDIENCE & DEPTH"],
-            assessment_reasoning="Query needs narrowing down to specific AI aspects and audience level"
+            assessment_reasoning=(
+                "Query needs narrowing down to specific AI aspects and audience level"
+            )
         )
 
         # Mock only the agent.run method
@@ -122,7 +136,9 @@ class TestClarificationAgent:
             assert result.output.missing_dimensions == ["SPECIFICITY & SCOPE", "AUDIENCE & DEPTH"]
             mock_run.assert_called_once_with(query, deps=sample_dependencies)
 
-    async def test_no_clarification_needed(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_no_clarification_needed(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test case where query is clear and no clarification is needed."""
         # Arrange
         query = "What is the current stock price of Apple Inc. (AAPL) as of market close today?"
@@ -131,7 +147,10 @@ class TestClarificationAgent:
             request=None,
             reasoning="Query is specific, time-bounded, and has clear deliverable expectations",
             missing_dimensions=[],
-            assessment_reasoning="All dimensions are satisfied: specific company, clear timeframe, simple factual request"
+            assessment_reasoning=(
+                "All dimensions are satisfied: specific company, clear timeframe, "
+                "simple factual request"
+            )
         )
 
         with patch.object(clarification_agent.agent, 'run', new_callable=AsyncMock) as mock_run:
@@ -145,7 +164,9 @@ class TestClarificationAgent:
             assert result.output.request is None
             assert len(result.output.missing_dimensions) == 0
 
-    async def test_complex_clarification_request(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_complex_clarification_request(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test complex query requiring multiple clarification questions."""
         # Arrange
         query = "Compare cloud providers"
@@ -156,23 +177,43 @@ class TestClarificationAgent:
                     ClarificationQuestion(
                         question="Which cloud providers should I compare?",
                         question_type="multi_choice",
-                        choices=["AWS", "Azure", "Google Cloud", "IBM Cloud", "Oracle Cloud", "Alibaba Cloud"],
+                        choices=[
+                            ClarificationChoice(id="aws", label="AWS"),
+                            ClarificationChoice(id="azure", label="Azure"),
+                            ClarificationChoice(id="gcp", label="Google Cloud"),
+                            ClarificationChoice(id="ibm", label="IBM Cloud"),
+                            ClarificationChoice(id="oracle", label="Oracle Cloud"),
+                            ClarificationChoice(id="alibaba", label="Alibaba Cloud"),
+                        ],
                         is_required=True,
-                        order=0
+                        order=0,
                     ),
                     ClarificationQuestion(
                         question="What is your primary use case?",
                         question_type="choice",
-                        choices=["Web hosting", "Machine Learning/AI", "Data storage", "Enterprise applications", "DevOps/CI-CD"],
+                        choices=[
+                            ClarificationChoice(id="web", label="Web hosting"),
+                            ClarificationChoice(id="ml", label="Machine Learning/AI"),
+                            ClarificationChoice(id="data", label="Data storage"),
+                            ClarificationChoice(id="enterprise", label="Enterprise applications"),
+                            ClarificationChoice(id="devops", label="DevOps/CI-CD"),
+                        ],
                         is_required=True,
-                        order=1
+                        order=1,
                     ),
                     ClarificationQuestion(
                         question="What factors are most important to you?",
                         question_type="multi_choice",
-                        choices=["Cost", "Performance", "Features", "Support", "Compliance", "Geographic coverage"],
+                        choices=[
+                            ClarificationChoice(id="cost", label="Cost"),
+                            ClarificationChoice(id="perf", label="Performance"),
+                            ClarificationChoice(id="feat", label="Features"),
+                            ClarificationChoice(id="support", label="Support"),
+                            ClarificationChoice(id="compliance", label="Compliance"),
+                            ClarificationChoice(id="geo", label="Geographic coverage"),
+                        ],
                         is_required=True,
-                        order=2
+                        order=2,
                     ),
                     ClarificationQuestion(
                         question="What is your estimated monthly budget?",
@@ -182,9 +223,17 @@ class TestClarificationAgent:
                     )
                 ]
             ),
-            reasoning="Cloud provider comparison requires specific providers, use cases, and evaluation criteria",
-            missing_dimensions=["SPECIFICITY & SCOPE", "DELIVERABLE FORMAT", "QUALITY & SOURCES"],
-            assessment_reasoning="Need to identify specific providers, use case, evaluation criteria, and budget constraints"
+            reasoning=(
+                "Cloud provider comparison requires specific providers, use cases, "
+                "and evaluation criteria"
+            ),
+            missing_dimensions=[
+                "SPECIFICITY & SCOPE", "DELIVERABLE FORMAT", "QUALITY & SOURCES"
+            ],
+            assessment_reasoning=(
+                "Need to identify specific providers, use case, evaluation criteria, "
+                "and budget constraints"
+            )
         )
 
         with patch.object(clarification_agent.agent, 'run', new_callable=AsyncMock) as mock_run:
@@ -199,7 +248,9 @@ class TestClarificationAgent:
             assert result.output.request.questions[0].question_type == "multi_choice"
             assert result.output.request.questions[3].is_required is False
 
-    async def test_handles_empty_query(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_handles_empty_query(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test handling of empty or minimal queries."""
         # Arrange
         query = ""
@@ -216,7 +267,10 @@ class TestClarificationAgent:
                 ]
             ),
             reasoning="No query provided",
-            missing_dimensions=["SPECIFICITY & SCOPE", "AUDIENCE & DEPTH", "QUALITY & SOURCES", "DELIVERABLE FORMAT"],
+            missing_dimensions=[
+                "SPECIFICITY & SCOPE", "AUDIENCE & DEPTH",
+                "QUALITY & SOURCES", "DELIVERABLE FORMAT"
+            ],
             assessment_reasoning="Empty query requires complete clarification"
         )
 
@@ -242,10 +296,12 @@ class TestClarificationAgent:
             with pytest.raises(Exception, match="LLM API error"):
                 await clarification_agent.agent.run(query, deps=sample_dependencies)
 
-    async def test_validates_output_structure(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_validates_output_structure(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test that output is properly validated and auto-corrected."""
         # Arrange
-        query = "Test validation"
+        # query = "Test validation"  # Unused variable
 
         # Test with invalid output (needs_clarification=True but no request)
         # The validator should auto-create a default request
@@ -273,7 +329,9 @@ class TestClarificationAgent:
         # Assert that validator nullified the request
         assert output2.request is None
 
-    async def test_question_ordering(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_question_ordering(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test that questions are properly ordered."""
         # Arrange
         query = "Research topic"
@@ -303,7 +361,9 @@ class TestClarificationAgent:
             assert sorted_questions[1].question == "Q2"
             assert sorted_questions[2].question == "Q3"
 
-    async def test_concurrent_requests(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_concurrent_requests(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test that multiple clarification requests can be processed concurrently."""
         # Arrange
         queries = ["What is AI?", "Explain blockchain", "How does quantum computing work?"]
@@ -334,7 +394,9 @@ class TestClarificationAgent:
                 assert queries[i] in result.output.reasoning
             assert mock_run.call_count == 3
 
-    async def test_required_vs_optional_questions(self, clarification_agent, mock_llm_response, sample_dependencies):
+    async def test_required_vs_optional_questions(
+        self, clarification_agent, mock_llm_response, sample_dependencies
+    ):
         """Test differentiation between required and optional questions."""
         # Arrange
         query = "Investment advice"

@@ -15,6 +15,7 @@ from models.research_executor import ResearchResults, ResearchSource
 from services.source_repository import summarize_sources_for_prompt
 
 from .base import AgentConfiguration, BaseResearchAgent, ResearchDependencies
+from .headline_tokens import GENERIC_SECTION_STARTERS
 from .report_clean_merge import (
     record_clean_merge_metrics,
     run_clean_merge,
@@ -23,6 +24,14 @@ from .report_clean_merge import (
 # Global system prompt template for report generation
 MINIMUM_CITATIONS = 3
 PREFERRED_MAX_CITATIONS = 5
+
+# Section outline instructions template
+SECTION_OUTLINE_INSTRUCTION = (
+    "Section Outline (use as semantic anchors; rewrite any generic or awkward "
+    "headings into concise 4–9‑word natural titles; remove openers like "
+    "'Finding', 'Source', 'Insight', 'Observation', 'Theme', 'Section'; "
+    "preserve the intended focus):"
+)
 
 CITATION_CONTRACT_TEMPLATE = """### Citation Contract
 - Cite every substantive statement with the matching source marker using the form `[Sx]`.
@@ -54,7 +63,7 @@ Sources Overview:
 {source_overview}
 
 {citation_contract}
-Section Outline Guidance:
+Section Outline Guidance (Readability-First):
 {section_outline_instructions}
 
 {conversation_context}
@@ -201,6 +210,20 @@ problem-solving. Our research shows 65% of jobs will transform, not disappear."
 - Present the report as a finished deliverable with no references to these
   instructions or to the writing process.
 
+## Heading Craftsmanship (Mandatory)
+- Rewrite any generic or awkward outline headings into clear, natural titles.
+- Length: 4–9 words; concise noun phrases preferred; avoid clauses with “which/that”.
+- Do not start headings with: Finding, Findings, Insight(s), Observation(s), Source(s), Theme,
+  Section, Topic, Summary, Overview.
+- No colon labels (e.g., "Implication: …"). No "Suggested Citation" language.
+- Each heading must accurately summarize the content of its section while improving readability.
+- Preserve the core topic/finding from the outline but express it as a natural, informative title.
+
+Bad → Good examples:
+- “Finding 2: Supply and Demand” → “Supply And Demand Are Re‑Balancing”
+- “Source Biggest Builders Which Commonly Have In‑house” → “Large DFW Builders With In‑House Crews”
+- “Observation: Permits And New Construction DFW” → “DFW Permits Signal Elevated New Supply”
+
 # OUTPUT STRUCTURE REQUIREMENTS
 
 ## 1. Executive Summary (10% of report)
@@ -256,6 +279,9 @@ Before finalizing, verify:
 □ Does flow follow logical progression?
 □ Is language appropriate for audience?
 □ Are visuals more effective than text?
+□ Do all section headings follow the Heading Craftsmanship rules?
+□ Average sentence length is 12–22 words; excessive passives reduced.
+□ Smooth transitions exist between paragraphs and sections.
 
 ## Professional Standards
 ✓ No unsupported claims
@@ -298,6 +324,7 @@ _GENERIC_HEADING_PREFIXES = {
     "point",
     "note",
 }
+_OUTLINE_REPLACE_PREFIXES = GENERIC_SECTION_STARTERS
 _LABEL_PREFIXES = {
     "finding",
     "insight",
@@ -469,10 +496,26 @@ def _adjust_outline_for_retry(metadata: Any) -> bool:
             continue
         title = item.title or ""
         bullet = next((b for b in getattr(item, "bullets", []) if b.strip()), "")
-        addition = _sanitize_outline_phrase(bullet)
-        if addition and addition.lower() not in title.lower():
-            item.title = f"{title} – {addition}" if title else addition
-            changed = True
+        addition = _expand_bullet_phrase(bullet)
+        if addition:
+            normalized_title = title.strip()
+            title_lower = normalized_title.lower()
+            addition_lower = addition.lower()
+            leading_token = title_lower.split()[0] if title_lower else ""
+
+            should_replace = (
+                not normalized_title
+                or addition_lower.startswith(title_lower)
+                or leading_token in _OUTLINE_REPLACE_PREFIXES
+            )
+
+            if should_replace:
+                if normalized_title != addition:
+                    item.title = addition
+                    changed = True
+            elif addition_lower not in title_lower:
+                item.title = f"{normalized_title} – {addition}"
+                changed = True
         if getattr(item, "bullets", None):
             expanded = [_expand_bullet_phrase(b) for b in item.bullets]
             item.bullets = [b for b in expanded if b]
@@ -567,16 +610,9 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                     if evidence_ids:
                         outline_lines.append("    Evidence IDs: " + ", ".join(evidence_ids[:6]))
 
-                outline_instructions = (
-                    "Section Outline (use these as section headings; "
-                    "refine wording only for clarity):\n" + "\n".join(outline_lines)
-                )
+                outline_instructions = SECTION_OUTLINE_INSTRUCTION + "\n" + "\n".join(outline_lines)
             else:
-                outline_instructions = (
-                    "Section Outline (use these as section headings; "
-                    "refine wording only for clarity):\n"
-                    "(no outline provided)"
-                )
+                outline_instructions = SECTION_OUTLINE_INSTRUCTION + "\n(no outline provided)"
 
             available_sources = (
                 len(research_results.sources)
@@ -690,7 +726,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
             # Start with overview
             summary_parts.append(
                 "This research report presents comprehensive findings "
-                "and actionable recommendations."
+                + "and actionable recommendations."
             )
 
             # Add key findings

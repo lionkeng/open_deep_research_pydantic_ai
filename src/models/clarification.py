@@ -1,4 +1,7 @@
-"""Data models for the clarification system with UUID-based identification."""
+"""Data models for the clarification system with UUID-based identification.
+
+Breaking change: Structured choices and answers (no legacy string parsing for non-text).
+"""
 
 from datetime import UTC, datetime
 from typing import Any, Final, Literal, Self
@@ -49,6 +52,24 @@ class MissingRequiredAnswerError(ValidationError):
         super().__init__(f"Required question '{question_id}' not answered")
 
 
+class ClarificationChoice(BaseModel):
+    """Single selectable option for choice questions."""
+
+    model_config = {"frozen": True}
+
+    id: str = Field(description="Stable ID for this choice (unique within question)")
+    label: str = Field(description="Human-readable label presented to the user")
+    requires_details: bool = Field(
+        default=False, description="If True, user must enter details when selecting"
+    )
+    is_other: bool = Field(
+        default=False, description="If True, represents an 'Other' free-text option"
+    )
+    details_prompt: str | None = Field(
+        default=None, description="Optional custom prompt when details are required"
+    )
+
+
 class ClarificationQuestion(BaseModel):
     """Individual clarification question with metadata."""
 
@@ -58,7 +79,7 @@ class ClarificationQuestion(BaseModel):
     question: str = Field(..., min_length=1, max_length=MAX_QUESTION_LENGTH)
     is_required: bool = True
     question_type: Literal["text", "choice", "multi_choice"] = "text"
-    choices: list[str] | None = Field(default=None, max_length=MAX_CHOICES)
+    choices: list[ClarificationChoice] | None = Field(default=None, max_length=MAX_CHOICES)
     context: str | None = Field(default=None, max_length=MAX_CONTEXT_LENGTH)
     order: int = 0
 
@@ -76,20 +97,43 @@ class ClarificationQuestion(BaseModel):
 
     @field_validator("choices")
     @classmethod
-    def validate_choices(cls, v: list[str] | None) -> list[str] | None:
-        """Validate choice options."""
+    def validate_choices(
+        cls, v: list[ClarificationChoice] | None
+    ) -> list[ClarificationChoice] | None:
+        """Validate choice options (structured only)."""
         if v is None:
             return None
         # Validate each choice
-        validated_choices: list[str] = []
+        validated: list[ClarificationChoice] = []
+        seen_ids: set[str] = set()
         for choice in v:
-            choice = choice.strip()
-            if not choice:
-                raise ValueError("Choice cannot be empty")
-            if len(choice) > MAX_CHOICE_LENGTH:
-                raise ValueError(f"Choice too long (max {MAX_CHOICE_LENGTH} chars)")
-            validated_choices.append(choice)
-        return validated_choices
+            # Auto-generate ID if missing/blank
+            cid = choice.id.strip() if isinstance(choice.id, str) else ""
+            if not cid:
+                choice = ClarificationChoice(
+                    id=str(uuid4()),
+                    label=choice.label,
+                    requires_details=choice.requires_details,
+                    is_other=choice.is_other,
+                    details_prompt=choice.details_prompt,
+                )
+                cid = choice.id
+            if choice.id in seen_ids:
+                # Regenerate clashing ID to ensure uniqueness
+                choice = ClarificationChoice(
+                    id=str(uuid4()),
+                    label=choice.label,
+                    requires_details=choice.requires_details,
+                    is_other=choice.is_other,
+                    details_prompt=choice.details_prompt,
+                )
+            if not choice.label or not choice.label.strip():
+                raise ValueError("Choice label cannot be empty")
+            if len(choice.label) > MAX_CHOICE_LENGTH:
+                raise ValueError(f"Choice label too long (max {MAX_CHOICE_LENGTH} chars)")
+            seen_ids.add(choice.id)
+            validated.append(choice)
+        return validated
 
     @model_validator(mode="after")
     def validate_choices_consistency(self) -> Self:
@@ -101,33 +145,50 @@ class ClarificationQuestion(BaseModel):
         return self
 
 
+class ChoiceSelection(BaseModel):
+    """Structured selection for a choice option."""
+
+    id: str = Field(description="Choice id selected")
+    details: str | None = Field(default=None, description="Optional details when required")
+
+
 class ClarificationAnswer(BaseModel):
-    """Answer to a clarification question."""
+    """Answer to a clarification question (structured)."""
 
     question_id: str
-    answer: str | None = Field(default=None, max_length=MAX_ANSWER_LENGTH)
+    # Exactly one of the following content fields is used depending on question_type
+    text: str | None = Field(default=None, max_length=MAX_ANSWER_LENGTH)
+    selection: ChoiceSelection | None = None
+    selections: list[ChoiceSelection] | None = None
     skipped: bool = False
     answered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @field_validator("answer")
+    @field_validator("text")
     @classmethod
-    def validate_answer(cls, v: str | None) -> str | None:
-        """Validate and sanitize answer."""
+    def validate_text(cls, v: str | None) -> str | None:
         if v is None:
             return None
-        # Strip whitespace
         v = v.strip()
-        if not v:
-            return None  # Will be caught by consistency check
-        return v
+        return v if v else None
 
     @model_validator(mode="after")
-    def validate_answer_consistency(self) -> Self:
-        """Validate that answer and skipped states are consistent."""
-        if not self.skipped and (self.answer is None or not self.answer.strip()):
-            raise ValueError("Answer must be provided if not skipped")
-        if self.skipped and self.answer is not None:
-            raise ValueError("Cannot have both answer and skipped=True")
+    def validate_content_exclusive(self) -> Self:
+        """Ensure mutually exclusive content fields and consistency with skipped."""
+        content_fields = [
+            ("text", self.text is not None and self.text.strip() != ""),
+            ("selection", self.selection is not None),
+            ("selections", bool(self.selections)),
+        ]
+        provided = [name for name, present in content_fields if present]
+        if self.skipped:
+            if provided:
+                raise ValueError("Cannot have both content and skipped=True")
+            return self
+        # Not skipped
+        if not provided:
+            raise ValueError("Content must be provided if not skipped")
+        if len(provided) > 1:
+            raise ValueError("Only one content field can be set per answer")
         return self
 
 
@@ -204,150 +265,60 @@ class ClarificationResponse(BaseModel):
                 errors.append(f"Required question '{question.id}' not answered")
 
         # Check no unknown question IDs and validate choices
-        valid_ids = {q.id for q in request.questions}
+        valid_question_ids = {q.id for q in request.questions}
         for answer in self.answers:
-            if answer.question_id not in valid_ids:
+            if answer.question_id not in valid_question_ids:
                 errors.append(f"Unknown question ID: {answer.question_id}")
                 continue
 
-            # Validate choice answers
+            # Validate answers by type using structured fields
             question = request.get_question_by_id(answer.question_id)
-            if question and not answer.skipped and answer.answer:
-                # Helper detectors for augmented answers
-                def _is_other_choice_text(text: str) -> bool:
-                    tl = text.lower()
-                    return any(
-                        phrase in tl
-                        for phrase in [
-                            "other (please specify",
-                            "other (specify",
-                            "other - please specify",
-                            "other (please describe",
-                            "other:",
-                            "something else",
-                            "none of the above (please specify",
-                        ]
+            if not question:
+                continue
+            if answer.skipped:
+                continue
+            if question.question_type == "text":
+                if not (answer.text and answer.text.strip()):
+                    errors.append(f"Missing text for question '{question.id}'")
+            elif question.question_type == "choice":
+                if not answer.selection:
+                    errors.append(f"Missing selection for question '{question.id}'")
+                    continue
+                choice = next(
+                    (c for c in (question.choices or []) if c.id == answer.selection.id), None
+                )
+                if not choice:
+                    errors.append(
+                        f"Invalid choice id '{answer.selection.id}' for question '{question.id}'"
                     )
-
-                def _requires_specify(choice_text: str) -> bool:
-                    tl = choice_text.lower()
-                    # Prefer hint inside parentheses when present
-                    if "(" in tl and ")" in tl:
-                        try:
-                            tl = tl[tl.index("(") + 1 : tl.rindex(")")]
-                        except ValueError:
-                            pass
-                    keywords = [
-                        "please specify",
-                        "specify",
-                        "describe",
-                        "enter",
-                        "provide",
-                        "input",
-                        "details",
-                        "detail",
-                        "name",
-                    ]
-                    return any(k in tl for k in keywords)
-
-                def _base_label(choice_text: str) -> str:
-                    label = choice_text.strip()
-                    if "(" in label and ")" in label:
-                        try:
-                            start = label.index("(")
-                            end = label.rindex(")")
-                            hint = label[start:end].lower()
-                            if any(
-                                k in hint
-                                for k in [
-                                    "please specify",
-                                    "specify",
-                                    "describe",
-                                    "enter",
-                                    "provide",
-                                    "input",
-                                    "details",
-                                    "detail",
-                                    "name",
-                                ]
-                            ):
-                                return (label[:start] + label[end + 1 :]).strip()
-                        except ValueError:
-                            return label
-                    return label
-
-                if question.question_type == "choice" and question.choices:
-                    # If the bare choice requests details, disallow returning it unchanged
-                    if answer.answer in question.choices and _requires_specify(answer.answer):
+                    continue
+                if (choice.requires_details or choice.is_other) and not (
+                    answer.selection.details and answer.selection.details.strip()
+                ):
+                    errors.append(
+                        f"Missing details for selection '{choice.label}' in "
+                        f"question '{question.id}'"
+                    )
+            elif question.question_type == "multi_choice":
+                if not answer.selections or not isinstance(answer.selections, list):
+                    errors.append(f"Missing selections for question '{question.id}'")
+                    continue
+                valid_choice_ids = {c.id: c for c in (question.choices or [])}
+                invalid: list[str] = []
+                for sel in answer.selections:
+                    ch = valid_choice_ids.get(sel.id)
+                    if not ch:
+                        invalid.append(sel.id)
+                        continue
+                    if (ch.requires_details or ch.is_other) and not (
+                        sel.details and sel.details.strip()
+                    ):
                         errors.append(
-                            f"Missing details for selection '{answer.answer}' "
-                            f"in question '{question.id}'."
+                            f"Missing details for selection '{ch.label}' in "
+                            f"question '{question.id}'"
                         )
-                    elif answer.answer not in question.choices:
-                        # Accept augmented answers for 'Other' and '(please specify)' choices
-                        accepted = False
-                        for ch in question.choices:
-                            if _is_other_choice_text(ch) and answer.answer.lower().startswith(
-                                "other:"
-                            ):
-                                # Must contain non-empty detail after 'Other:'
-                                if (
-                                    len(answer.answer.split(":", 1)) == 2
-                                    and answer.answer.split(":", 1)[1].strip()
-                                ):
-                                    accepted = True
-                                    break
-                            if _requires_specify(ch):
-                                base = _base_label(ch)
-                                if (
-                                    answer.answer.startswith(f"{base}:")
-                                    and len(answer.answer.split(":", 1)) == 2
-                                ):
-                                    if answer.answer.split(":", 1)[1].strip():
-                                        accepted = True
-                                        break
-                        if not accepted:
-                            errors.append(
-                                f"Invalid choice '{answer.answer}' for question '{question.id}'. "
-                                f"Valid choices: {', '.join(question.choices)}"
-                            )
-                elif question.question_type == "multi_choice" and question.choices:
-                    # For multi-choice, answer uses pipe separator to avoid conflicts with commas
-                    # Support both comma (legacy) and pipe (new) separators for compatibility
-                    if " | " in answer.answer:
-                        selected_choices = [c.strip() for c in answer.answer.split(" | ")]
-                    else:
-                        selected_choices = [c.strip() for c in answer.answer.split(",")]
-
-                    valid_set = set(question.choices)
-                    invalid_choices: list[str] = []
-                    for sel in selected_choices:
-                        if sel in valid_set:
-                            # If this label requires details, bare selection is invalid
-                            if _requires_specify(sel):
-                                invalid_choices.append(sel)
-                            continue
-                        # Accept augmented answers for 'Other' and '(please specify)'
-                        accepted = False
-                        for ch in question.choices:
-                            if _is_other_choice_text(ch) and sel.lower().startswith("other:"):
-                                if len(sel.split(":", 1)) == 2 and sel.split(":", 1)[1].strip():
-                                    accepted = True
-                                    break
-                            if _requires_specify(ch):
-                                base = _base_label(ch)
-                                if sel.startswith(f"{base}:") and len(sel.split(":", 1)) == 2:
-                                    if sel.split(":", 1)[1].strip():
-                                        accepted = True
-                                        break
-                        if not accepted:
-                            invalid_choices.append(sel)
-
-                    if invalid_choices:
-                        errors.append(
-                            f"Invalid choices {invalid_choices} for question '{question.id}'. "
-                            f"Valid choices: {', '.join(question.choices)}"
-                        )
+                if invalid:
+                    errors.append(f"Invalid choice ids {invalid} for question '{question.id}'")
 
         return errors
 
