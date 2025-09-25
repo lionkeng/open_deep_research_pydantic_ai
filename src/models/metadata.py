@@ -142,6 +142,20 @@ class ExecutionMetadata(BaseModel):
     results: list[dict[str, Any]] = Field(default_factory=list, description="Execution results")
 
 
+class ReportSectionPlan(BaseModel):
+    """Deterministic outline entry for the report generator."""
+
+    title: str = Field(description="Proposed section heading derived from research content")
+    bullets: list[str] = Field(
+        default_factory=list,
+        description="Key talking points to weave into the section body",
+    )
+    salient_evidence_ids: list[str] = Field(
+        default_factory=list,
+        description="Source identifiers most relevant to this section",
+    )
+
+
 class ReportMetadata(BaseModel):
     """Metadata specific to the report generator agent."""
 
@@ -150,6 +164,10 @@ class ReportMetadata(BaseModel):
     # Add report-specific fields as needed
     sections: list[dict[str, Any]] = Field(default_factory=list, description="Report sections")
     final: str | None = Field(default=None, description="Final report text")
+    section_outline: list[ReportSectionPlan] = Field(
+        default_factory=list,
+        description="Deterministic outline passed to the report generator",
+    )
 
 
 class ResearchMetadata(BaseModel):

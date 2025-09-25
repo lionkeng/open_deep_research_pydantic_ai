@@ -376,11 +376,23 @@ class ResearchWorkflow:
                             research_state.metadata.clarification.awaiting_clarification = True
 
                         callback = getattr(deps, "clarification_callback", None)
+                        clarification_response = None
                         if callback:
                             clarification_response = await callback(request_model, research_state)
                             if not clarification_response:
-                                logfire.info("Clarification pending via external handler")
-                                return False
+                                if getattr(callback, "_default_cli_handler", False):
+                                    logfire.info(
+                                        "No clarification provided via CLI (non-interactive); "
+                                        "proceeding"
+                                    )
+                                    if research_state.metadata:
+                                        clarification_meta = research_state.metadata.clarification
+                                        clarification_meta.awaiting_clarification = False
+                                        clarification_meta.request = None
+                                        clarification_meta.response = None
+                                else:
+                                    logfire.info("Clarification pending via external handler")
+                                    return False
                         else:
                             clarification_response = await handle_clarification_with_review(
                                 request=request_model,
@@ -563,6 +575,8 @@ class ResearchWorkflow:
                     request=request,
                     original_query=state.user_query,
                 )
+
+            default_cli_callback._default_cli_handler = True  # type: ignore[attr-defined]
 
             deps.clarification_callback = default_cli_callback
         else:

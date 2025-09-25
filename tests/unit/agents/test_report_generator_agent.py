@@ -7,12 +7,18 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from pydantic_ai import RunContext
+from pydantic_ai.usage import RunUsage
 
 from agents.base import AgentConfiguration, ResearchDependencies
-from agents.report_generator import ReportGeneratorAgent
+from agents.report_generator import (
+    ReportGeneratorAgent,
+    _adjust_outline_for_retry,
+    _evaluate_report_quality,
+)
 from models.api_models import APIKeys
 from models.core import ResearchStage, ResearchState
-from models.metadata import ResearchMetadata
+from models.metadata import ReportSectionPlan, ResearchMetadata
 from models.report_generator import (
     ReportMetadata as ReportMetadataModel,
 )
@@ -167,6 +173,60 @@ class TestReportGeneratorAgent:
             assert len(result.recommendations) > 0
 
     @pytest.mark.asyncio
+    async def test_dynamic_instructions_include_outline_block(
+        self,
+        report_generator_agent,
+        agent_dependencies,
+    ) -> None:
+        """Dynamic instructions should surface the deterministic section outline."""
+
+        agent_dependencies.research_state.metadata.report.section_outline = [
+            ReportSectionPlan(
+                title="Renewable Adoption Momentum",
+                bullets=[
+                    "Solar adoption surged in 2024",
+                    "Battery storage trimmed costs",
+                ],
+                salient_evidence_ids=["S1", "S2"],
+            )
+        ]
+
+        ctx = RunContext(
+            deps=agent_dependencies,
+            model=report_generator_agent.agent.model,
+            usage=RunUsage(),
+        )
+        runner = report_generator_agent.agent._instructions_functions[0]
+        prompt = await runner.run(ctx)
+
+        assert "Section Outline Guidance:" in prompt
+        assert "1. Renewable Adoption Momentum" in prompt
+        assert "    - Solar adoption surged in 2024" in prompt
+        assert "Evidence IDs: S1, S2" in prompt
+        assert "Integrate every bullet from the Section Outline" in prompt
+
+    @pytest.mark.asyncio
+    async def test_dynamic_instructions_outline_placeholder_when_missing(
+        self,
+        report_generator_agent,
+        agent_dependencies,
+    ) -> None:
+        """Instructions should note when no outline is available."""
+
+        agent_dependencies.research_state.metadata.report.section_outline = []
+
+        ctx = RunContext(
+            deps=agent_dependencies,
+            model=report_generator_agent.agent.model,
+            usage=RunUsage(),
+        )
+        runner = report_generator_agent.agent._instructions_functions[0]
+        prompt = await runner.run(ctx)
+
+        assert "Section Outline Guidance:" in prompt
+        assert "(no outline provided)" in prompt
+
+    @pytest.mark.asyncio
     async def test_report_structure_validation(self, report_generator_agent, agent_dependencies):
         """Test that report structure is properly validated."""
         mock_result = ResearchReport(
@@ -199,6 +259,174 @@ class TestReportGeneratorAgent:
             assert result.introduction is not None
             assert result.conclusions is not None
             assert len(result.sections) > 0
+
+    def test_evaluate_report_quality_detects_generic_headings(self) -> None:
+        """Quality heuristics should flag generic headings and label prefixes."""
+
+        report = ResearchReport(
+            title="Sample",
+            executive_summary="Summary",
+            introduction="Intro",
+            sections=[
+                ReportSection(
+                    title="Finding 1",
+                    content="Finding: Solar adoption rose sharply in 2024 [S1].",
+                    subsections=[],
+                    figures=[],
+                    citations=[],
+                ),
+                ReportSection(
+                    title="Insight",
+                    content="Implication: Battery storage adoption lowered costs [S2].",
+                    subsections=[],
+                    figures=[],
+                    citations=[],
+                ),
+            ],
+            conclusions="Conclusion",
+            recommendations=["Rec"],
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(),
+            quality_score=0.6,
+        )
+
+        evaluation = _evaluate_report_quality(report)
+
+        assert not evaluation.passed
+        assert evaluation.total_colon_prefixes >= 2
+        assert evaluation.bad_heading_ratio > 0.5
+
+    def test_evaluate_report_quality_passes_descriptive_headings(self) -> None:
+        """Descriptive headings with narrative content should pass validation."""
+
+        report = ResearchReport(
+            title="Sample",
+            executive_summary="Summary",
+            introduction="Intro",
+            sections=[
+                ReportSection(
+                    title="Solar Adoption Accelerates in Emerging Markets",
+                    content=(
+                        "Solar adoption accelerated in 2024 as installations doubled in key "
+                        "regions [S1]."
+                    ),
+                    subsections=[],
+                    figures=[],
+                    citations=["[S1]"],
+                ),
+                ReportSection(
+                    title="Storage Investments Cut Operating Costs",
+                    content=(
+                        "Organizations adopting lithium storage saw operating costs drop by 18 "
+                        "percent [S2]."
+                    ),
+                    subsections=[],
+                    figures=[],
+                    citations=["[S2]"],
+                ),
+            ],
+            conclusions="Conclusion",
+            recommendations=["Rec"],
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(),
+            quality_score=0.9,
+        )
+
+        evaluation = _evaluate_report_quality(report)
+
+        assert evaluation.passed
+        assert evaluation.total_colon_prefixes == 0
+        assert evaluation.bad_heading_ratio == 0.0
+
+    @pytest.mark.asyncio
+    async def test_run_retries_with_adjusted_outline_on_validation_failure(
+        self,
+        report_generator_agent,
+        agent_dependencies,
+    ) -> None:
+        """Report generation should retry once with an adjusted outline when validation fails."""
+
+        failing_report = ResearchReport(
+            title="Test",
+            executive_summary="Summary",
+            introduction="Intro",
+            sections=[
+                ReportSection(
+                    title="Finding 1",
+                    content="Finding: Solar adoption surged in 2024 [S1].",
+                    subsections=[],
+                    figures=[],
+                    citations=["[S1]"],
+                )
+            ],
+            conclusions="Conclusion",
+            recommendations=["Rec"],
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(),
+            quality_score=0.5,
+        )
+        passing_report = ResearchReport(
+            title="Test",
+            executive_summary="Summary",
+            introduction="Intro",
+            sections=[
+                ReportSection(
+                    title="Solar Adoption Surges in 2024",
+                    content=(
+                        "Solar adoption surged in 2024 as installations doubled across markets "
+                        "[S1]."
+                    ),
+                    subsections=[],
+                    figures=[],
+                    citations=["[S1]"],
+                )
+            ],
+            conclusions="Conclusion",
+            recommendations=["Rec"],
+            references=[],
+            appendices={},
+            metadata=ReportMetadataModel(),
+            quality_score=0.8,
+        )
+
+        agent_dependencies.research_state.metadata.report.section_outline = [
+            ReportSectionPlan(
+                title="Solar Adoption",
+                bullets=["Solar adoption surged in 2024"],
+                salient_evidence_ids=["S1"],
+            )
+        ]
+
+        with patch(
+            "agents.report_generator.BaseResearchAgent.run",
+            side_effect=[failing_report, passing_report],
+        ) as mock_base_run:
+            result = await report_generator_agent.run(agent_dependencies)
+
+        assert result is passing_report
+        assert mock_base_run.call_count == 2
+        outline_title = agent_dependencies.research_state.metadata.report.section_outline[0].title
+        assert "–" in outline_title or "solar" in outline_title.lower()
+
+    def test_adjust_outline_for_retry_expands_titles(self) -> None:
+        """Outline retry helper should incorporate bullet detail into headings."""
+
+        metadata = ResearchMetadata()
+        metadata.report.section_outline = [
+            ReportSectionPlan(
+                title="Storage",
+                bullets=["Battery storage trimmed costs"],
+                salient_evidence_ids=["S2"],
+            )
+        ]
+
+        changed = _adjust_outline_for_retry(metadata)
+
+        assert changed is True
+        assert "battery" in metadata.report.section_outline[0].title.lower()
 
     @pytest.mark.asyncio
     async def test_nested_sections_handling(self, report_generator_agent, agent_dependencies):

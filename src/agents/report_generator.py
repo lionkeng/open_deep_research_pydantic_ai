@@ -2,19 +2,23 @@
 
 import re
 from collections import OrderedDict
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 import logfire
-from pydantic import BaseModel
-from pydantic import Field as PydField
-from pydantic_ai import Agent as PydanticAgent
 from pydantic_ai import RunContext
 
+from models.metadata import ReportSectionPlan
 from models.report_generator import ResearchReport
 from models.research_executor import ResearchResults, ResearchSource
 from services.source_repository import summarize_sources_for_prompt
 
 from .base import AgentConfiguration, BaseResearchAgent, ResearchDependencies
+from .report_clean_merge import (
+    record_clean_merge_metrics,
+    run_clean_merge,
+)
 
 # Global system prompt template for report generation
 MINIMUM_CITATIONS = 3
@@ -50,6 +54,9 @@ Sources Overview:
 {source_overview}
 
 {citation_contract}
+Section Outline Guidance:
+{section_outline_instructions}
+
 {conversation_context}
 
 # CHAIN-OF-THOUGHT REPORT ARCHITECTURE
@@ -150,17 +157,18 @@ first-mover advantages. Three critical decisions will determine success or failu
 ## Example 2: Technical Report Finding
 **Context**: Database performance analysis
 **Finding Presentation**:
-"Finding: Query performance degrades exponentially beyond 10M records
-Evidence: Benchmark tests show 340% latency increase at 15M records
-Root Cause: Missing indexes on foreign key relationships
-Impact: User experience degradation affecting 67% of peak traffic
-Solution: Implement composite indexes (2-hour implementation)
-Validation: Test environment shows 89% performance recovery"
+"Query performance collapses once the dataset exceeds 10 million rows, "
+"with benchmark tests showing a 340% latency surge at 15 million records. "
+"The drag traces back to missing indexes on critical foreign keys, starving the "
+"optimizer of fast lookup paths. Implementing the recommended composite indexes "
+"takes roughly two hours, and validation in the staging environment already "
+"recovers 89% of lost performance while restoring a smooth experience for the 67% "
+"of traffic that hits the affected queries."
 
 **Why it works**:
-- Clear structure (Finding → Evidence → Solution)
-- Specific metrics (340%, 67%, 89%)
-- Actionable solution with timeline
+- Natural prose stitches together evidence, cause, and impact.
+- Specific metrics (340%, 67%, 89%) ground the narrative.
+- Actionable and time-bound solution builds confidence.
 
 ## Example 3: General Audience Explanation
 **Context**: AI impact on employment
@@ -184,6 +192,8 @@ problem-solving. Our research shows 65% of jobs will transform, not disappear."
 - Rephrase the blueprint requirements naturally inside the report. Never repeat
   instruction labels verbatim (avoid phrases such as "Most important insight:" or
   "Statement:").
+- Treat the Section Outline as scaffolding—elevate each bullet into polished prose
+  instead of restating labels.
 - Introduce bullet lists with a natural lead-in sentence; keep bullets concise and
   evidence-backed.
 - Build paragraphs around clear topic sentences and close each with a
@@ -209,9 +219,11 @@ problem-solving. Our research shows 65% of jobs will transform, not disappear."
 
 ## 3. Main Findings (50% of report)
 For each finding:
-- Start with a short heading or lead sentence that captures the core insight without
-  using the word "Statement".
-- Integrate evidence, analysis, and implications into flowing paragraphs that move
+- Use the corresponding heading from the Section Outline; refine wording only for
+  clarity while preserving the intended focus.
+- Integrate every bullet from the Section Outline into complete sentences; avoid
+  label prefixes such as "Implication:" or "Takeaway:".
+- Weave evidence, analysis, and implications into flowing paragraphs that move
   logically from data to meaning.
 - Use inline citations directly after the facts they support.
 - Conclude each finding with a forward-looking takeaway that links to decisions the
@@ -271,6 +283,220 @@ Your report should change how readers think and act.
 """
 
 
+_HEADING_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9']+")
+_GENERIC_HEADING_PREFIXES = {
+    "finding",
+    "insight",
+    "observation",
+    "pattern",
+    "analysis",
+    "detail",
+    "summary",
+    "section",
+    "topic",
+    "theme",
+    "point",
+    "note",
+}
+_LABEL_PREFIXES = {
+    "finding",
+    "insight",
+    "implication",
+    "analysis",
+    "observation",
+    "statement",
+    "takeaway",
+    "summary",
+    "key finding",
+    "key insight",
+    "key takeaway",
+    "impact",
+    "recommendation",
+    "action",
+    "risk",
+    "opportunity",
+}
+_BAD_HEADING_RATIO_THRESHOLD = 0.25
+_MIN_HEADING_OVERLAP = 0.3
+_MAX_COLON_PREFIXES = 2
+
+
+@dataclass(slots=True)
+class SectionQuality:
+    """Quality metrics for a single report section."""
+
+    title: str
+    overlap_ratio: float
+    is_generic: bool
+    colon_prefixes: int
+
+
+@dataclass(slots=True)
+class ReportQualityEvaluation:
+    """Aggregated heuristics for the generated report."""
+
+    sections: list[SectionQuality]
+    total_colon_prefixes: int
+
+    @property
+    def bad_heading_ratio(self) -> float:
+        if not self.sections:
+            return 0.0
+        bad = sum(
+            1
+            for section in self.sections
+            if section.is_generic or section.overlap_ratio < _MIN_HEADING_OVERLAP
+        )
+        return bad / len(self.sections)
+
+    @property
+    def passed(self) -> bool:
+        return (
+            self.bad_heading_ratio <= _BAD_HEADING_RATIO_THRESHOLD
+            and self.total_colon_prefixes <= _MAX_COLON_PREFIXES
+        )
+
+
+def _iter_report_sections(sections: Iterable[Any]) -> Iterable[Any]:
+    for section in sections:
+        yield section
+        subsections = getattr(section, "subsections", None)
+        if subsections:
+            yield from _iter_report_sections(subsections)
+
+
+def _tokenize(text: str) -> set[str]:
+    return {
+        match.group(0).lower()
+        for match in _HEADING_TOKEN_PATTERN.finditer(text or "")
+        if len(match.group(0)) > 2
+    }
+
+
+def _heading_overlap_ratio(title: str, content: str) -> float:
+    title_tokens = _tokenize(title)
+    if not title_tokens:
+        return 0.0
+    content_tokens = set(list(_tokenize(content))[:60])
+    if not content_tokens:
+        return 0.0
+    overlap = title_tokens & content_tokens
+    return len(overlap) / max(len(title_tokens), 1)
+
+
+def _is_generic_heading(title: str) -> bool:
+    simplified = title.strip().lower()
+    if not simplified:
+        return True
+    if len(simplified.split()) <= 1:
+        return True
+    if re.match(r"^(finding|insight|observation|pattern|section|theme)\s*\d+", simplified):
+        return True
+    for prefix in _GENERIC_HEADING_PREFIXES:
+        if simplified.startswith(prefix + " ") or simplified == prefix:
+            return True
+    return False
+
+
+def _count_colon_prefixed_labels(content: str) -> int:
+    count = 0
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("-"):
+            line = line.lstrip("-• ")
+        if ":" not in line:
+            continue
+        prefix, _ = line.split(":", 1)
+        prefix = prefix.lower().strip()
+        if not prefix or len(prefix) > 40:
+            continue
+        if any(prefix.startswith(label) for label in _LABEL_PREFIXES):
+            count += 1
+    return count
+
+
+def _evaluate_report_quality(report: ResearchReport) -> ReportQualityEvaluation:
+    sections = []
+    total_colon_prefixes = 0
+    for section in _iter_report_sections(report.sections):
+        title = getattr(section, "title", "") or ""
+        content = getattr(section, "content", "") or ""
+        overlap = _heading_overlap_ratio(title, content)
+        generic = _is_generic_heading(title)
+        colon_prefixes = _count_colon_prefixed_labels(content)
+        sections.append(
+            SectionQuality(
+                title=title,
+                overlap_ratio=overlap,
+                is_generic=generic,
+                colon_prefixes=colon_prefixes,
+            )
+        )
+        total_colon_prefixes += colon_prefixes
+
+    return ReportQualityEvaluation(sections=sections, total_colon_prefixes=total_colon_prefixes)
+
+
+def _record_quality_metrics(
+    evaluation: ReportQualityEvaluation,
+    deps: ResearchDependencies | None,
+) -> None:
+    payload = {
+        "bad_heading_ratio": round(evaluation.bad_heading_ratio, 3),
+        "total_colon_prefixes": evaluation.total_colon_prefixes,
+        "section_count": len(evaluation.sections),
+        "passed": evaluation.passed,
+    }
+    logfire.info("Report quality evaluation", **payload)
+
+    metrics = getattr(deps, "metrics_collector", None)
+    if metrics is not None:
+        metrics.record_quality_metric("report_bad_heading_ratio", evaluation.bad_heading_ratio)
+        metrics.record_quality_metric("report_colon_prefixes", evaluation.total_colon_prefixes)
+        metrics.record_quality_metric("report_validation_passed", evaluation.passed)
+
+
+def _adjust_outline_for_retry(metadata: Any) -> bool:
+    outline = getattr(getattr(metadata, "report", None), "section_outline", None)
+    if not outline:
+        return False
+
+    changed = False
+    for item in outline:
+        if not isinstance(item, ReportSectionPlan):
+            continue
+        title = item.title or ""
+        bullet = next((b for b in getattr(item, "bullets", []) if b.strip()), "")
+        addition = _sanitize_outline_phrase(bullet)
+        if addition and addition.lower() not in title.lower():
+            item.title = f"{title} – {addition}" if title else addition
+            changed = True
+        if getattr(item, "bullets", None):
+            expanded = [_expand_bullet_phrase(b) for b in item.bullets]
+            item.bullets = [b for b in expanded if b]
+    return changed
+
+
+def _sanitize_outline_phrase(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"\[S\d+\]", "", text).strip().rstrip(".;:")
+    if len(cleaned) > 60:
+        cleaned = cleaned[:60].rsplit(" ", 1)[0]
+    return cleaned
+
+
+def _expand_bullet_phrase(text: str) -> str:
+    cleaned = _sanitize_outline_phrase(text)
+    if not cleaned:
+        return ""
+    if cleaned[0].islower():
+        cleaned = cleaned[0].upper() + cleaned[1:]
+    return cleaned
+
+
 class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchReport]):
     """Agent responsible for generating comprehensive research reports.
 
@@ -319,6 +545,39 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 summary_findings = []
             key_findings = "; ".join(summary_findings[:3]) if summary_findings else ""
 
+            report_metadata = getattr(metadata, "report", None) if metadata else None
+            section_outline = list(getattr(report_metadata, "section_outline", []) or [])
+
+            if section_outline:
+                outline_lines: list[str] = []
+
+                for index, item in enumerate(section_outline, start=1):
+                    heading = getattr(item, "title", "").strip() or "Untitled Section"
+                    outline_lines.append(f"{index}. {heading}")
+
+                    bullets = [b.strip() for b in getattr(item, "bullets", []) if b.strip()]
+                    for bullet in bullets[:3]:
+                        outline_lines.append(f"    - {bullet}")
+
+                    evidence_ids = [
+                        evid.strip()
+                        for evid in getattr(item, "salient_evidence_ids", [])
+                        if evid and evid.strip()
+                    ]
+                    if evidence_ids:
+                        outline_lines.append("    Evidence IDs: " + ", ".join(evidence_ids[:6]))
+
+                outline_instructions = (
+                    "Section Outline (use these as section headings; "
+                    "refine wording only for clarity):\n" + "\n".join(outline_lines)
+                )
+            else:
+                outline_instructions = (
+                    "Section Outline (use these as section headings; "
+                    "refine wording only for clarity):\n"
+                    "(no outline provided)"
+                )
+
             available_sources = (
                 len(research_results.sources)
                 if research_results and research_results.sources
@@ -363,6 +622,7 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
                 source_overview=source_overview,
                 citation_contract=citation_contract,
                 conversation_context=conversation_context,
+                section_outline_instructions=outline_instructions,
             )
 
         # Register report generation tools
@@ -553,20 +813,65 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
         message_history: list[Any] | None = None,
         stream: bool = False,
     ) -> ResearchReport:
-        """Run the report generator with optional guarded clean-merge step."""
-
-        # 1) Produce the initial report with raw [Sx] markers
-        report = await super().run(deps=deps, message_history=message_history, stream=stream)
+        """Run the report generator with validation, retry, and clean-merge handling."""
 
         actual_deps = deps or self.dependencies
+        metadata = actual_deps.research_state.metadata if actual_deps else None
+
+        attempt = 0
+        max_attempts = 2
+        outline_adjusted = False
+        report: ResearchReport | None = None
+        evaluation: ReportQualityEvaluation | None = None
+
+        while attempt < max_attempts:
+            attempt += 1
+            report = await super().run(deps=deps, message_history=message_history, stream=stream)
+
+            evaluation = _evaluate_report_quality(report)
+            _record_quality_metrics(evaluation, actual_deps)
+
+            if evaluation.passed:
+                break
+
+            if attempt >= max_attempts:
+                logfire.warning(
+                    "Report quality validation failed after retries",
+                    bad_heading_ratio=round(evaluation.bad_heading_ratio, 3),
+                    colon_prefixes=evaluation.total_colon_prefixes,
+                )
+                break
+
+            if not outline_adjusted and metadata and _adjust_outline_for_retry(metadata):
+                outline_adjusted = True
+                logfire.info(
+                    "Retrying report generation with expanded outline",
+                    attempt=attempt + 1,
+                    bad_heading_ratio=round(evaluation.bad_heading_ratio, 3),
+                    colon_prefixes=evaluation.total_colon_prefixes,
+                )
+                continue
+
+            logfire.warning(
+                "Report quality validation failing and no retry available",
+                attempt=attempt,
+                bad_heading_ratio=round(evaluation.bad_heading_ratio, 3),
+                colon_prefixes=evaluation.total_colon_prefixes,
+            )
+
+            break
+
+        if report is None:
+            raise RuntimeError("Report generation returned no result")
+
         if actual_deps and getattr(actual_deps, "enable_llm_clean_merge", False):
             logfire.info("Clean-merge enabled; invoking guardrailed pass")
             try:
-                report = await self._guardrailed_clean_merge(actual_deps, report)
+                report, metrics = await run_clean_merge(deps=actual_deps, report=report)
+                record_clean_merge_metrics(metrics=metrics, deps=actual_deps)
             except Exception as exc:  # pragma: no cover - safety fallback
                 logfire.warning("Clean-merge failed; keeping original", error=str(exc))
 
-        # 2) Convert [Sx] markers to footnotes and audit
         if actual_deps:
             report = self._apply_citation_postprocessing(report, actual_deps)
         return report
@@ -798,72 +1103,9 @@ class ReportGeneratorAgent(BaseResearchAgent[ResearchDependencies, ResearchRepor
     def _markers_equal(a: str | None, b: str | None) -> bool:
         return ReportGeneratorAgent._extract_markers(a) == ReportGeneratorAgent._extract_markers(b)
 
-    async def _guardrailed_clean_merge(
-        self, deps: ResearchDependencies, report: ResearchReport
-    ) -> ResearchReport:
-        """Run an optional LLM rewrite to improve clarity while preserving [Sx] markers.
-
-        Only a subset of fields are rewritten, and the output is accepted
-        only if the citation marker sets are exactly equal.
-        """
-
-        class CleanMergeOutput(BaseModel):
-            executive_summary: str = PydField(
-                description="Improved executive summary preserving [Sx] markers"
-            )
-
-        # Build a small agent for the clean-merge
-        model = self.model
-        clean_agent: PydanticAgent[ResearchDependencies, CleanMergeOutput] = PydanticAgent(
-            model=model,
-            deps_type=type(deps),
-            output_type=CleanMergeOutput,
-            system_prompt=(
-                "You are a senior editor. Rewrite text for clarity and flow while strictly "
-                "preserving all [Sx] citation markers verbatim. "
-                "Do not add, remove, or renumber markers. "
-                "Return only JSON for the requested fields."
-            ),
-        )
-
-        # Prepare input focusing on the executive summary
-        input_summary = report.executive_summary or ""
-        if not input_summary.strip():
-            return report
-
-        prompt = (
-            "Improve the executive_summary. Keep the exact [Sx] markers present in the text.\n\n"
-            f"executive_summary:\n{input_summary}\n"
-        )
-
-        try:
-            import time
-
-            t0 = time.perf_counter()
-            result = await clean_agent.run(
-                deps=deps, message_history=[{"role": "user", "content": prompt}]
-            )
-            new_summary = result.output.executive_summary
-            # Guardrail: ensure marker sets identical
-            if self._markers_equal(input_summary, new_summary):
-                report.executive_summary = new_summary
-                dt = time.perf_counter() - t0
-                logfire.info(
-                    "Clean-merge applied",
-                    seconds=round(dt, 4),
-                    summary_len_before=len(input_summary),
-                    summary_len_after=len(new_summary),
-                )
-            else:
-                logfire.warning(
-                    "Clean-merge rejected due to marker mismatch",
-                    before=sorted(self._extract_markers(input_summary)),
-                    after=sorted(self._extract_markers(new_summary)),
-                )
-        except Exception as exc:  # pragma: no cover - external call
-            logfire.warning("Clean-merge LLM call failed; using original", error=str(exc))
-
-        return report
+    # --------------------
+    # Style normalization
+    # --------------------
 
 
 # Lazy initialization of module-level instance

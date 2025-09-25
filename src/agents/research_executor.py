@@ -48,6 +48,7 @@ from .research_executor_tools import (
     generate_executive_summary,
     identify_theme_clusters,
 )
+from .research_outline import build_section_outline
 
 RESEARCH_EXECUTOR_SYSTEM_PROMPT = dedent(
     """
@@ -486,6 +487,12 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
         clusters = await identify_theme_clusters(executor_deps, findings)
         contradictions = await detect_contradictions(executor_deps, findings)
         patterns = await analyze_patterns(executor_deps, findings, clusters)
+
+        outline = build_section_outline(clusters)
+        try:
+            deps.research_state.metadata.report.section_outline = outline
+        except Exception:  # pragma: no cover - metadata failures should not break execution
+            logfire.warning("Failed to record section outline in metadata")
 
         # Optional: embedding-aware convergence analysis (uses SynthesisTools)
         convergence_points_count = 0
