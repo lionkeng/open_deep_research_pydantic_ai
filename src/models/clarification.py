@@ -81,7 +81,7 @@ class ClarificationQuestion(BaseModel):
         if v is None:
             return None
         # Validate each choice
-        validated_choices = []
+        validated_choices: list[str] = []
         for choice in v:
             choice = choice.strip()
             if not choice:
@@ -111,7 +111,7 @@ class ClarificationAnswer(BaseModel):
 
     @field_validator("answer")
     @classmethod
-    def validate_answer(cls, v: str | None, info: Any) -> str | None:
+    def validate_answer(cls, v: str | None) -> str | None:
         """Validate and sanitize answer."""
         if v is None:
             return None
@@ -256,7 +256,21 @@ class ClarificationResponse(BaseModel):
                         try:
                             start = label.index("(")
                             end = label.rindex(")")
-                            if "please" in label[start:end].lower():
+                            hint = label[start:end].lower()
+                            if any(
+                                k in hint
+                                for k in [
+                                    "please specify",
+                                    "specify",
+                                    "describe",
+                                    "enter",
+                                    "provide",
+                                    "input",
+                                    "details",
+                                    "detail",
+                                    "name",
+                                ]
+                            ):
                                 return (label[:start] + label[end + 1 :]).strip()
                         except ValueError:
                             return label
@@ -266,8 +280,8 @@ class ClarificationResponse(BaseModel):
                     # If the bare choice requests details, disallow returning it unchanged
                     if answer.answer in question.choices and _requires_specify(answer.answer):
                         errors.append(
-                            "Missing details for selection "
-                            f"'{answer.answer}' in question '{question.id}'."
+                            f"Missing details for selection '{answer.answer}' "
+                            f"in question '{question.id}'."
                         )
                     elif answer.answer not in question.choices:
                         # Accept augmented answers for 'Other' and '(please specify)' choices
