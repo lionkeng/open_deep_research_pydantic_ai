@@ -31,7 +31,7 @@ class SessionConfig(BaseModel):
 
     ttl_seconds: int = Field(default=3600, ge=60, le=86400)
     max_clarifications: int = Field(default=3, ge=0, le=10)
-    clarification_timeout_seconds: int = Field(default=300, ge=30, le=1800)
+    clarification_timeout_seconds: int = Field(default=600, ge=30, le=1800)
     enable_caching: bool = Field(default=True)
     max_retries: int = Field(default=3, ge=0, le=10)
 

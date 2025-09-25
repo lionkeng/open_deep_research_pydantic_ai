@@ -22,6 +22,27 @@ def _env_secret(name: str) -> SecretStr | None:
     return SecretStr(v)
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Parse a boolean flag from environment variables.
+
+    Accepts: "1", "true", "TRUE", "True" as True.
+    """
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip() in {"1", "true", "TRUE", "True"}
+
+
+def _env_float_default(name: str, default: float) -> float:
+    v = os.getenv(name)
+    if v is None or not v.strip():
+        return default
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
 class APIConfig(BaseModel):
     """API configuration with validation."""
 
@@ -42,6 +63,51 @@ class APIConfig(BaseModel):
     )
 
     max_retries: int = Field(default=3, ge=0, le=10, description="Maximum retries for LLM calls")
+
+    # Synthesis feature flags (read once at startup)
+    enable_embedding_similarity: bool = Field(
+        default_factory=lambda: _env_flag("ENABLE_EMBEDDING_SIMILARITY", False),
+        description="Enable embedding-based semantic similarity during synthesis",
+    )
+    embedding_similarity_threshold: float = Field(
+        default_factory=lambda: _env_float_default("EMBEDDING_SIMILARITY_THRESHOLD", 0.55),
+        ge=0.0,
+        le=1.0,
+        description="Cosine similarity threshold for grouping when embeddings are enabled",
+    )
+    enable_llm_clean_merge: bool = Field(
+        default_factory=lambda: _env_flag("ENABLE_LLM_CLEAN_MERGE", False),
+        description="Enable guardrailed LLM clean-merge for report text",
+    )
+
+    # Dedup configuration (Phase 1 safety knobs)
+    dedup_similarity_threshold: float = Field(
+        default_factory=lambda: _env_float_default("DEDUP_SIMILARITY_THRESHOLD", 0.7),
+        ge=0.0,
+        le=1.0,
+        description="Cosine threshold used specifically for dedup merge",
+    )
+    dedup_max_findings: int = Field(
+        default=int(os.getenv("DEDUP_MAX_FINDINGS", "200")),
+        ge=0,
+        description="Simple cap for number of findings considered in dedup (0 = no cap)",
+    )
+
+    # Convergence analysis caps/sampling
+    convergence_max_claims: int = Field(
+        default=int(os.getenv("CONVERGENCE_MAX_CLAIMS", "100")),
+        ge=0,
+        description="Global cap on number of claims considered for convergence (0 = no cap)",
+    )
+    convergence_per_source_cap: int = Field(
+        default=int(os.getenv("CONVERGENCE_PER_SOURCE_CAP", "20")),
+        ge=0,
+        description="Per-source cap on number of claims considered (0 = no per-source cap)",
+    )
+    convergence_sampling_strategy: str = Field(
+        default=os.getenv("CONVERGENCE_SAMPLING", "longest"),
+        description="Sampling strategy when capping: longest|first|random (deterministic)",
+    )
 
     # Backward compatibility properties
     @property

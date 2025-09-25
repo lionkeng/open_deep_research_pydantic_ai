@@ -268,12 +268,13 @@ class ClarifyWithUser(BaseModel):
         """Ensure request presence matches needs_clarification."""
         if self.needs_clarification and not self.request:
             # If clarification is needed but no request provided, create a minimal one
-            # This shouldn't happen if the agent works correctly, but provides fallback
+            # Use explicit typed construction to satisfy static typing
             self.request = ClarificationRequest(
                 questions=[
                     ClarificationQuestion(
                         question="Could you provide more details about your research needs?",
                         is_required=True,
+                        question_type="text",
                     )
                 ]
             )
@@ -349,7 +350,9 @@ objects within a ClarificationRequest. Each question should:
 - Be marked as required or optional appropriately
 - Have an order value indicating priority (0 = highest)
 - Include question_type: "text", "choice", or "multi_choice"
-- Provide choices array for choice questions
+- For choice/multi_choice, provide choices as an array of objects with fields:
+  { id: string, label: string, requires_details?: boolean, is_other?: boolean,
+    details_prompt?: string }
 - Include context field when additional explanation helps
 """
 

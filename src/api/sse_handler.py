@@ -100,7 +100,8 @@ class SSEHandler:
 
                 try:
                     # Wait for events with timeout for heartbeat
-                    event = await asyncio.wait_for(self.event_queue.get(), timeout=30.0)
+                    # Shorter timeout helps keep clients alive during long phases
+                    event = await asyncio.wait_for(self.event_queue.get(), timeout=15.0)
 
                     # Format event based on type
                     if isinstance(event, StreamingUpdateEvent):
@@ -241,7 +242,7 @@ def create_sse_response(
             "Connection": "keep-alive",
         },
         media_type="text/event-stream",
-        ping=20,  # Send ping every 20 seconds to keep connection alive
+        ping=15,  # Send ping every 15 seconds to keep connection alive
         ping_message_factory=lambda: ServerSentEvent(
             data=PingMessage().model_dump_json(), event=SSEEventType.PING
         ),

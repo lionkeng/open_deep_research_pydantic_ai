@@ -108,6 +108,18 @@ export ANTHROPIC_API_KEY="your-anthropic-key"  # Optional
 export TAVILY_API_KEY="your-tavily-key"  # Optional for search
 ```
 
+### Optional Synthesis Enhancements (Feature Flags)
+
+Two opt-in improvements are available for synthesis and reporting. They are disabled by default.
+
+- Embedding-based semantic grouping
+  - Enable: `ENABLE_EMBEDDING_SIMILARITY=1`
+  - Optional threshold: `EMBEDDING_SIMILARITY_THRESHOLD` (default 0.55)
+  - Backend: if `OPENAI_API_KEY` is set, OpenAI embeddings are used automatically in the workflow.
+- Guardrailed LLM clean-merge
+  - Enable: `ENABLE_LLM_CLEAN_MERGE=1`
+  - Improves clarity while preserving `[Sx]` markers exactly; rejects rewrites that change markers.
+
 ## Usage
 
 ### Command-Line Interface
@@ -188,10 +200,22 @@ if state.final_report:
 ## Key Differences from Original
 
 - **Framework**: Pydantic-AI instead of LangGraph
-- **Architecture**: Event-driven instead of graph-based state machines
 - **Communication**: Event Bus pattern for agent coordination
 - **Streaming**: Native SSE and CLI streaming support
 - **Type Safety**: Full Pydantic validation throughout
+
+## Todo Items
+
+- Features
+
+  - [ ] Generate charts and relevant graphics in the report
+  - [ ] Configurable writing style
+  - [ ] Durable execution with temporal.io
+
+- Enhancements
+  - [ ] Fix broken tests
+  - [ ] Fix Pyright warnings and errors
+  - [ ] Fix and improve agent evals
 
 ## Contributing
 

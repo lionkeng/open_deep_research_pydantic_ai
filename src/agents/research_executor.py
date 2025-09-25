@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from textwrap import dedent
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -18,6 +19,7 @@ from agents.base import (
     BaseResearchAgent,
     ResearchDependencies,
 )
+from core.config import config as global_config
 from models.api_models import APIKeys
 from models.core import ResearchMetadata, ResearchStage, ResearchState
 from models.research_executor import (
@@ -31,8 +33,11 @@ from models.research_executor import (
     SynthesisMetadata,
     ThemeCluster,
 )
+from services.dedup import DeDupService
 from services.source_repository import InMemorySourceRepository, ensure_repository
 from services.source_validation import create_default_validation_pipeline
+from services.synthesis_tools import SearchResult as SynthesisSearchResult
+from services.synthesis_tools import SynthesisTools
 
 from .research_executor_tools import (
     ResearchExecutorDependencies,
@@ -43,6 +48,7 @@ from .research_executor_tools import (
     generate_executive_summary,
     identify_theme_clusters,
 )
+from .research_outline import build_section_outline
 
 RESEARCH_EXECUTOR_SYSTEM_PROMPT = dedent(
     """
@@ -105,7 +111,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
                 ## Dynamic Research Context
                 - Stage: {stage}
                 - Query: {query}
-                - Search Queries: {len(getattr(search_queries, 'queries', []) or [])}
+                - Search Queries: {len(getattr(search_queries, "queries", []) or [])}
                 - Search Results: {len(search_results)}
 
                 ### Search Queries Overview
@@ -354,6 +360,7 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             "original_query": deps.research_state.user_query,
             "search_results": getattr(deps, "search_results", []) or [],
             "source_repository": getattr(deps, "source_repository", None),
+            "embedding_service": getattr(deps, "embedding_service", None),
         }
 
         for attr in (
@@ -440,9 +447,263 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
                         )
                 findings.append(finding)
 
+        # Metrics: record pre-dedup count
+        initial_findings_count = len(findings)
+
+        # Phase 1: optional embedding-based deduplication
+        try:
+            if (
+                getattr(deps, "enable_embedding_similarity", False)
+                and getattr(deps, "embedding_service", None) is not None
+            ):
+                # Simple cap to bound O(n^2) cost
+                cap = max(0, int(getattr(global_config, "dedup_max_findings", 0)))
+                threshold = float(getattr(global_config, "dedup_similarity_threshold", 0.7))
+                if cap and len(findings) > cap:
+                    top = sorted(findings, key=lambda f: f.importance_score, reverse=True)[:cap]
+                    rest = [f for f in findings if f not in top]
+                    deduper = DeDupService(
+                        embedding_service=getattr(deps, "embedding_service", None),
+                        threshold=threshold,
+                    )
+                    merged_top = await deduper.merge(top)
+                    findings = merged_top + rest
+                    logfire.info(
+                        "Dedup applied with cap",
+                        cap=cap,
+                        in_count=len(top),
+                        out_count=len(merged_top),
+                        rest=len(rest),
+                    )
+                else:
+                    deduper = DeDupService(
+                        embedding_service=getattr(deps, "embedding_service", None),
+                        threshold=threshold,
+                    )
+                    findings = await deduper.merge(findings)
+        except Exception as exc:  # pragma: no cover - safe fallback
+            logfire.warning("Dedup merge failed", error=str(exc))
+
         clusters = await identify_theme_clusters(executor_deps, findings)
         contradictions = await detect_contradictions(executor_deps, findings)
         patterns = await analyze_patterns(executor_deps, findings, clusters)
+
+        outline = build_section_outline(clusters)
+        try:
+            deps.research_state.metadata.report.section_outline = outline
+        except Exception:  # pragma: no cover - metadata failures should not break execution
+            logfire.warning("Failed to record section outline in metadata")
+
+        # Optional: embedding-aware convergence analysis (uses SynthesisTools)
+        convergence_points_count = 0
+        try:
+            if getattr(deps, "enable_embedding_similarity", False) and getattr(
+                executor_deps, "search_results", None
+            ):
+                # Group aggregated search_results by query and build lightweight
+                # items with just a `content` attribute for analysis
+                grouped: dict[str, list[SimpleNamespace]] = {}
+                for item in executor_deps.search_results:
+                    q = str(item.get("query", "unknown"))
+                    content = item.get("content") or item.get("snippet") or ""
+                    if not content:
+                        continue
+                    grouped.setdefault(q, []).append(SimpleNamespace(content=content))
+
+                search_payload: list[SynthesisSearchResult] = [
+                    SynthesisSearchResult(query=q, results=items) for q, items in grouped.items()
+                ]
+
+                tools = SynthesisTools(
+                    embedding_service=getattr(deps, "embedding_service", None),
+                    enable_embedding_similarity=getattr(deps, "enable_embedding_similarity", False),
+                    similarity_threshold=getattr(deps, "similarity_threshold", 0.55),
+                )
+                # Precompute embeddings in the caller and pass vectors in
+                precomputed_vectors = None
+                try:
+                    if getattr(deps, "embedding_service", None) is not None:
+                        # Important: extract_claims_for_convergence applies sampling/caps
+                        # so vectors align with what analyze_convergence will use.
+                        claims = tools.extract_claims_for_convergence(search_payload)
+                        texts = [c for c, _ in claims]
+                        if texts:
+                            import asyncio as _asyncio
+                            from time import perf_counter as _pc
+
+                            _t0 = _pc()
+                            precomputed_vectors = await _asyncio.wait_for(
+                                deps.embedding_service.embed_batch(texts),  # type: ignore[union-attr]
+                                timeout=20.0,
+                            )
+                            logfire.info(
+                                "Convergence embedding precompute",
+                                count=len(texts),
+                                duration_ms=int((_pc() - _t0) * 1000),
+                            )
+                except Exception as exc:
+                    logfire.warning("Convergence embedding precompute failed", error=str(exc))
+
+                convergence_points = await tools.analyze_convergence(
+                    search_payload, precomputed_vectors=precomputed_vectors or None
+                )
+                convergence_points_count = len(convergence_points)
+                logfire.info(
+                    "Convergence analysis",
+                    embedding_similarity=getattr(deps, "enable_embedding_similarity", False),
+                    points=convergence_points_count,
+                )
+        except Exception as exc:  # pragma: no cover - best-effort logging
+            logfire.warning("Convergence analysis failed", error=str(exc))
+        # Ranking: centrality/support/query alignment to inform summary order
+        query_alignment_avg: float | None = None
+        try:
+            if (
+                getattr(deps, "enable_embedding_similarity", False)
+                and getattr(deps, "embedding_service", None) is not None
+            ):
+                # Embed findings and query
+                finding_texts = [f.finding for f in findings]
+                vectors = await deps.embedding_service.embed_batch(finding_texts)  # type: ignore[union-attr]
+                # Query embedding
+                query_vec = (
+                    (await deps.embedding_service.embed_batch([query]))[0] if vectors else []
+                )  # type: ignore[union-attr]
+
+                # Build index per finding for quick lookup
+                idx_map = {id(f): i for i, f in enumerate(findings)}
+
+                # Compute per-cluster centroids and selection scores off-thread
+                import asyncio as _asyncio
+
+                import numpy as np  # local import for scoring only
+
+                def _compute_ranking(
+                    clusters_in, findings_in, vectors_in, query_vec_in, idx_map_in
+                ) -> tuple[dict[int, float], float, int]:
+                    def _cos(u: list[float], v: list[float]) -> float:
+                        import math
+
+                        if not u or not v:
+                            return 0.0
+                        dot = sum(a * b for a, b in zip(u, v, strict=False))
+                        nu = math.sqrt(sum(a * a for a in u))
+                        nv = math.sqrt(sum(b * b for b in v))
+                        return (dot / (nu * nv)) if nu and nv else 0.0
+
+                    sel_scores: dict[int, float] = {}
+                    a_sum = 0.0
+                    a_cnt = 0
+                    for cluster in clusters_in:
+                        member_idxs = [idx_map_in.get(id(f), -1) for f in cluster.findings]
+                        member_idxs = [
+                            i for i in member_idxs if i >= 0 and vectors_in and i < len(vectors_in)
+                        ]
+                        if not member_idxs:
+                            continue
+                        mat = np.array([vectors_in[i] for i in member_idxs])
+                        centroid = mat.mean(axis=0)
+                        for f in cluster.findings:
+                            i = idx_map_in.get(id(f), -1)
+                            if i < 0 or not vectors_in:
+                                continue
+                            centrality = _cos(vectors_in[i], centroid.tolist())
+                            support = float(len(f.source_ids))
+                            q_align = _cos(vectors_in[i], query_vec_in) if query_vec_in else 0.0
+                            import math as _m
+
+                            support_n = _m.log1p(support) / _m.log1p(5.0)
+                            score = 0.5 * centrality + 0.3 * support_n + 0.2 * q_align
+                            sel_scores[id(f)] = float(score)
+                            a_sum += float(q_align)
+                            a_cnt += 1
+                    return sel_scores, a_sum, a_cnt
+
+                from time import perf_counter as _pc
+
+                _t_rank = _pc()
+                selection_scores, align_sum, align_count = await _asyncio.to_thread(
+                    _compute_ranking, clusters, findings, vectors, query_vec, idx_map
+                )
+                for f in findings:
+                    s = selection_scores.get(id(f))
+                    if s is not None:
+                        f.metadata["selection_score"] = float(s)
+                logfire.info(
+                    "Ranking applied for summary candidates",
+                    duration_ms=int((_pc() - _t_rank) * 1000),
+                )
+                if align_count:
+                    query_alignment_avg = align_sum / align_count
+
+                # Phase 3 (partial): representative citation ordering per finding
+                # Reorder each finding's source_ids so that the most representative
+                # sources (by cosine similarity to the finding text) come first.
+                try:
+                    from time import perf_counter as _pc
+
+                    _t_reorder = _pc()
+                    for f in findings:
+                        if not f.source_ids:
+                            continue
+                        # Build comparable texts for each source: title + snippet
+                        candidate_texts: list[tuple[str, str]] = []
+                        for sid in f.source_ids[:5]:  # limit to first 5
+                            # We stored snippet in metadata during extraction; fall back to title
+                            text = (
+                                f.metadata.get("snippet", "")
+                                if isinstance(f.metadata, dict)
+                                else ""
+                            )
+                            title = f.source.title if (f.source and f.source.title) else ""
+                            candidate_texts.append((sid, (title + " " + text).strip()))
+
+                        if not candidate_texts:
+                            continue
+                        # Embed finding once and candidates in a batch
+                        cand_texts_only = [t for _, t in candidate_texts]
+                        import asyncio as _asyncio
+
+                        find_vec = (
+                            await _asyncio.wait_for(
+                                deps.embedding_service.embed_batch([f.finding]),  # type: ignore[union-attr]
+                                timeout=10.0,
+                            )
+                        )[0]
+                        cand_vecs = await _asyncio.wait_for(
+                            deps.embedding_service.embed_batch(cand_texts_only),  # type: ignore[union-attr]
+                            timeout=10.0,
+                        )
+
+                        def cos(u: list[float], v: list[float]) -> float:
+                            import math
+
+                            if not u or not v:
+                                return 0.0
+                            dot = sum(a * b for a, b in zip(u, v, strict=False))
+                            nu = math.sqrt(sum(a * a for a in u))
+                            nv = math.sqrt(sum(b * b for b in v))
+                            return (dot / (nu * nv)) if nu and nv else 0.0
+
+                        scored = []
+                        for (sid, _txt), v in zip(candidate_texts, cand_vecs, strict=False):
+                            scored.append((sid, cos(find_vec, v)))
+                        scored.sort(key=lambda x: x[1], reverse=True)
+                        # Reorder source_ids by similarity (keep ones not in candidates at the end)
+                        ordered = [sid for sid, _ in scored] + [
+                            sid for sid in f.source_ids if sid not in {s for s, _ in scored}
+                        ]
+                        f.source_ids = ordered[:]
+                    logfire.info(
+                        "Source citation reordering completed",
+                        duration_ms=int((_pc() - _t_reorder) * 1000),
+                    )
+                except Exception as _exc:
+                    # Best effort only; keep existing order if anything fails
+                    pass
+        except Exception as exc:  # pragma: no cover
+            logfire.warning("Ranking step failed", error=str(exc))
+
         summary = await generate_executive_summary(
             executor_deps,
             findings,
@@ -455,6 +716,34 @@ class ResearchExecutorAgent(BaseResearchAgent[ResearchDependencies, ResearchResu
             clusters,
             contradictions,
         )
+        # Record convergence count as a supplementary metric
+        try:
+            if quality_metrics is not None:
+                quality_metrics["convergence_points"] = float(convergence_points_count)
+                # Dedup merge ratio
+                if initial_findings_count > 0:
+                    quality_metrics["dedup_merge_ratio"] = max(
+                        0.0, 1.0 - (len(findings) / initial_findings_count)
+                    )
+                # Avg support per finding
+                if findings:
+                    quality_metrics["avg_support_per_finding"] = sum(
+                        len(f.source_ids) for f in findings
+                    ) / len(findings)
+                else:
+                    quality_metrics["avg_support_per_finding"] = 0.0
+                # Avg cluster coherence
+                if clusters:
+                    quality_metrics["avg_cluster_coherence"] = sum(
+                        c.coherence_score for c in clusters
+                    ) / len(clusters)
+                else:
+                    quality_metrics["avg_cluster_coherence"] = 0.0
+                # Query alignment avg if available
+                if query_alignment_avg is not None:
+                    quality_metrics["query_alignment_avg"] = float(query_alignment_avg)
+        except Exception:
+            pass
 
         overall_quality = quality_metrics.get("overall_quality", 0.0) if quality_metrics else 0.0
 

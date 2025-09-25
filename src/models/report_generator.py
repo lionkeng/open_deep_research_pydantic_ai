@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class ReportSection(BaseModel):
@@ -43,6 +43,8 @@ class ReportMetadata(BaseModel):
 class ResearchReport(BaseModel):
     """Output model for report generator agent."""
 
+    model_config = ConfigDict(validate_assignment=True)
+
     title: str = Field(description="Report title")
     executive_summary: str = Field(description="Executive summary of the report")
     introduction: str = Field(description="Report introduction")
@@ -52,7 +54,25 @@ class ResearchReport(BaseModel):
     references: list[str] = Field(default_factory=list, description="List of references")
     appendices: dict[str, str] = Field(default_factory=dict, description="Report appendices")
     metadata: ReportMetadata = Field(default_factory=ReportMetadata, description="Report metadata")
-    quality_score: float = Field(ge=0.0, le=1.0, description="Overall quality score of the report")
+    quality_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Overall quality score of the report",
+        validation_alias=AliasChoices("quality_score", "overall_quality_score"),
+        serialization_alias="overall_quality_score",
+    )
+
+    @property
+    def overall_quality_score(self) -> float:
+        """Backwards-compatible accessor for the quality score."""
+
+        return self.quality_score
+
+    @overall_quality_score.setter
+    def overall_quality_score(self, value: float) -> None:
+        """Allow setting quality via the legacy attribute name."""
+
+        self.quality_score = value
 
 
 # Update forward references

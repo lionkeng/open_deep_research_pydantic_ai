@@ -9,6 +9,7 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.table import Table
 
 from models.clarification import (
+    ChoiceSelection,
     ClarificationAnswer,
     ClarificationQuestion,
     ClarificationRequest,
@@ -164,7 +165,9 @@ def ask_text_question(question: ClarificationQuestion, console: Console) -> str 
     return response
 
 
-def ask_choice_question(question: ClarificationQuestion, console: Console) -> str | None:
+def ask_choice_question(
+    question: ClarificationQuestion, console: Console
+) -> ChoiceSelection | None:
     """Ask a single-choice clarification question.
 
     Args:
@@ -175,27 +178,53 @@ def ask_choice_question(question: ClarificationQuestion, console: Console) -> st
         Selected choice or None if skipped
     """
     if not question.choices:
-        return ask_text_question(question, console)  # Fallback
+        # Should not happen for choice type; treat as skipped
+        return None
 
     # Use interactive selector if available
     if has_interactive and interactive_select:
-        return interactive_select(
+        selected_label = interactive_select(
             question=question.question,
-            choices=question.choices,
+            choices=[c.label for c in question.choices],
             multiple=False,
             allow_skip=not question.is_required,
             context=question.context,
             console=console,
         )
+        if selected_label is None:
+            return None
+        # Lookup choice by label
+        selected = next((c for c in question.choices if c.label == selected_label), None)
+        if selected is None:
+            return None
 
-    # Fallback to original implementation
+        # Handle details when required or 'Other'
+        if selected.is_other or selected.requires_details:
+            while True:
+                try:
+                    details_prompt = selected.details_prompt or "Please provide details"
+                    details = Prompt.ask(details_prompt)
+                except (KeyboardInterrupt, EOFError):
+                    raise KeyboardInterrupt("User cancelled during specify input") from None
+                details = details.strip()
+                if details:
+                    return ChoiceSelection(id=selected.id, details=details)
+                if question.is_required:
+                    console.print("[red]Details are required for this selection[/red]")
+                    continue
+                # Optional, allow returning without details
+                return ChoiceSelection(id=selected.id)
+
+        return ChoiceSelection(id=selected.id)
+
+    # Fallback to original numeric implementation
     console.print(f"\n[bold]{question.question}[/bold]")
     if question.context:
         console.print(f"[dim]Context: {question.context}[/dim]")
 
     # Display choices
     for idx, choice in enumerate(question.choices, 1):
-        console.print(f"  {idx}. {choice}")
+        console.print(f"  {idx}. {choice.label}")
 
     if not question.is_required:
         console.print("  0. [Skip this question]")
@@ -216,10 +245,30 @@ def ask_choice_question(question: ClarificationQuestion, console: Console) -> st
 
     if choice_num == 0:
         return None
-    return question.choices[int(choice_num) - 1]
+    selected = question.choices[int(choice_num) - 1]
+
+    # Handle required details
+    if selected.is_other or selected.requires_details:
+        while True:
+            try:
+                details_prompt = selected.details_prompt or "Please provide details"
+                details = Prompt.ask(details_prompt)
+            except (KeyboardInterrupt, EOFError):
+                raise KeyboardInterrupt("User cancelled during specify input") from None
+            details = details.strip()
+            if details:
+                return ChoiceSelection(id=selected.id, details=details)
+            if question.is_required:
+                console.print("[red]Details are required for this selection[/red]")
+                continue
+            return ChoiceSelection(id=selected.id)
+
+    return ChoiceSelection(id=selected.id)
 
 
-def ask_multi_choice_question(question: ClarificationQuestion, console: Console) -> str | None:
+def ask_multi_choice_question(
+    question: ClarificationQuestion, console: Console
+) -> list[ChoiceSelection] | None:
     """Ask a multi-choice clarification question.
 
     Args:
@@ -230,22 +279,45 @@ def ask_multi_choice_question(question: ClarificationQuestion, console: Console)
         Pipe-separated selected choices or None if skipped
     """
     if not question.choices:
-        return ask_text_question(question, console)  # Fallback
+        # Should not happen for multi_choice type; treat as skipped
+        return None
 
     # Use interactive selector if available
     if has_interactive and interactive_select:
-        selected = interactive_select(
+        selected_labels = interactive_select(
             question=question.question,
-            choices=question.choices,
+            choices=[c.label for c in question.choices],
             multiple=True,
             allow_skip=not question.is_required,
             context=question.context,
             console=console,
         )
-        if selected:
-            # Use pipe separator to avoid conflicts with commas in choice text
-            return " | ".join(selected)
-        return None
+        if not selected_labels:
+            return None
+        selections: list[ChoiceSelection] = []
+        for label in selected_labels:
+            ch = next((c for c in question.choices if c.label == label), None)
+            if ch is None:
+                continue
+            if ch.is_other or ch.requires_details:
+                while True:
+                    try:
+                        prompt = ch.details_prompt or f"Specify for '{ch.label}'"
+                        details = Prompt.ask(prompt)
+                    except (KeyboardInterrupt, EOFError):
+                        raise KeyboardInterrupt("User cancelled during specify input") from None
+                    details = details.strip()
+                    if details:
+                        selections.append(ChoiceSelection(id=ch.id, details=details))
+                        break
+                    if question.is_required:
+                        console.print("[red]Details are required for this selection[/red]")
+                        continue
+                    selections.append(ChoiceSelection(id=ch.id))
+                    break
+            else:
+                selections.append(ChoiceSelection(id=ch.id))
+        return selections if selections else None
 
     # Fallback to original implementation
     console.print(f"\n[bold]{question.question}[/bold]")
@@ -255,7 +327,7 @@ def ask_multi_choice_question(question: ClarificationQuestion, console: Console)
 
     # Display choices
     for idx, choice in enumerate(question.choices, 1):
-        console.print(f"  {idx}. {choice}")
+        console.print(f"  {idx}. {choice.label}")
 
     if not question.is_required:
         console.print("  0. [Skip this question]")
@@ -272,27 +344,47 @@ def ask_multi_choice_question(question: ClarificationQuestion, console: Console)
 
     # Parse selections with proper input sanitization
     try:
-        selections = []
+        index_selections: list[int] = []
         for x in response.split(","):
             x = x.strip()
             if x:  # Skip empty strings from malformed input like "1,,3"
                 try:
-                    selections.append(int(x))
+                    index_selections.append(int(x))
                 except ValueError:
                     console.print(f"[red]Invalid input '{x}' - please use numbers only[/red]")
                     return ask_multi_choice_question(question, console)  # Retry
 
-        if not selections:
+        if not index_selections:
             console.print("[red]No selections made - please select at least one option[/red]")
             return ask_multi_choice_question(question, console)  # Retry
 
-        if any(s < 1 or s > len(question.choices) for s in selections):
+        if any(s < 1 or s > len(question.choices) for s in index_selections):
             console.print("[red]Invalid selection number(s) - out of range[/red]")
             return ask_multi_choice_question(question, console)  # Retry
 
-        selected_choices = [question.choices[s - 1] for s in selections]
-        # Use pipe separator to avoid conflicts with commas in choice text
-        return " | ".join(selected_choices)
+        selections: list[ChoiceSelection] = []
+        for s in index_selections:
+            choice = question.choices[s - 1]
+            if choice.is_other or choice.requires_details:
+                while True:
+                    try:
+                        prompt = choice.details_prompt or f"Specify for '{choice.label}'"
+                        details = Prompt.ask(prompt)
+                    except (KeyboardInterrupt, EOFError):
+                        raise KeyboardInterrupt("User cancelled during specify input") from None
+                    details = details.strip()
+                    if details:
+                        selections.append(ChoiceSelection(id=choice.id, details=details))
+                        break
+                    if question.is_required:
+                        console.print("[red]Details are required for this selection[/red]")
+                        continue
+                    selections.append(ChoiceSelection(id=choice.id))
+                    break
+            else:
+                selections.append(ChoiceSelection(id=choice.id))
+
+        return selections
     except ValueError:
         console.print("[red]Invalid input format[/red]")
         return ask_multi_choice_question(question, console)  # Retry
@@ -375,27 +467,37 @@ async def handle_multi_clarification_cli(
             )
             console.print()  # Add spacing
 
-            # Ask based on question type
-            answer_text: str | None = None
+            # Ask based on question type and build structured answer
             if question.question_type == "choice":
-                answer_text = ask_choice_question(question, console)
+                selection = ask_choice_question(question, console)
+                if selection is not None:
+                    answer = ClarificationAnswer(
+                        question_id=question.id,
+                        selection=selection,
+                        skipped=False,
+                    )
+                else:
+                    answer = ClarificationAnswer(question_id=question.id, skipped=True)
             elif question.question_type == "multi_choice":
-                answer_text = ask_multi_choice_question(question, console)
+                selections = ask_multi_choice_question(question, console)
+                if selections is not None:
+                    answer = ClarificationAnswer(
+                        question_id=question.id,
+                        selections=selections,
+                        skipped=False,
+                    )
+                else:
+                    answer = ClarificationAnswer(question_id=question.id, skipped=True)
             else:  # text
-                answer_text = ask_text_question(question, console)
-
-            # Create answer object
-            if answer_text is not None:
-                answer = ClarificationAnswer(
-                    question_id=question.id,
-                    answer=answer_text,
-                    skipped=False,
-                )
-            else:
-                answer = ClarificationAnswer(
-                    question_id=question.id,
-                    skipped=True,
-                )
+                text = ask_text_question(question, console)
+                if text is not None:
+                    answer = ClarificationAnswer(
+                        question_id=question.id,
+                        text=text,
+                        skipped=False,
+                    )
+                else:
+                    answer = ClarificationAnswer(question_id=question.id, skipped=True)
             answers.append(answer)
 
             # Telemetry: log answer outcome (no content for privacy)
@@ -404,7 +506,15 @@ async def handle_multi_clarification_cli(
                     "Clarification answer captured",
                     question_id=question.id,
                     skipped=answer.skipped,
-                    answer_len=(len(answer.answer) if answer.answer else 0),
+                    answer_len=(
+                        (len(answer.text) if answer.text else 0)
+                        if question.question_type == "text"
+                        else (
+                            len(answer.selections or [])
+                            if question.question_type == "multi_choice"
+                            else 1
+                        )
+                    ),
                 )
             except Exception:
                 pass

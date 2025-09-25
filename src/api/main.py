@@ -16,6 +16,7 @@ from api.core.session.models import ClarificationExchange, SessionMetadata
 from api.error_handlers import install_error_handlers
 from api.sse_handler import create_sse_response
 from api.task_manager import task_manager
+from core.config import config as global_config
 from core.context import ResearchContextManager
 from core.events import research_event_bus
 from core.exceptions import OpenDeepResearchError
@@ -33,7 +34,12 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     """Manage application lifespan - startup and shutdown."""
     # Startup logic
     configure_logging(enable_console=True)  # Enable console logging for FastAPI server
-    logfire.info("Deep Research API started")
+    logfire.info(
+        "Deep Research API started",
+        embedding_similarity=global_config.enable_embedding_similarity,
+        similarity_threshold=global_config.embedding_similarity_threshold,
+        llm_clean_merge=global_config.enable_llm_clean_merge,
+    )
     await session_manager.start()
 
     try:
@@ -508,17 +514,40 @@ async def respond_to_clarification(request_id: str, clarification_response: Clar
     # Update conversation with Q&A pairs
     conversation = list(state.metadata.conversation_messages)
     if state.metadata.clarification.request:
+
+        def _format_answer_for_conversation(q, a) -> str:
+            if a.skipped:
+                return ""
+            if q.question_type == "text":
+                return a.text or ""
+            if q.question_type == "choice":
+                if not a.selection:
+                    return ""
+                ch = next((c for c in (q.choices or []) if c.id == a.selection.id), None)
+                if not ch:
+                    return a.selection.id
+                return f"{ch.label}: {a.selection.details}" if a.selection.details else ch.label
+            if q.question_type == "multi_choice":
+                parts: list[str] = []
+                for sel in a.selections or []:
+                    ch = next((c for c in (q.choices or []) if c.id == sel.id), None)
+                    label = ch.label if ch else sel.id
+                    parts.append(f"{label}: {sel.details}" if sel.details else label)
+                return ", ".join(parts)
+            return ""
+
         for answer in clarification_response.answers:
-            if not answer.skipped and answer.answer:
-                question = state.metadata.clarification.request.get_question_by_id(
-                    answer.question_id
-                )
-                if question:
-                    new_messages: list[ConversationMessage] = [
-                        ConversationMessage(role="assistant", content=question.question),
-                        ConversationMessage(role="user", content=answer.answer),
-                    ]
-                    conversation.extend(new_messages)
+            question = state.metadata.clarification.request.get_question_by_id(answer.question_id)
+            if not question:
+                continue
+            content = _format_answer_for_conversation(question, answer)
+            if not content:
+                continue
+            new_messages: list[ConversationMessage] = [
+                ConversationMessage(role="assistant", content=question.question),
+                ConversationMessage(role="user", content=content),
+            ]
+            conversation.extend(new_messages)
 
     state.metadata.conversation_messages = conversation
     state.metadata.clarification.awaiting_clarification = False

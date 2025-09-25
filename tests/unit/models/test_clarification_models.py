@@ -6,7 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from models.clarification import (
+    ChoiceSelection,
     ClarificationAnswer,
+    ClarificationChoice,
     ClarificationQuestion,
     ClarificationRequest,
     ClarificationResponse,
@@ -34,20 +36,28 @@ class TestClarificationQuestion:
         q = ClarificationQuestion(
             question="Select priority",
             question_type="choice",
-            choices=["Speed", "Accuracy", "Cost"]
+            choices=[
+                ClarificationChoice(id="speed", label="Speed"),
+                ClarificationChoice(id="accuracy", label="Accuracy"),
+                ClarificationChoice(id="cost", label="Cost"),
+            ],
         )
         assert q.choices is not None
         assert len(q.choices) == 3
         assert q.question_type == "choice"
-        assert "Speed" in q.choices
+        assert any(c.label == "Speed" for c in q.choices)
 
     def test_create_multi_choice_question(self):
         """Test creating a multi-choice question."""
         q = ClarificationQuestion(
             question="Select features",
             question_type="multi_choice",
-            choices=["Feature A", "Feature B", "Feature C"],
-            is_required=False
+            choices=[
+                ClarificationChoice(id="a", label="Feature A"),
+                ClarificationChoice(id="b", label="Feature B"),
+                ClarificationChoice(id="c", label="Feature C"),
+            ],
+            is_required=False,
         )
         assert q.question_type == "multi_choice"
         assert q.choices is not None
@@ -74,7 +84,7 @@ class TestClarificationQuestion:
             _ = ClarificationQuestion(
                 question="Enter text",
                 question_type="text",
-                choices=["A", "B"]
+                choices=[ClarificationChoice(id="a", label="A")]
             )
 
     def test_question_with_context(self):
@@ -93,12 +103,9 @@ class TestClarificationAnswer:
 
     def test_valid_answer(self):
         """Test creating a valid answer."""
-        a = ClarificationAnswer(
-            question_id="test-id",
-            answer="My answer"
-        )
+        a = ClarificationAnswer(question_id="test-id", text="My answer")
         assert not a.skipped
-        assert a.answer == "My answer"
+        assert a.text == "My answer"
         assert a.answered_at.tzinfo == UTC
 
     def test_skipped_answer(self):
@@ -108,38 +115,27 @@ class TestClarificationAnswer:
             skipped=True
         )
         assert a.skipped
-        assert a.answer is None
+        assert a.text is None and a.selection is None and a.selections is None
 
     def test_invalid_answer_both_answer_and_skipped(self):
         """Test that answer cannot have both value and skipped=True."""
-        with pytest.raises(ValidationError, match="Cannot have both"):
-            _ = ClarificationAnswer(
-                question_id="test-id",
-                answer="Answer",
-                skipped=True
-            )
+        with pytest.raises(ValidationError, match="Cannot have both content and skipped=True"):
+            _ = ClarificationAnswer(question_id="test-id", text="Answer", skipped=True)
 
     def test_invalid_answer_neither_answer_nor_skipped(self):
         """Test that answer must have either value or skipped=True."""
-        with pytest.raises(ValidationError, match="Answer must be provided"):
+        with pytest.raises(ValidationError, match="Content must be provided"):
             _ = ClarificationAnswer(question_id="test-id")
 
     def test_invalid_empty_answer(self):
         """Test that empty string answers are invalid."""
-        with pytest.raises(ValidationError, match="Answer must be provided"):
-            _ = ClarificationAnswer(
-                question_id="test-id",
-                answer="   "  # Only whitespace
-            )
+        with pytest.raises(ValidationError, match="Content must be provided"):
+            _ = ClarificationAnswer(question_id="test-id", text="   ")
 
     def test_custom_timestamp(self):
         """Test answer with custom timestamp."""
         custom_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
-        a = ClarificationAnswer(
-            question_id="test-id",
-            answer="Answer",
-            answered_at=custom_time
-        )
+        a = ClarificationAnswer(question_id="test-id", text="Answer", answered_at=custom_time)
         assert a.answered_at == custom_time
 
 
@@ -207,6 +203,22 @@ class TestClarificationRequest:
         )
         assert req.context == "Research about Python programming"
 
+    def test_choice_id_auto_generation_and_dedup(self):
+        """Choices without IDs or with duplicate IDs get unique UUIDs assigned."""
+        q = ClarificationQuestion(
+            question="Pick one",
+            question_type="choice",
+            choices=[
+                ClarificationChoice(id="dup", label="A"),
+                ClarificationChoice(id="dup", label="B"),  # duplicate id
+                ClarificationChoice(id="", label="C"),      # missing id
+            ],
+        )
+        assert q.choices is not None
+        ids = [c.id for c in q.choices]
+        assert all(isinstance(i, str) and len(i) > 0 for i in ids)
+        assert len(set(ids)) == len(ids)  # all unique
+
 
 class TestClarificationResponse:
     """Tests for ClarificationResponse model."""
@@ -214,8 +226,8 @@ class TestClarificationResponse:
     def test_create_response(self):
         """Test creating a clarification response."""
         answers = [
-            ClarificationAnswer(question_id="q1", answer="A1"),
-            ClarificationAnswer(question_id="q2", answer="A2")
+            ClarificationAnswer(question_id="q1", text="A1"),
+            ClarificationAnswer(question_id="q2", text="A2"),
         ]
         resp = ClarificationResponse(
             request_id="req-123",
@@ -233,16 +245,13 @@ class TestClarificationResponse:
 
     def test_o1_answer_lookup(self):
         """Test O(1) lookup for answers by question ID."""
-        answers = [
-            ClarificationAnswer(question_id=f"q{i}", answer=f"A{i}")
-            for i in range(50)
-        ]
+        answers = [ClarificationAnswer(question_id=f"q{i}", text=f"A{i}") for i in range(50)]
         resp = ClarificationResponse(request_id="req", answers=answers)
 
         # Test O(1) lookup
         a25 = resp.get_answer_for_question("q25")
         assert a25 is not None
-        assert a25.answer == "A25"
+        assert a25.text == "A25"
 
         # Test non-existent question ID
         assert resp.get_answer_for_question("non-existent") is None
@@ -256,8 +265,8 @@ class TestClarificationResponse:
         req = ClarificationRequest(questions=questions)
 
         answers = [
-            ClarificationAnswer(question_id=questions[0].id, answer="A1"),
-            ClarificationAnswer(question_id=questions[1].id, skipped=True)
+            ClarificationAnswer(question_id=questions[0].id, text="A1"),
+            ClarificationAnswer(question_id=questions[1].id, skipped=True),
         ]
         resp = ClarificationResponse(request_id=req.id, answers=answers)
 
@@ -273,9 +282,7 @@ class TestClarificationResponse:
         req = ClarificationRequest(questions=questions)
 
         # Only answer first question
-        answers = [
-            ClarificationAnswer(question_id=questions[0].id, answer="A1")
-        ]
+        answers = [ClarificationAnswer(question_id=questions[0].id, text="A1")]
         resp = ClarificationResponse(request_id=req.id, answers=answers)
 
         errors = resp.validate_against_request(req)
@@ -305,7 +312,7 @@ class TestClarificationResponse:
 
         resp = ClarificationResponse(
             request_id=req.id,
-            answers=[ClarificationAnswer(question_id="unknown-id", answer="A")]
+            answers=[ClarificationAnswer(question_id="unknown-id", text="A")],
         )
 
         errors = resp.validate_against_request(req)
@@ -317,59 +324,84 @@ class TestClarificationResponse:
         q = ClarificationQuestion(
             question="Select one",
             question_type="choice",
-            choices=["Option A", "Option B", "Option C"]
+            choices=[
+                ClarificationChoice(id="a", label="Option A"),
+                ClarificationChoice(id="b", label="Option B"),
+                ClarificationChoice(id="c", label="Option C"),
+            ],
         )
         req = ClarificationRequest(questions=[q])
 
         resp = ClarificationResponse(
             request_id=req.id,
-            answers=[ClarificationAnswer(question_id=q.id, answer="Option D")]
+            answers=[ClarificationAnswer(question_id=q.id, selection=ChoiceSelection(id="d"))],
         )
 
         errors = resp.validate_against_request(req)
         assert len(errors) == 1
-        assert "Invalid choice 'Option D'" in errors[0]
-        assert "Valid choices: Option A, Option B, Option C" in errors[0]
+        assert "Invalid choice id 'd'" in errors[0]
 
     def test_validate_invalid_multi_choice(self):
         """Test validation detects invalid multi-choice answers."""
         q = ClarificationQuestion(
             question="Select multiple",
             question_type="multi_choice",
-            choices=["A", "B", "C"]
+            choices=[
+                ClarificationChoice(id="A", label="A"),
+                ClarificationChoice(id="B", label="B"),
+                ClarificationChoice(id="C", label="C"),
+            ],
         )
         req = ClarificationRequest(questions=[q])
 
         resp = ClarificationResponse(
             request_id=req.id,
-            answers=[ClarificationAnswer(question_id=q.id, answer="A, D, E")]
+            answers=[
+                ClarificationAnswer(
+                    question_id=q.id,
+                    selections=[
+                        ChoiceSelection(id="A"),
+                        ChoiceSelection(id="D"),
+                        ChoiceSelection(id="E")
+                    ],
+                )
+            ],
         )
 
         errors = resp.validate_against_request(req)
         assert len(errors) == 1
-        assert "Invalid choices ['D', 'E']" in errors[0]
-        assert "Valid choices: A, B, C" in errors[0]
+        assert "Invalid choice ids ['D', 'E']" in errors[0]
 
     def test_validate_valid_choices(self):
         """Test validation accepts valid choice answers."""
         q1 = ClarificationQuestion(
             question="Single choice",
             question_type="choice",
-            choices=["Yes", "No"]
+            choices=[
+                ClarificationChoice(id="yes", label="Yes"),
+                ClarificationChoice(id="no", label="No"),
+            ],
         )
         q2 = ClarificationQuestion(
             question="Multi choice",
             question_type="multi_choice",
-            choices=["Red", "Green", "Blue"]
+            choices=[
+                ClarificationChoice(id="r", label="Red"),
+                ClarificationChoice(id="g", label="Green"),
+                ClarificationChoice(id="b", label="Blue"),
+            ],
         )
         req = ClarificationRequest(questions=[q1, q2])
 
         resp = ClarificationResponse(
             request_id=req.id,
             answers=[
-                ClarificationAnswer(question_id=q1.id, answer="Yes"),
-                ClarificationAnswer(question_id=q2.id, answer="Red, Blue")
-            ]
+                ClarificationAnswer(question_id=q1.id, selection=ChoiceSelection(id="yes")),
+                ClarificationAnswer(
+                    question_id=q2.id,
+                    selections=[ChoiceSelection(id="r"), ChoiceSelection(id="b")],
+                ),
+            ],
         )
 
         errors = resp.validate_against_request(req)

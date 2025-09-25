@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 if TYPE_CHECKING:
     from models.research_plan_models import TransformedQuery
     from models.search_query_models import SearchQueryBatch
+    from services.embeddings import EmbeddingService
 
 import httpx
 import logfire
@@ -149,6 +150,12 @@ class ResearchDependencies:
         ]
         | None
     ) = None
+
+    # Optional synthesis enhancements and feature flags
+    embedding_service: "EmbeddingService | None" = None
+    enable_embedding_similarity: bool = False
+    similarity_threshold: float = 0.55
+    enable_llm_clean_merge: bool = False
 
     def get_transformed_query(self) -> "TransformedQuery | None":
         """Return the transformed query stored on metadata, if any."""

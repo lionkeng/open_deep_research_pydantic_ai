@@ -5,6 +5,11 @@ from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
+from utils.clarification_utils import (
+    extract_base_label,
+    requires_specify_option,
+)
+
 # Initialize flags
 _has_termios = False
 _has_msvcrt = False
@@ -161,9 +166,11 @@ class InteractiveSelector:
 
         selected_choice = choices[current_index]
 
-        # Handle "Other (please specify)" options
+        # Handle options requiring additional specification
         if self._is_other_option(selected_choice):
             return self._handle_other_option(selected_choice, question)
+        if self._requires_specify_option(selected_choice):
+            return self._handle_specify_option(selected_choice, question)
 
         return selected_choice
 
@@ -249,11 +256,14 @@ class InteractiveSelector:
 
         selected_choices = [choices[i] for i in sorted(selected_indices)]
 
-        # Handle "Other (please specify)" options
+        # Handle options requiring additional specification
         processed_choices = []
         for choice in selected_choices:
             if self._is_other_option(choice):
                 custom_choice = self._handle_other_option(choice, question)
+                processed_choices.append(custom_choice)
+            elif self._requires_specify_option(choice):
+                custom_choice = self._handle_specify_option(choice, question)
                 processed_choices.append(custom_choice)
             else:
                 processed_choices.append(choice)
@@ -282,6 +292,10 @@ class InteractiveSelector:
                 "none of the above (please specify",
             ]
         )
+
+    def _requires_specify_option(self, choice: str) -> bool:
+        """Check if a choice requests a follow-up specification (delegates to utils)."""
+        return requires_specify_option(choice)
 
     def _handle_other_option(self, selected_choice: str, question: str) -> str:
         """Handle an 'Other' option by prompting for additional input.
@@ -317,6 +331,33 @@ class InteractiveSelector:
                 return f"Other: {custom_input}"
 
             # If not confirmed, loop back to ask again
+
+    def _handle_specify_option(self, selected_choice: str, question: str) -> str:
+        """Handle a '(please specify)' option by prompting for details.
+
+        Returns a standardized "<base label>: <user input>" string.
+        """
+        self.console.print(f"\n[yellow]You selected: {selected_choice}[/yellow]")
+        self.console.print("[bold cyan]Please provide the specific details:[/bold cyan]")
+
+        from rich.prompt import Prompt
+
+        # Derive base label via shared utility
+        base_label = extract_base_label(selected_choice)
+
+        while True:
+            custom_input = Prompt.ask("Your details").strip()
+            if not custom_input:
+                self.console.print("[red]Please provide a response or press 'q' to cancel[/red]")
+                continue
+            if custom_input.lower() in ["q", "quit", "cancel"]:
+                return selected_choice  # Keep original if cancelled
+
+            self.console.print(f"\n[dim]Your details: {custom_input}[/dim]")
+            confirm = Prompt.ask("Is this correct?", choices=["y", "n"], default="y")
+            if confirm.lower() == "y":
+                return f"{base_label}: {custom_input}"
+            # else loop
 
 
 def interactive_select(

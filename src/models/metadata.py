@@ -75,15 +75,27 @@ class ClarificationMetadata(BaseModel):
         return pending
 
     def add_clarification_response(self, question_id: str, answer: str) -> None:
-        """Add or update an answer for a specific question.
+        """Add or update a TEXT answer for a specific question.
+
+        Breaking change: only supports text-type questions. For choice/multi_choice,
+        construct ClarificationAnswer with structured selection(s) instead.
 
         Raises:
-            ValueError: If no clarification request exists.
+            ValueError: If no clarification request exists or question is not text type.
         """
         if not self.request:
             raise ValueError("Cannot add clarification response without an existing request")
 
-        new_answer = ClarificationAnswer(question_id=question_id, answer=answer, skipped=False)
+        q = self.request.get_question_by_id(question_id)
+        if not q:
+            raise ValueError(f"Unknown clarification question id: {question_id}")
+        if q.question_type != "text":
+            raise ValueError(
+                "add_clarification_response only supports text questions; "
+                "use structured selection(s) for choice/multi_choice"
+            )
+
+        new_answer = ClarificationAnswer(question_id=question_id, text=answer, skipped=False)
 
         if not self.response:
             self.response = ClarificationResponse(
@@ -142,6 +154,20 @@ class ExecutionMetadata(BaseModel):
     results: list[dict[str, Any]] = Field(default_factory=list, description="Execution results")
 
 
+class ReportSectionPlan(BaseModel):
+    """Deterministic outline entry for the report generator."""
+
+    title: str = Field(description="Proposed section heading derived from research content")
+    bullets: list[str] = Field(
+        default_factory=list,
+        description="Key talking points to weave into the section body",
+    )
+    salient_evidence_ids: list[str] = Field(
+        default_factory=list,
+        description="Source identifiers most relevant to this section",
+    )
+
+
 class ReportMetadata(BaseModel):
     """Metadata specific to the report generator agent."""
 
@@ -150,6 +176,10 @@ class ReportMetadata(BaseModel):
     # Add report-specific fields as needed
     sections: list[dict[str, Any]] = Field(default_factory=list, description="Report sections")
     final: str | None = Field(default=None, description="Final report text")
+    section_outline: list[ReportSectionPlan] = Field(
+        default_factory=list,
+        description="Deterministic outline passed to the report generator",
+    )
 
 
 class ResearchMetadata(BaseModel):
