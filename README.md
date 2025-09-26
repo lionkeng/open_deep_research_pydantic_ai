@@ -104,8 +104,8 @@ Set your API keys as environment variables:
 
 ```bash
 export OPENAI_API_KEY="your-openai-key"
-export ANTHROPIC_API_KEY="your-anthropic-key"  # Optional
 export TAVILY_API_KEY="your-tavily-key"  # Optional for search
+export LOGFIRE_TOKEN="your-logifire-token" # For observability
 ```
 
 ### Optional Synthesis Enhancements (Feature Flags)
@@ -116,9 +116,6 @@ Two opt-in improvements are available for synthesis and reporting. They are disa
   - Enable: `ENABLE_EMBEDDING_SIMILARITY=1`
   - Optional threshold: `EMBEDDING_SIMILARITY_THRESHOLD` (default 0.55)
   - Backend: if `OPENAI_API_KEY` is set, OpenAI embeddings are used automatically in the workflow.
-- Guardrailed LLM clean-merge
-  - Enable: `ENABLE_LLM_CLEAN_MERGE=1`
-  - Improves clarity while preserving `[Sx]` markers exactly; rejects rewrites that change markers.
 
 ## Usage
 
@@ -128,8 +125,8 @@ Two opt-in improvements are available for synthesis and reporting. They are disa
 # Run a single research query
 uv run deep-research research "What are the latest advances in quantum computing?"
 
-# Start interactive mode
-uv run deep-research interactive
+# Start interactive in direct more
+uv run deep-research interactive --mode direct
 
 # With custom API keys
 uv run deep-research research "Your query" -k openai:sk-... -k tavily:tvly-...
@@ -138,7 +135,9 @@ uv run deep-research research "Your query" -k openai:sk-... -k tavily:tvly-...
 uv run deep-research research "Your query" -v
 
 # HTTP mode (client/server)
+uv run deep-research-server
 uv run deep-research research "Your query" --mode http --server-url http://localhost:8000
+
 ```
 
 ### Web API
