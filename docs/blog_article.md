@@ -68,7 +68,7 @@ Prefer to tweak flags or run via HTTP? See docs/API_REFERENCE.md for CLI/HTTP us
 
 ### Built for Production from Day One
 
-I know what you're thinking—"another toy that breaks in production." Not this time.
+I know what you're thinking: "another toy that breaks in production." Not this time.
 
 The framework includes:
 
@@ -158,7 +158,7 @@ Instead of complex agent hierarchies that are hard to debug, the system uses a c
 All agents receive the same `ResearchDependencies` container instance. This centralizes shared resources like API keys, HTTP clients, and accumulated state. This pattern significantly reduces configuration complexity compared to typical multi-agent systems, though it doesn't eliminate all configuration challenges. Agents in the workflow maintain individual configurations for prompts, retry policies, and circuit breaker thresholds.
 
 **Memory-Safe Design**
-[Automatic cleanup mechanisms](https://github.com/lionkeng/open_deep_research_pydantic_ai/blob/main/docs/caching_and_memory_management.md) prevent memory leaks during long-running research sessions. Run it for days. Watch it not leak. Feel that? That's peace of mind in production.
+[Under the hood](https://github.com/lionkeng/open_deep_research_pydantic_ai/blob/main/docs/caching_and_memory_management.md), memory is kept predictable with bounded data structures and periodic cleanup. Search results use a TTL‑based, LRU cache (configurable max size) so expired entries are purged on access and old ones evicted first. The event bus performs scheduled cleanups (default every 5 minutes), prunes history with hard caps (1,000 events per request, 10,000 total), and tracks background tasks that self‑remove when done. Events are scoped by user/session to enable targeted cleanup. The result: stable, long‑running sessions without slow creep or surprise leaks.
 
 ## The Ownership Advantage
 
@@ -182,23 +182,9 @@ If you run the research through your local LLMs or your own LLM-hosting private 
 
 ## Technical Implementation Highlights
 
-**Multiple Interfaces**
+This isn’t a toy demo. You get a CLI that streams agent progress in real time and a FastAPI server that exposes Server‑Sent Events for web apps; both support concurrent sessions with user isolation. Observability is first‑class: comprehensive Logfire instrumentation, structured logs you can actually read, and built‑in performance metrics with error tracking.
 
-- CLI with real-time streaming for development work
-- FastAPI with Server-Sent Events for web integration
-- Both support concurrent research sessions with user isolation
-
-**Observability**
-
-- Comprehensive Logfire instrumentation throughout the system
-- Structured logging for debugging and monitoring
-- Performance metrics and error tracking built-in
-
-**Production Monitoring**
-
-- Circuit breaker status monitoring
-- Resource usage tracking
-- Comprehensive observability through Logfire
+For production, the workflow surfaces operational signals you care about, such as circuit breaker status and resource usage, so you can spot problems early, scale confidently, and debug without guesswork.
 
 ## Contribution
 
