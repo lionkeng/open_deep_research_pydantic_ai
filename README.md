@@ -12,6 +12,43 @@ A comprehensive AI-powered deep research system built with Pydantic-AI using an 
   3. Research Execution – Executes prioritized search batch and synthesizes findings
   4. Report Generation – Composes the final ResearchReport with citations
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant ClarificationAgent
+    participant QueryTransformationAgent
+    participant SearchOrchestrator
+    participant ResearchExecutorAgent
+    participant ReportGeneratorAgent
+
+    User->>ClarificationAgent: Submit research query
+    activate ClarificationAgent
+    ClarificationAgent-->>ClarificationAgent: Assess clarity & optionally gather responses
+    ClarificationAgent-->>User: Clarification prompts (if needed)
+    deactivate ClarificationAgent
+
+    ClarificationAgent->>QueryTransformationAgent: Clarified query & metadata
+    activate QueryTransformationAgent
+    QueryTransformationAgent-->>QueryTransformationAgent: Produce TransformedQuery
+    QueryTransformationAgent-->>SearchOrchestrator: Emit SearchQueryBatch
+    deactivate QueryTransformationAgent
+
+    activate SearchOrchestrator
+    SearchOrchestrator-->>SearchOrchestrator: Execute prioritized search batch
+    SearchOrchestrator-->>ResearchExecutorAgent: Aggregated search results
+    deactivate SearchOrchestrator
+
+    activate ResearchExecutorAgent
+    ResearchExecutorAgent-->>ResearchExecutorAgent: Run synthesis tools (extraction, clustering, contradictions, patterns, quality)
+    ResearchExecutorAgent-->>ReportGeneratorAgent: `ResearchResults`
+    deactivate ResearchExecutorAgent
+
+    activate ReportGeneratorAgent
+    ReportGeneratorAgent-->>ReportGeneratorAgent: Compose `ResearchReport`
+    ReportGeneratorAgent-->>User: Final report delivery
+    deactivate ReportGeneratorAgent
+```
+
 ### Event-Driven Architecture
 
 - Lock-free Event Bus implementation for async coordination
